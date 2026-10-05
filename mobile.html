@@ -1778,6 +1778,7 @@
     });
 
     let runesAngle = 0;
+    const BEAM_MAXN = 16, beamCx = new Float32Array(BEAM_MAXN), beamCy = new Float32Array(BEAM_MAXN), beamHw = new Float32Array(BEAM_MAXN); // beam ribbon scratch (no per-frame allocation)
     let activeBeam = null;
     const gemFlash = [0, 0, 0, 0, 0, 0, 0, 0];
 
@@ -5349,48 +5350,65 @@
         ctx.restore();
       });
 
-      // 2. Green Lightning Beam: jagged green bolt with thick dark outline & bright core
-      const beamSegLists = activeBeam ? [activeBeam.segments, activeBeam.segments2] : [];
-      for (let bl = 0; bl < beamSegLists.length; bl++) {
-        const segs = beamSegLists[bl];
-        if (!segs || segs.length < 2) continue;
-        ctx.save();
-
-        // Dark outline
-        ctx.beginPath();
-        ctx.moveTo(segs[0].x, segs[0].y);
-        for (let s = 1; s < segs.length; s++) {
-          ctx.lineTo(segs[s].x, segs[s].y);
-        }
-        ctx.lineWidth = 9;
-        ctx.strokeStyle = '#1a1a1a';
-        ctx.lineCap = 'round';
-        ctx.lineJoin = 'round';
-        ctx.stroke();
-
-        // Mid green
-        ctx.lineWidth = 5;
-        ctx.strokeStyle = '#1E7A2E';
-        ctx.stroke();
-
-        // Bright green core
-        ctx.lineWidth = 2;
-        ctx.strokeStyle = '#7CFF6B';
-        ctx.stroke();
-
-        // Small green sparks along it
-        for (let s = 1; s < segs.length - 1; s++) {
-          if (Math.random() < 0.6) {
-            const spX = segs[s].x + (Math.random() - 0.5) * 8;
-            const spY = segs[s].y + (Math.random() - 0.5) * 8;
-            ctx.fillStyle = '#7CFF6B';
-            ctx.beginPath();
-            ctx.arc(spX, spY, 2 + Math.random() * 2, 0, Math.PI * 2);
-            ctx.fill();
+      // 2. Arcane Beam: thick tapered energy ribbon (pulse, travelling bands, flares) with a thin comic rim
+      if (activeBeam) {
+        const bEl = 0.65 - activeBeam.timer;
+        const bA = Math.max(0, Math.min(1, bEl / 0.08, activeBeam.timer / 0.12));
+        const bLists = [activeBeam.segments, activeBeam.segments2];
+        for (let bl = 0; bl < bLists.length; bl++) {
+          const segs = bLists[bl];
+          if (!segs || segs.length < 3 || bA <= 0) continue;
+          const n = Math.min(segs.length, BEAM_MAXN);
+          const sx = segs[0].x, sy = segs[0].y, ex = segs[n - 1].x, ey = segs[n - 1].y;
+          const bLen = Math.hypot(ex - sx, ey - sy) || 1;
+          const dx = (ex - sx) / bLen, dy = (ey - sy) / bLen, nx = -dy, ny = dx;
+          const hwBase = Math.max(11, activeBeam.width * 0.8);
+          const pulse = 1 + 0.08 * Math.sin(gameTime * 40);
+          for (let i = 0; i < n; i++) {
+            const t = i / (n - 1);
+            beamCx[i] = sx + dx * bLen * t + (segs[i].x - (sx + dx * bLen * t)) * 0.35; // calm the lightning jitter
+            beamCy[i] = sy + dy * bLen * t + (segs[i].y - (sy + dy * bLen * t)) * 0.35;
+            beamHw[i] = hwBase * pulse * (0.35 + 0.65 * Math.pow(Math.sin(Math.PI * Math.min(1, t * 1.15)), 0.5));
           }
+          ctx.save();
+          ctx.globalAlpha = bA;
+          ctx.lineJoin = 'round';
+          const ribbon = k => {
+            ctx.beginPath();
+            for (let i = 0; i < n; i++) { const h = beamHw[i] * k; if (i) ctx.lineTo(beamCx[i] + nx * h, beamCy[i] + ny * h); else ctx.moveTo(beamCx[i] + nx * h, beamCy[i] + ny * h); }
+            for (let i = n - 1; i >= 0; i--) { const h = beamHw[i] * k; ctx.lineTo(beamCx[i] - nx * h, beamCy[i] - ny * h); }
+            ctx.closePath();
+          };
+          ctx.globalCompositeOperation = 'lighter';
+          ribbon(2.1); ctx.fillStyle = 'rgba(60,255,110,0.14)'; ctx.fill();
+          ribbon(1.55); ctx.fillStyle = 'rgba(90,255,140,0.2)'; ctx.fill();
+          ctx.globalCompositeOperation = 'source-over';
+          ribbon(1.14); ctx.fillStyle = '#10261a'; ctx.fill();
+          ribbon(1.0); ctx.fillStyle = '#1FA54A'; ctx.fill();
+          ribbon(0.66); ctx.fillStyle = '#7CFF6B'; ctx.fill();
+          ribbon(0.3); ctx.fillStyle = '#F4FFF0'; ctx.fill();
+          // bright bands racing along the beam
+          ctx.globalCompositeOperation = 'lighter';
+          ctx.fillStyle = 'rgba(220,255,220,0.55)';
+          const ang = Math.atan2(dy, dx);
+          for (let j = 0; j < 4; j++) {
+            const t = (gameTime * 2.6 + j * 0.25) % 1, p = Math.min(n - 1, Math.floor(t * (n - 1)));
+            ctx.beginPath(); ctx.ellipse(beamCx[p], beamCy[p], beamHw[p] * 0.45, beamHw[p] * 1.05, ang, 0, Math.PI * 2); ctx.fill();
+          }
+          // sparks off the edges
+          ctx.fillStyle = '#C8FFC0';
+          for (let j = 0; j < 7; j++) {
+            const t = (gameTime * 1.7 + j * 0.143) % 1, p = Math.min(n - 1, Math.floor(t * (n - 1))), side = j % 2 ? 1 : -1, off = beamHw[p] * (1.1 + 0.9 * ((gameTime * 5 + j) % 1));
+            ctx.beginPath(); ctx.arc(beamCx[p] + nx * off * side, beamCy[p] + ny * off * side, 2.2, 0, Math.PI * 2); ctx.fill();
+          }
+          // muzzle flare + impact flare with a ring
+          const fl = (x, y, r) => { ctx.fillStyle = 'rgba(120,255,140,0.28)'; ctx.beginPath(); ctx.arc(x, y, r * 1.7, 0, Math.PI * 2); ctx.fill(); ctx.fillStyle = 'rgba(210,255,210,0.55)'; ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill(); ctx.fillStyle = '#ffffff'; ctx.beginPath(); ctx.arc(x, y, r * 0.45, 0, Math.PI * 2); ctx.fill(); };
+          fl(sx, sy, hwBase * 0.85);
+          fl(ex, ey, hwBase * 1.25);
+          ctx.strokeStyle = 'rgba(190,255,190,0.7)'; ctx.lineWidth = 3;
+          ctx.beginPath(); ctx.arc(ex, ey, hwBase * (1.6 + 0.5 * ((gameTime * 6) % 1)), 0, Math.PI * 2); ctx.stroke();
+          ctx.restore();
         }
-
-        ctx.restore();
       }
 
       // Hero Projectiles (Outlined Crystal Shard + 3-segment trail)
