@@ -1005,6 +1005,15 @@
     window.addEventListener('touchstart', initAudio, { once: true });
     window.addEventListener('keydown', initAudio, { once: true });
     window.addEventListener('pointerdown', () => { if (audioCtx && audioCtx.state !== 'running') audioCtx.resume(); });
+    // phones unlock audio only on touchend/click: keep (re)starting the music element on each gesture until it is actually playing
+    const musicKick = () => {
+      if (!audioCtx) { initAudio(); return; }
+      if (isMuted) return;
+      if (audioCtx.state !== 'running') audioCtx.resume();
+      const cur = music.boss ? music.b : music.a;
+      if (cur && cur.el.paused) cur.el.play().catch(() => {});
+    };
+    ['touchend', 'click', 'pointerup', 'keydown'].forEach(ev => window.addEventListener(ev, musicKick, { passive: true }));
 
     function makeTrack(srcs) {
       // Plays its sources one after another forever; volume through a GainNode (iOS ignores el.volume)
@@ -5464,15 +5473,29 @@
         } else if (pt.type === 'hex_totem') {
           const fade = Math.min(1, pt.life / 0.4);
           const age = pt.maxLife - pt.life;
-          // pulsing magenta range ring on the ground
-          ctx.globalAlpha = fade * (0.35 + 0.2 * Math.sin(gameTime * 5));
+          // hex ground area: soft magenta disc + rotating hexagon + bright rim, all projected on the floor (ellipse 0.65)
+          const hxR = pt.rad, hxY = pt.rad * 0.65, hxPulse = 0.5 + 0.5 * Math.sin(gameTime * 5);
+          ctx.globalAlpha = fade * (0.13 + 0.07 * hxPulse);
+          ctx.fillStyle = '#c026d3';
+          ctx.beginPath(); ctx.ellipse(pt.x, pt.y, hxR, hxY, 0, 0, Math.PI * 2); ctx.fill();
+          ctx.lineJoin = 'round';
+          ctx.globalAlpha = fade * (0.55 + 0.25 * hxPulse);
           ctx.strokeStyle = '#e879f9';
+          ctx.lineWidth = 3;
+          ctx.beginPath(); ctx.ellipse(pt.x, pt.y, hxR, hxY, 0, 0, Math.PI * 2); ctx.stroke();
+          ctx.globalAlpha = fade * (0.5 + 0.2 * hxPulse);
           ctx.lineWidth = 2.5;
+          ctx.beginPath();
+          for (let k = 0; k < 6; k++) {
+            const a = gameTime * 0.4 + k * Math.PI / 3;
+            const hx = pt.x + Math.cos(a) * hxR * 0.93, hy = pt.y + Math.sin(a) * hxY * 0.93;
+            if (k) ctx.lineTo(hx, hy); else ctx.moveTo(hx, hy);
+          }
+          ctx.closePath(); ctx.stroke();
+          ctx.globalAlpha = fade * 0.3;
           ctx.setLineDash([10, 9]);
           ctx.lineDashOffset = -gameTime * 30;
-          ctx.beginPath();
-          ctx.ellipse(pt.x, pt.y, pt.rad, pt.rad * 0.65, 0, 0, Math.PI * 2);
-          ctx.stroke();
+          ctx.beginPath(); ctx.ellipse(pt.x, pt.y, hxR * 0.55, hxY * 0.55, 0, 0, Math.PI * 2); ctx.stroke();
           ctx.setLineDash([]);
           ctx.globalAlpha = fade;
           const img = SPRITES['hextotem'];

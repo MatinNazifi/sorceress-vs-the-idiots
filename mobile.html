@@ -665,6 +665,7 @@
 
     // --- HAND PREFERENCE ---
     const CTL_HAND_KEY = 'ctl-hand';
+    const ctlHasHand = () => { try { return !!localStorage.getItem(CTL_HAND_KEY); } catch (_) { return false; } };
     let handPref = 'left'; // 'left' = dash right (old layout), 'right' = dash left
     try { const saved = localStorage.getItem(CTL_HAND_KEY); if (saved === 'left' || saved === 'right') handPref = saved; } catch (_) {}
 
@@ -674,7 +675,7 @@
     let screenW = window.innerWidth;
     let screenH = window.innerHeight;
     // adaptive render scale (mobile): drop the canvas resolution when frames run slow, raise it again when there is headroom
-    const GFX = { maxDpr: 1.5, scale: 1, min: 0.6, avg: 16, slow: 0, fast: 0 };
+    const GFX = { maxDpr: 2, scale: 1, min: 0.6, avg: 16, slow: 0, fast: 0 };
     let dpr = Math.min(window.devicePixelRatio || 1, GFX.maxDpr);
 
     function resize() {
@@ -845,6 +846,7 @@
       const txt = document.getElementById('load-text');
       if (txt) txt.textContent = pct >= 100 ? 'Ready!' : LOAD_LINES[Math.floor(LOAD.done / LOAD.total * LOAD_LINES.length) % LOAD_LINES.length];
       if (LOAD.done >= LOAD.total) {
+        Object.keys(SPRITES).forEach(k => { try { ctx.drawImage(SPRITES[k], 0, 0, 1, 1); } catch (e) {} }); // warm the GPU textures
         const wait = Math.max(0, LOAD.MIN_MS - (performance.now() - LOAD.shownAt));
         setTimeout(() => {
           const ls = document.getElementById('loading-screen');
@@ -854,14 +856,14 @@
     }
     Object.keys(SPRITE_URLS).forEach(key => {
       const img = new Image();
-      img.src = SPRITE_URLS[key].replace(/^sprites\/(?!ui\/)/, 'sprites-m/'); // mobile: 50% sprites
-      img.onload = () => { SPRITES[key] = img; loadTick(); };
+      img.src = SPRITE_URLS[key];
+      img.onload = () => { (img.decode ? img.decode() : Promise.resolve()).catch(() => {}).then(() => { SPRITES[key] = img; loadTick(); }); };
       img.onerror = () => { loadTick(); /* fallback smoothly */ };
     });
 
     // Ice ring strip (icering.png): outer edge radius in source px at frame 0 / frame 5, iso ellipse ratio
-    const ICE_RING_EDGE_START = 28.5; // 57 at full size; sprites-m is 50%
-    const ICE_RING_EDGE_END = 47.5; // 95 at full size
+    const ICE_RING_EDGE_START = 57;
+    const ICE_RING_EDGE_END = 95;
     const ICE_RING_ISO_Y = 0.65;
     const ICE_RING_FPS = 14;
 
@@ -990,9 +992,7 @@
       if (v.flip) ctx.scale(-1, 1);
 
       if (v.tint === 'pink') {
-        ctx.filter = 'hue-rotate(290deg) saturate(1.8) brightness(1.2)';
       } else if (v.tint === 'gold') {
-        ctx.filter = 'hue-rotate(35deg) saturate(2.5) brightness(1.3)';
       }
 
       ctx.drawImage(img, sx, sy, frameWidth, frameHeight, -dw / 2, -dh / 2, dw, dh);
@@ -1072,6 +1072,15 @@
         }
       }
     });
+    // phones unlock audio only on touchend/click: keep (re)starting the music element on each gesture until it is actually playing
+    const musicKick = () => {
+      if (!audioCtx) { initAudio(); return; }
+      if (isMuted) return;
+      if (audioCtx.state !== 'running') audioCtx.resume();
+      const cur = music.boss ? music.b : music.a;
+      if (cur && cur.el.paused) cur.el.play().catch(() => {});
+    };
+    ['touchend', 'click', 'pointerup', 'keydown'].forEach(ev => window.addEventListener(ev, musicKick, { passive: true }));
 
     function makeTrack(srcs) {
       // Plays its sources one after another forever; volume through a GainNode (iOS ignores el.volume)
@@ -1400,7 +1409,7 @@
     let vases = [];
     let pickups = [];
 
-    const MAX_PARTICLES = budMobile ? 200 : 300;
+    const MAX_PARTICLES = 300;
     function spawnParticle(p) {
       if (particles.length >= MAX_PARTICLES) {
         particles.shift();
@@ -1408,7 +1417,7 @@
       particles.push(p);
     }
 
-    const MAX_DECALS = budMobile ? 30 : 40;
+    const MAX_DECALS = 40;
     function spawnDecal(d) {
       if (groundDecals.length >= MAX_DECALS) {
         groundDecals.shift();
@@ -4769,7 +4778,6 @@
         ctx.translate(g.x - h.x, g.y - h.y);
         ctx.scale(g.facing, 1);
         ctx.globalAlpha = g.alpha * 0.55;
-        ctx.filter = 'drop-shadow(0 0 6px #6366f1)';
         drawCharacterSprite('hero-idle', 100, 0, 0, false);
         ctx.restore();
       });
@@ -4867,7 +4875,6 @@
           ctx.rotate(gameTime * 2.2 + i);
           if (gemFlash[i] > 0) {
             gemFlash[i]--; // tiny 2-frame white flash on hit
-            ctx.filter = 'brightness(10) contrast(2)';
           }
 
           if (gemImg && gemImg.complete && gemImg.naturalWidth > 0) {
@@ -4961,7 +4968,6 @@
       // White outline flash every second
       const flash = Math.sin(gameTime * Math.PI * 2) > 0.65;
       if (flash) {
-        ctx.filter = 'drop-shadow(0 0 6px #ffffff) brightness(1.25)';
       }
 
       const img = SPRITES[p.type];
@@ -5293,10 +5299,8 @@
         const drawW = height * aspect;
 
         ctx.save();
-        if (isWhiteFlash) {
-          ctx.filter = 'brightness(10) contrast(2)';
-        }
         ctx.drawImage(img, srcX, srcY, srcW, srcH, -drawW / 2, -drawH, drawW, drawH);
+        if (isWhiteFlash) { ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = 0.9; ctx.drawImage(img, srcX, srcY, srcW, srcH, -drawW / 2, -drawH, drawW, drawH); } // additive flash, no filter
         ctx.restore();
       } else {
         ctx.save();
@@ -5604,15 +5608,29 @@
         } else if (pt.type === 'hex_totem') {
           const fade = Math.min(1, pt.life / 0.4);
           const age = pt.maxLife - pt.life;
-          // pulsing magenta range ring on the ground
-          ctx.globalAlpha = fade * (0.35 + 0.2 * Math.sin(gameTime * 5));
+          // hex ground area: soft magenta disc + rotating hexagon + bright rim, all projected on the floor (ellipse 0.65)
+          const hxR = pt.rad, hxY = pt.rad * 0.65, hxPulse = 0.5 + 0.5 * Math.sin(gameTime * 5);
+          ctx.globalAlpha = fade * (0.13 + 0.07 * hxPulse);
+          ctx.fillStyle = '#c026d3';
+          ctx.beginPath(); ctx.ellipse(pt.x, pt.y, hxR, hxY, 0, 0, Math.PI * 2); ctx.fill();
+          ctx.lineJoin = 'round';
+          ctx.globalAlpha = fade * (0.55 + 0.25 * hxPulse);
           ctx.strokeStyle = '#e879f9';
+          ctx.lineWidth = 3;
+          ctx.beginPath(); ctx.ellipse(pt.x, pt.y, hxR, hxY, 0, 0, Math.PI * 2); ctx.stroke();
+          ctx.globalAlpha = fade * (0.5 + 0.2 * hxPulse);
           ctx.lineWidth = 2.5;
+          ctx.beginPath();
+          for (let k = 0; k < 6; k++) {
+            const a = gameTime * 0.4 + k * Math.PI / 3;
+            const hx = pt.x + Math.cos(a) * hxR * 0.93, hy = pt.y + Math.sin(a) * hxY * 0.93;
+            if (k) ctx.lineTo(hx, hy); else ctx.moveTo(hx, hy);
+          }
+          ctx.closePath(); ctx.stroke();
+          ctx.globalAlpha = fade * 0.3;
           ctx.setLineDash([10, 9]);
           ctx.lineDashOffset = -gameTime * 30;
-          ctx.beginPath();
-          ctx.ellipse(pt.x, pt.y, pt.rad, pt.rad * 0.65, 0, 0, Math.PI * 2);
-          ctx.stroke();
+          ctx.beginPath(); ctx.ellipse(pt.x, pt.y, hxR * 0.55, hxY * 0.55, 0, 0, Math.PI * 2); ctx.stroke();
           ctx.setLineDash([]);
           ctx.globalAlpha = fade;
           const img = SPRITES['hextotem'];
@@ -5693,8 +5711,7 @@
         ctx.lineWidth = 4;
         ctx.strokeStyle = '#1a1a1a';
         ctx.fillStyle = dn.isHeal ? '#4ade80' : (dn.isCrit ? '#ffd23f' : '#ffffff');
-        ctx.strokeText(dn.text, 0, 0);
-        ctx.fillText(dn.text, 0, 0);
+        const dnFill = ctx.fillStyle; ctx.fillStyle = '#1a1a1a'; ctx.fillText(dn.text, 1.5, 2); ctx.fillStyle = dnFill; ctx.fillText(dn.text, 0, 0);
         ctx.restore();
       });
     }
@@ -6155,6 +6172,7 @@
     const pauseHandBtn = document.getElementById('pause-hand');
 
     function showHandModal() {
+      handModal.style.zIndex = '10050';
       handModal.style.display = 'flex';
     }
     function hideHandModal() {
@@ -6175,20 +6193,26 @@
         showHandModal();
       }
       // The PLAY click bubbles to window, so it is also the audio-unlock gesture for initAudio.
-      document.getElementById('menu-play').addEventListener('click', () => {
+      const startRun = () => {
         mainMenu.classList.add('hidden');
         setTimeout(() => {
           mainMenu.style.display = 'none';
           runStarted = true;
           requestWakeLock();
         }, MENU_FADE_MS);
-      }, { once: true });
+      };
+      window.__afterHand = null;
+      document.getElementById('menu-play').addEventListener('click', () => {
+        if (!ctlHasHand()) { window.__afterHand = startRun; showHandModal(); return; }
+        if (!runStarted) startRun();
+      });
     }
 
     handRightBtn.addEventListener('click', () => {
       setHandPref('right');
       hideHandModal();
-      if (!runStarted) {
+      if (window.__afterHand) { const go = window.__afterHand; window.__afterHand = null; go(); }
+      else if (!runStarted) {
         mainMenu.style.display = 'flex';
         mainMenu.classList.remove('hidden');
       }
@@ -6196,7 +6220,8 @@
     handLeftBtn.addEventListener('click', () => {
       setHandPref('left');
       hideHandModal();
-      if (!runStarted) {
+      if (window.__afterHand) { const go = window.__afterHand; window.__afterHand = null; go(); }
+      else if (!runStarted) {
         mainMenu.style.display = 'flex';
         mainMenu.classList.remove('hidden');
       }
@@ -6268,6 +6293,7 @@
 
     function loop(currentTimestamp) {
       requestAnimationFrame(loop);
+      if (currentTimestamp - lastTimestamp < 14.5) return; // 120 Hz screens: render every 2nd refresh
 
       const rawDt = Math.min((currentTimestamp - lastTimestamp) / 1000, 0.1);
       lastTimestamp = currentTimestamp;
