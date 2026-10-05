@@ -1630,7 +1630,8 @@
     });
 
     let runesAngle = 0;
-    const BEAM_MAXN = 16, beamCx = new Float32Array(BEAM_MAXN), beamCy = new Float32Array(BEAM_MAXN), beamHw = new Float32Array(BEAM_MAXN); // beam ribbon scratch (no per-frame allocation)
+    const BEAM_MAXN = 24, beamCx = new Float32Array(BEAM_MAXN), beamCy = new Float32Array(BEAM_MAXN), beamMx = new Float32Array(BEAM_MAXN), beamMy = new Float32Array(BEAM_MAXN); // beam scratch (no per-frame allocation)
+    const beamHash = (i, k, f) => { const v = Math.sin(i * 127.1 + k * 311.7 + f * 74.7) * 43758.5453; return v - Math.floor(v) - 0.5; };
     let activeBeam = null;
     const gemFlash = [0, 0, 0, 0, 0, 0, 0, 0];
 
@@ -2399,7 +2400,7 @@
 
         // Re-jagged segments every 2 frames
         if (!activeBeam[segKey] || activeBeam.frameCounter % 2 === 0) {
-          const numSegs = 10;
+          const numSegs = 16;
           const segs = [{ x: bx, y: by }];
           const endX = bx + cosA * activeBeam.length;
           const endY = by + sinA * activeBeam.length;
@@ -2407,8 +2408,8 @@
           const perpY = cosA;
           for (let s = 1; s < numSegs; s++) {
             const frac = s / numSegs;
-            const jx = bx + (endX - bx) * frac + perpX * (Math.random() - 0.5) * 26;
-            const jy = by + (endY - by) * frac + perpY * (Math.random() - 0.5) * 26;
+            const jx = bx + (endX - bx) * frac + perpX * (Math.random() - 0.5) * 18;
+            const jy = by + (endY - by) * frac + perpY * (Math.random() - 0.5) * 18;
             segs.push({ x: jx, y: jy });
           }
           segs.push({ x: endX, y: endY });
@@ -5201,10 +5202,11 @@
         ctx.restore();
       });
 
-      // 2. Arcane Beam: thick tapered energy ribbon (pulse, travelling bands, flares) with a thin comic rim
+      // 2. Arcane Beam as THICK GREEN LIGHTNING: wide aura at the hit width, 3 crossing jagged strands, forks, flares
       if (activeBeam) {
         const bEl = 0.65 - activeBeam.timer;
-        const bA = Math.max(0, Math.min(1, bEl / 0.08, activeBeam.timer / 0.12));
+        const bA = Math.max(0, Math.min(1, bEl / 0.06, activeBeam.timer / 0.1));
+        const bF = activeBeam.frameCounter >> 1; // new bolt shape every 2 frames
         const bLists = [activeBeam.segments, activeBeam.segments2];
         for (let bl = 0; bl < bLists.length; bl++) {
           const segs = bLists[bl];
@@ -5213,51 +5215,46 @@
           const sx = segs[0].x, sy = segs[0].y, ex = segs[n - 1].x, ey = segs[n - 1].y;
           const bLen = Math.hypot(ex - sx, ey - sy) || 1;
           const dx = (ex - sx) / bLen, dy = (ey - sy) / bLen, nx = -dy, ny = dx;
-          const hwBase = Math.max(11, activeBeam.width * 0.8);
-          const pulse = 1 + 0.08 * Math.sin(gameTime * 40);
-          for (let i = 0; i < n; i++) {
-            const t = i / (n - 1);
-            beamCx[i] = sx + dx * bLen * t + (segs[i].x - (sx + dx * bLen * t)) * 0.35; // calm the lightning jitter
-            beamCy[i] = sy + dy * bLen * t + (segs[i].y - (sy + dy * bLen * t)) * 0.35;
-            beamHw[i] = hwBase * pulse * (0.35 + 0.65 * Math.pow(Math.sin(Math.PI * Math.min(1, t * 1.15)), 0.5));
-          }
+          const hw = Math.max(12, activeBeam.width * 0.85);
           ctx.save();
           ctx.globalAlpha = bA;
-          ctx.lineJoin = 'round';
-          const ribbon = k => {
-            ctx.beginPath();
-            for (let i = 0; i < n; i++) { const h = beamHw[i] * k; if (i) ctx.lineTo(beamCx[i] + nx * h, beamCy[i] + ny * h); else ctx.moveTo(beamCx[i] + nx * h, beamCy[i] + ny * h); }
-            for (let i = n - 1; i >= 0; i--) { const h = beamHw[i] * k; ctx.lineTo(beamCx[i] - nx * h, beamCy[i] - ny * h); }
-            ctx.closePath();
-          };
+          ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+          // aura: the area the beam really hits, as two soft additive strokes
           ctx.globalCompositeOperation = 'lighter';
-          ribbon(2.1); ctx.fillStyle = 'rgba(60,255,110,0.14)'; ctx.fill();
-          ribbon(1.55); ctx.fillStyle = 'rgba(90,255,140,0.2)'; ctx.fill();
+          ctx.beginPath(); ctx.moveTo(sx, sy); ctx.lineTo(ex, ey);
+          ctx.lineWidth = hw * 2.1; ctx.strokeStyle = 'rgba(40,255,100,0.10)'; ctx.stroke();
+          ctx.lineWidth = hw * 1.1; ctx.strokeStyle = 'rgba(110,255,150,0.16)'; ctx.stroke();
           ctx.globalCompositeOperation = 'source-over';
-          ribbon(1.14); ctx.fillStyle = '#10261a'; ctx.fill();
-          ribbon(1.0); ctx.fillStyle = '#1FA54A'; ctx.fill();
-          ribbon(0.66); ctx.fillStyle = '#7CFF6B'; ctx.fill();
-          ribbon(0.3); ctx.fillStyle = '#F4FFF0'; ctx.fill();
-          // bright bands racing along the beam
+          // 3 strands: each point of the base wobble plus a perpendicular jolt, tapered to zero at both ends
+          for (let k = 0; k < 3; k++) {
+            const amp = hw * (k === 0 ? 0.55 : 0.8);
+            for (let i = 0; i < n; i++) {
+              const t = i / (n - 1), e = Math.sin(Math.PI * t) * 0.9 + 0.1 * (i > 0 && i < n - 1 ? 1 : 0);
+              const j = beamHash(i, k, bF) * 2 * amp * e;
+              beamCx[i] = segs[i].x + nx * j; beamCy[i] = segs[i].y + ny * j;
+            }
+            if (k === 0) for (let i = 0; i < n; i++) { beamMx[i] = beamCx[i]; beamMy[i] = beamCy[i]; }
+            const thick = k === 0 ? 1 : 0.6;
+            ctx.beginPath(); ctx.moveTo(beamCx[0], beamCy[0]);
+            for (let i = 1; i < n; i++) ctx.lineTo(beamCx[i], beamCy[i]);
+            ctx.lineWidth = 11 * thick; ctx.strokeStyle = '#102a16'; ctx.stroke();
+            ctx.lineWidth = 6.5 * thick; ctx.strokeStyle = k === 0 ? '#27E05A' : '#4BEA7A'; ctx.stroke();
+            ctx.lineWidth = 2.6 * thick; ctx.strokeStyle = '#F2FFF0'; ctx.stroke();
+          }
+          // forks: short side bolts leaving the main strand
+          ctx.strokeStyle = '#7CFF8B'; ctx.lineWidth = 3.2;
+          for (let f = 0; f < 5; f++) {
+            const p = 1 + Math.floor(((beamHash(f, 7, bF) + 0.5) * (n - 3))), side = beamHash(f, 9, bF) > 0 ? 1 : -1;
+            const ang = Math.atan2(dy, dx) + side * (0.55 + (beamHash(f, 3, bF) + 0.5) * 0.5), len = hw * (1.6 + (beamHash(f, 5, bF) + 0.5) * 1.2);
+            const mx = beamMx[p] + Math.cos(ang) * len * 0.5 + nx * beamHash(f, 1, bF) * hw * 0.6, my = beamMy[p] + Math.sin(ang) * len * 0.5 + ny * beamHash(f, 1, bF) * hw * 0.6;
+            ctx.beginPath(); ctx.moveTo(beamMx[p], beamMy[p]); ctx.lineTo(mx, my); ctx.lineTo(beamMx[p] + Math.cos(ang) * len, beamMy[p] + Math.sin(ang) * len); ctx.stroke();
+          }
+          // flares at the staff and at the far end, plus an impact ring
           ctx.globalCompositeOperation = 'lighter';
-          ctx.fillStyle = 'rgba(220,255,220,0.55)';
-          const ang = Math.atan2(dy, dx);
-          for (let j = 0; j < 4; j++) {
-            const t = (gameTime * 2.6 + j * 0.25) % 1, p = Math.min(n - 1, Math.floor(t * (n - 1)));
-            ctx.beginPath(); ctx.ellipse(beamCx[p], beamCy[p], beamHw[p] * 0.45, beamHw[p] * 1.05, ang, 0, Math.PI * 2); ctx.fill();
-          }
-          // sparks off the edges
-          ctx.fillStyle = '#C8FFC0';
-          for (let j = 0; j < 7; j++) {
-            const t = (gameTime * 1.7 + j * 0.143) % 1, p = Math.min(n - 1, Math.floor(t * (n - 1))), side = j % 2 ? 1 : -1, off = beamHw[p] * (1.1 + 0.9 * ((gameTime * 5 + j) % 1));
-            ctx.beginPath(); ctx.arc(beamCx[p] + nx * off * side, beamCy[p] + ny * off * side, 2.2, 0, Math.PI * 2); ctx.fill();
-          }
-          // muzzle flare + impact flare with a ring
-          const fl = (x, y, r) => { ctx.fillStyle = 'rgba(120,255,140,0.28)'; ctx.beginPath(); ctx.arc(x, y, r * 1.7, 0, Math.PI * 2); ctx.fill(); ctx.fillStyle = 'rgba(210,255,210,0.55)'; ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill(); ctx.fillStyle = '#ffffff'; ctx.beginPath(); ctx.arc(x, y, r * 0.45, 0, Math.PI * 2); ctx.fill(); };
-          fl(sx, sy, hwBase * 0.85);
-          fl(ex, ey, hwBase * 1.25);
+          const fl = (x, y, r) => { ctx.fillStyle = 'rgba(120,255,140,0.3)'; ctx.beginPath(); ctx.arc(x, y, r * 1.7, 0, Math.PI * 2); ctx.fill(); ctx.fillStyle = 'rgba(210,255,210,0.6)'; ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill(); ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(x, y, r * 0.45, 0, Math.PI * 2); ctx.fill(); };
+          fl(sx, sy, hw * 0.7); fl(ex, ey, hw * 1.1);
           ctx.strokeStyle = 'rgba(190,255,190,0.7)'; ctx.lineWidth = 3;
-          ctx.beginPath(); ctx.arc(ex, ey, hwBase * (1.6 + 0.5 * ((gameTime * 6) % 1)), 0, Math.PI * 2); ctx.stroke();
+          ctx.beginPath(); ctx.arc(ex, ey, hw * (1.5 + 0.5 * ((gameTime * 6) % 1)), 0, Math.PI * 2); ctx.stroke();
           ctx.restore();
         }
       }
