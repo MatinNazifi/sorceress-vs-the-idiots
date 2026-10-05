@@ -2607,7 +2607,8 @@
           if (proj > 0 && proj < activeBeam.length) {
             const perpDist = Math.abs(-toEx * sinA + toEy * cosA);
             if (perpDist < (activeBeam.width + e.radius)) {
-              damageEnemy(e, activeBeam.dmg * dt * 4, cosA >= 0 ? 1 : -1, false);
+              // registers as a hit every 0.12 s (same damage per second as before: dmg x 4), not every frame
+              if (!e.beamT || gameTime - e.beamT >= 0.12) { e.beamT = gameTime; damageEnemy(e, activeBeam.dmg * 0.48, cosA >= 0 ? 1 : -1, false, true); }
             }
           }
         });
@@ -3536,7 +3537,7 @@
     }
 
     const DMG_TUNE = 0.85 * 0.95; // -5% player damage (+10% harder overall with the +5% damage taken)
-    function damageEnemy(e, amount, hitDirX = 1, isCrit = false) {
+    function damageEnemy(e, amount, hitDirX = 1, isCrit = false, quiet = false) { // quiet: a beam tick, no hit-stop / slow-mo / camera kick
       if (e.isBoss && e.stunTimer > 0) {
         amount *= 2;
         isCrit = true;
@@ -3574,7 +3575,7 @@
         spawnDamageNumber(e.x, e.y, amount, isCrit);
       }
 
-      if (e.isElite || e.isBoss) {
+      if (!quiet && (e.isElite || e.isBoss)) {
         // Hit-stop budget: one big dramatic freeze on the first elite/boss hit of the run,
         // none until 4:00, then a short freeze on every 3rd elite/boss hit.
         if (!bigHitStopDone) { bigHitStopDone = true; hitStopFrames = 4; slowMo(1.1); addShake(8); }
@@ -5395,14 +5396,14 @@
           const sx = segs[0].x, sy = segs[0].y, ex = segs[n - 1].x, ey = segs[n - 1].y;
           const bLen = Math.hypot(ex - sx, ey - sy) || 1;
           const dx = (ex - sx) / bLen, dy = (ey - sy) / bLen, nx = -dy, ny = dx;
-          const hw = Math.max(12, activeBeam.width * 0.85);
+          const hw = Math.min(22, 13 + Math.max(0, activeBeam.width - 26) * 0.13); // art size barely grows with level; the hit width still does
           ctx.save();
           ctx.globalAlpha = bA;
           ctx.lineCap = 'round'; ctx.lineJoin = 'round';
           // aura: the area the beam really hits, as two soft additive strokes
           ctx.globalCompositeOperation = 'lighter';
           ctx.beginPath(); ctx.moveTo(sx, sy); ctx.lineTo(ex, ey);
-          ctx.lineWidth = hw * 2.1; ctx.strokeStyle = 'rgba(40,255,100,0.10)'; ctx.stroke();
+          ctx.lineWidth = hw * 1.9; ctx.strokeStyle = 'rgba(40,255,100,0.10)'; ctx.stroke();
           ctx.lineWidth = hw * 1.1; ctx.strokeStyle = 'rgba(110,255,150,0.16)'; ctx.stroke();
           ctx.globalCompositeOperation = 'source-over';
           // 3 strands: each point of the base wobble plus a perpendicular jolt, tapered to zero at both ends
