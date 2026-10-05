@@ -1020,12 +1020,38 @@
       return { el, g };
     }
 
+    // Dungeon music moves through the run in phases (same key and instruments, rising tempo); the boss tracks still take over on a boss.
+    // Each phase alternates two variants; a phase's files only load ~20 s before it starts.
+    const MUSIC_PHASES = [
+      { from: 0,   srcs: ['audio/music-dungeon-a.m4a', 'audio/music-dungeon-b.m4a'] },  // calm, eerie
+      { from: 150, srcs: ['audio/music-explore-a.m4a', 'audio/music-explore-b.m4a'] },  // stirring, curious
+      { from: 300, srcs: ['audio/music-tense-a.m4a', 'audio/music-tense-b.m4a'] },      // walls closing in
+      { from: 450, srcs: ['audio/music-laststand-a.m4a', 'audio/music-laststand-b.m4a'] } // last stand
+    ];
+    let musicPhase = 0;
+    function musicPhaseAt(t) { let p = 0; for (let i = 0; i < MUSIC_PHASES.length; i++) if (t >= MUSIC_PHASES[i].from) p = i; return p; }
+
     function initMusic() {
-      music.a = makeTrack(['audio/music-dungeon-a.m4a', 'audio/music-dungeon-b.m4a']);
+      musicPhase = 0;
+      music.p = [makeTrack(MUSIC_PHASES[0].srcs)];
+      music.a = music.p[0];
       music.b = makeTrack(['audio/music-boss-a.m4a', 'audio/music-boss-b.m4a']);
       music.a.el.play().catch(() => {});
       music.a.g.gain.setTargetAtTime(MUSIC_VOL, audioCtx.currentTime, 0.8);
       music.cur = 'a';
+    }
+
+    function setPhaseMusic(i) {
+      if (!audioCtx || !music.p || i === musicPhase) return;
+      const t = audioCtx.currentTime, prev = music.p[musicPhase];
+      if (!music.p[i]) music.p[i] = makeTrack(MUSIC_PHASES[i].srcs);
+      const next = music.p[i];
+      musicPhase = i;
+      music.a = next;
+      next.el.play().catch(() => {});
+      next.g.gain.setTargetAtTime(music.boss ? MUSIC_VOL * 0.12 : MUSIC_VOL, t, 1.8); // crossfade into the new phase
+      prev.g.gain.setTargetAtTime(0, t, 1.5);
+      setTimeout(() => { if (prev !== music.a) prev.el.pause(); }, 8000);
     }
 
     function setBossMusic(on) {
@@ -1114,6 +1140,11 @@
 
     function updateBGM(dt, intensity, bossActive) {
       setBossMusic(!!bossActive);
+      if (!music.p) return;
+      const ph = musicPhaseAt(gameTime);
+      if (ph !== musicPhase) setPhaseMusic(ph);
+      const nx = musicPhase + 1; // warm up the next phase's files shortly before they are needed
+      if (nx < MUSIC_PHASES.length && !music.p[nx] && gameTime >= MUSIC_PHASES[nx].from - 20) music.p[nx] = makeTrack(MUSIC_PHASES[nx].srcs);
     }
     window.__sfx = n => { sfxLast[n] = 0; playSample(n); }
     window.__audio = () => ({ ctx: audioCtx && audioCtx.state, loaded: Object.values(sfxBuffers).reduce((a, v) => a + v.length, 0),
