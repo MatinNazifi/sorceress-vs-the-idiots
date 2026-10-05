@@ -1036,7 +1036,7 @@
         const AudioCtx = window.AudioContext || window.webkitAudioContext;
         audioCtx = new AudioCtx();
         sfxBus = audioCtx.createGain();
-        sfxBus.gain.value = 1.0;
+        sfxBus.gain.value = MUSIC_VOL * 0.5; // SFX sit at half the music level (Matin 2026-10-06)
         // gentle glue compressor: a crowd of hits never stacks into a harsh wall
         const comp = audioCtx.createDynamicsCompressor();
         comp.threshold.value = -24; comp.knee.value = 18; comp.ratio.value = 4;
@@ -6230,8 +6230,6 @@
 
     // --- MAIN GAME LOOP ---
     let lastTimestamp = performance.now();
-    let accumulator = 0;
-    const FIXED_GAME_DT = 1 / 60; // fixed game time step (60 updates per second)
 
     function gfxAdapt(ms) {
       if (ms >= 100 || document.hidden) return;
@@ -6247,7 +6245,7 @@
     function loop(currentTimestamp) {
       requestAnimationFrame(loop);
 
-      const rawDt = Math.min((currentTimestamp - lastTimestamp) / 1000, 0.1); // clamp to 100 ms
+      const rawDt = Math.min((currentTimestamp - lastTimestamp) / 1000, 0.1);
       lastTimestamp = currentTimestamp;
       gfxAdapt(rawDt * 1000);
 
@@ -6262,47 +6260,38 @@
         return;
       }
 
-      // Update real-time timers (slow motion, heartbeat)
+      // Slow motion: time runs at 25% and eases back to normal over the last 40% of the window
       let slowScale = 1;
       if (slowMoT > 0) {
         slowMoT = Math.max(0, slowMoT - rawDt);
         const k = slowMoT / slowMoDur;
         slowScale = k > 0.4 ? 0.25 : 0.25 + 0.75 * (1 - k / 0.4);
       }
+      const dt = rawDt * speedMult * slowScale;
+      gameTime += dt;
+      if (hero.hp > 0 && hero.hp < hero.maxHp) hero.hp = Math.min(hero.maxHp, hero.hp + 0.9 * dt);
+
+      if (gameTime >= 600 && !isGameOver) {
+        triggerGameOver(true);
+        return;
+      }
+
       if (hero.hp / hero.maxHp < 0.3) {
-        heartbeatTimer += rawDt;
+        heartbeatTimer += dt;
         if (heartbeatTimer >= 0.85) {
           heartbeatTimer = 0;
           Sound.heartbeat();
         }
       }
 
-      // Accumulate game time
-      const gameDt = rawDt * speedMult * slowScale;
-      accumulator += gameDt;
+      const intensity = Math.min(1, gameTime / 540);
+      const hasBoss = enemies.some(e => e.isBoss && e.hp > 0);
+      updateBGM(dt, intensity, hasBoss);
 
-      // Fixed step update
-      while (accumulator >= FIXED_GAME_DT) {
-        // Update game state by FIXED_GAME_DT (in game time)
-        gameTime += FIXED_GAME_DT;
-        if (hero.hp > 0 && hero.hp < hero.maxHp) hero.hp = Math.min(hero.maxHp, hero.hp + 0.9 * FIXED_GAME_DT);
-
-        if (gameTime >= 600 && !isGameOver) {
-          triggerGameOver(true);
-          return;
-        }
-
-        const intensity = Math.min(1, gameTime / 540);
-        const hasBoss = enemies.some(e => e.isBoss && e.hp > 0);
-        updateBGM(FIXED_GAME_DT, intensity, hasBoss);
-
-        updateSpawnDirector(FIXED_GAME_DT);
-        updateHero(FIXED_GAME_DT);
-        updateEnemies(FIXED_GAME_DT);
-        updateProjectilesAndEffects(FIXED_GAME_DT);
-
-        accumulator -= FIXED_GAME_DT;
-      }
+      updateSpawnDirector(dt);
+      updateHero(dt);
+      updateEnemies(dt);
+      updateProjectilesAndEffects(dt);
 
       draw();
     }

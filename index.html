@@ -972,7 +972,7 @@
         const AudioCtx = window.AudioContext || window.webkitAudioContext;
         audioCtx = new AudioCtx();
         sfxBus = audioCtx.createGain();
-        sfxBus.gain.value = 1.0;
+        sfxBus.gain.value = MUSIC_VOL * 0.5; // SFX sit at half the music level (Matin 2026-10-06)
         // gentle glue compressor: a crowd of hits never stacks into a harsh wall
         const comp = audioCtx.createDynamicsCompressor();
         comp.threshold.value = -24; comp.knee.value = 18; comp.ratio.value = 4;
