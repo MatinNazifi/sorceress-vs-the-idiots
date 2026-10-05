@@ -557,15 +557,6 @@
     }
     #rotate-overlay img { width: 80px; height: 80px; margin-bottom: 16px; animation: rotatePulse 1.5s ease-in-out infinite; }
     @keyframes rotatePulse { 0%,100% { transform: rotate(-90deg); } 50% { transform: rotate(90deg); } }
-    @media (orientation: portrait) {
-      #rotate-overlay { display: flex; }
-      #main-menu { display: none !important; }
-      #pause-modal { display: none !important; }
-      #level-modal { display: none !important; }
-      #end-modal { display: none !important; }
-      #dash-btn { display: none !important; }
-      #pause-btn { display: none !important; }
-    }
       #loading-screen { position: fixed; inset: 0; z-index: 9000; background: #0d0c13; transition: opacity 0.5s ease; will-change: opacity; }
     #loading-screen.done { opacity: 0; pointer-events: none; }
     #loading-screen .load-bg { position: absolute; inset: 0; background: url('sprites/ui/loading-bg.jpg?v=2') center 40% / cover no-repeat;
