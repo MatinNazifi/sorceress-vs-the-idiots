@@ -4052,15 +4052,15 @@
     // an evolved weapon and a 5/5 passive leave the pool. selfCheckOffers() proves it (?god=1).
     const MAX_WEAPONS = Object.keys(WEAPON_REGISTRY).length; // no cap: every weapon can be owned in one run
     // v17 balance: 0.7 starved owned upgrades and runs got hard. Early game (first 3 min) favours upgrades.
-    const NEW_WEAPON_CHANCE = 0.4;       // while unowned weapons exist, one card is a new weapon this often
-    const NEW_WEAPON_CHANCE_EARLY = 0.2;
+    const NEW_WEAPON_CHANCE = 0.8;       // while unowned weapons exist, one card is a new weapon this often
+    const NEW_WEAPON_CHANCE_EARLY = 0.65;
     const EARLY_GAME_S = 180;
-    const PITY_LEVELUPS = 6;             // no new-weapon card at all for this many level-ups -> force one (after early game)
+    const PITY_LEVELUPS = 2;             // no new-weapon card at all for this many level-ups -> force one (after early game)
     const OFFER_WEIGHT = { weapon: 1.0, evolve: 2.0, passive: 0.8 };
     const RECENT_MULT = 0.35;      // offered in the last 2 level-ups
     const FRESH_MULT = 1.6;        // never offered this run
-    const OWNED_UPGRADE_CHANCE = 0.6;
-    const OWNED_UPGRADE_CHANCE_EARLY = 0.9;
+    const OWNED_UPGRADE_CHANCE = 0.45;
+    const OWNED_UPGRADE_CHANCE_EARLY = 0.6;
     let lastNewWeaponTurn = 0;    // levelUpCount when any unowned weapon was last offered
     let levelUpCount = 0;
     const weaponLastOffered = {}; // weapon id -> levelUpCount when last offered
@@ -4141,7 +4141,7 @@
       const early = gameTime < EARLY_GAME_S;
       // Pity rule (after the early game): no new-weapon card in the last 6 level-ups -> the least recently
       // offered unowned weapon is forced in. One trickle, so every weapon still shows up over a full run.
-      if (slotFree && !early && turn - lastNewWeaponTurn > PITY_LEVELUPS) {
+      if (slotFree && turn - lastNewWeaponTurn > PITY_LEVELUPS) {
         const starved = pool.filter(c => c.type === 'weapon' && c.isNew);
         if (starved.length) {
           starved.sort((a, b) => (weaponLastOffered[a.id] || 0) - (weaponLastOffered[b.id] || 0));
