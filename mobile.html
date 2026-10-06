@@ -698,6 +698,8 @@
     const GFX = { maxDpr: 3, scale: 1, min: 0.67, avg: 16, slow: 0, fast: 0, mode: 60 };
     let fpsOn = false;
     const fpsLog = [];
+    const spikeLog = [];
+    let lastResizeAt = 0;
 
     let dpr = Math.min(window.devicePixelRatio || 1, GFX.maxDpr);
 
@@ -705,6 +707,7 @@
       screenW = window.innerWidth;
       screenH = window.innerHeight;
       dpr = Math.min(window.devicePixelRatio || 1, GFX.maxDpr) * GFX.scale;
+      lastResizeAt = performance.now();
       canvas.width = screenW * dpr;
       canvas.height = screenH * dpr;
       if (typeof applyHandLayout === 'function') applyHandLayout();
@@ -1602,7 +1605,9 @@
       const s = fpsLog.slice().sort((a, b) => a - b), avg = s.reduce((a, b) => a + b, 0) / s.length;
       fpsBox.textContent = Math.round(1000 / avg) + ' fps  p95 ' + s[Math.floor(s.length * 0.95)].toFixed(0) + 'ms  max ' + s[s.length - 1].toFixed(0) + 'ms\n'
         + 'sharp ' + (dpr).toFixed(2) + 'x  ' + GFX.mode + 'fps  ' + canvas.width + 'x' + canvas.height + '\n'
-        + 'enemies ' + enemies.length + '  t ' + Math.floor(gameTime) + 's';
+        + 'enemies ' + enemies.length + '  t ' + Math.floor(gameTime) + 's'
+        + spikeLog.filter(s => performance.now() - s.at < 60000).sort((a, b) => b.ms - a.ms).slice(0, 3)
+            .map(s => '\n! ' + s.ms.toFixed(0) + 'ms @' + Math.floor(s.t / 60) + ':' + String(s.t % 60).padStart(2, '0') + ' n' + s.n + (s.rs ? ' RESIZE' : '')).join('');
     }, 500);
     const dashBtn = document.getElementById('dash-btn');
     function onDashTap(e) {
@@ -6383,6 +6388,7 @@
     function gfxAdapt(ms) {
       if (window.__perfLog) window.__perfLog.push(ms);
       if (fpsOn && ms < 250) { fpsLog.push(ms); if (fpsLog.length > 180) fpsLog.shift(); }
+      if (fpsOn && ms >= 28 && ms < 250) { const nw = performance.now(); spikeLog.push({ ms, at: nw, t: Math.floor(gameTime), n: enemies.length, rs: nw - lastResizeAt < 1500 }); if (spikeLog.length > 60) spikeLog.shift(); }
       if (ms >= 100 || document.hidden) return;
       GFX.avg += (ms - GFX.avg) * 0.05;
       if (GFX.avg > 24) { GFX.slow++; GFX.fast = 0; }
