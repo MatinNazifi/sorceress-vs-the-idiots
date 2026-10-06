@@ -532,6 +532,10 @@
       0%, 100% { transform: scale(1); filter: drop-shadow(0 6px 10px rgba(0, 0, 0, 0.7)); }
       50% { transform: scale(1.06); filter: drop-shadow(0 6px 10px rgba(0, 0, 0, 0.7)) drop-shadow(0 0 16px rgba(255, 210, 63, 0.55)); }
     }
+    .menu-lb { position: absolute; left: 50%; transform: translateX(-50%); z-index: 2; bottom: calc(max(36px, env(safe-area-inset-bottom)) + min(72vw, 300px) * 0.298 + 18px);
+      background: rgba(20, 16, 28, 0.85); color: #ffd23f; border: 3px solid #ffd23f; border-radius: 999px; padding: 9px 20px; box-shadow: 0 4px 0 #000;
+      font: 800 15px 'Trebuchet MS', 'Segoe UI', Arial, sans-serif; letter-spacing: 1.5px; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+    .menu-lb:active { scale: 0.95; }
     .menu-sound { position: absolute; top: max(12px, env(safe-area-inset-top)); right: 12px; touch-action: manipulation; }
     .menu-hand { position: absolute; top: max(12px, env(safe-area-inset-top)); left: 12px; touch-action: manipulation; }
 
@@ -661,6 +665,383 @@
     </div>
   </div>
 
+  <script>
+/**
+ * Leaderboard Client for "Sorceress vs the Idiots"
+ * Comic Pop aesthetic (#14101c dark purple, #ffd23f bright yellow).
+ * Handles run submission, offline retries, menu viewer, and Instagram Story result card.
+ */
+(function (root) {
+  'use strict';
+
+  var API_BASE = "https://sorceress-leaderboard.ek-relay.workers.dev"; // Updated via config
+  var STORAGE_KEY_HANDLE = "svti_lb_handle";
+  var STORAGE_KEY_NAME = "svti_lb_player_name";
+  var STORAGE_KEY_RETRY = "svti_lb_retry_queue";
+
+  var LB = {
+    config: {
+      apiBase: API_BASE,
+      gameVersion: "1.0.0",
+      instagramHost: "matin.nazifii"
+    },
+
+    init: function (options) {
+      if (options) {
+        if (options.apiBase) this.config.apiBase = options.apiBase;
+        if (options.gameVersion) this.config.gameVersion = options.gameVersion;
+      }
+      this._injectStyles();
+      this._processPendingRetry();
+    },
+
+    getSavedHandle: function () {
+      try {
+        return localStorage.getItem(STORAGE_KEY_HANDLE) || "";
+      } catch (e) {
+        return "";
+      }
+    },
+
+    setSavedHandle: function (handle) {
+      try {
+        if (handle) {
+          localStorage.setItem(STORAGE_KEY_HANDLE, handle.replace(/^@/, "").trim());
+        }
+      } catch (e) {}
+    },
+
+    getSavedName: function () {
+      try {
+        return localStorage.getItem(STORAGE_KEY_NAME) || "Sorceress";
+      } catch (e) {
+        return "Sorceress";
+      }
+    },
+
+    setSavedName: function (name) {
+      try {
+        if (name) localStorage.setItem(STORAGE_KEY_NAME, name.trim());
+      } catch (e) {}
+    },
+
+    generateRunId: function () {
+      return 'run_' + Date.now() + '_' + Math.random().toString(36).substring(2, 10);
+    },
+
+    /**
+     * Submit a run when game ends (death or victory). Never crashes game on failure.
+     */
+    submit: function (runData, callback) {
+      var self = this;
+      var payload = {
+        run_id: runData.run_id || self.generateRunId(),
+        player_name: runData.player_name || self.getSavedName(),
+        handle: runData.handle || self.getSavedHandle() || null,
+        kills: runData.kills || 0,
+        survival_time: runData.survival_time || 0,
+        level: runData.level || 1,
+        won: !!runData.won,
+        game_version: self.config.gameVersion
+      };
+
+      fetch(self.config.apiBase + "/score", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      })
+      .then(function (res) {
+        if (!res.ok) throw new Error("HTTP " + res.status);
+        return res.json();
+      })
+      .then(function (data) {
+        if (callback) callback(null, data);
+      })
+      .catch(function (err) {
+        // Queue single offline retry
+        self._queueRetry(payload);
+        if (callback) callback(err, null);
+      });
+    },
+
+    top: function (board, callback) {
+      var boardType = board || "kills";
+      fetch(this.config.apiBase + "/top?board=" + encodeURIComponent(boardType) + "&limit=50")
+        .then(function (res) {
+          if (!res.ok) throw new Error("HTTP " + res.status);
+          return res.json();
+        })
+        .then(function (json) {
+          callback(null, json.data || []);
+        })
+        .catch(function (err) {
+          callback(err, []);
+        });
+    },
+
+    /**
+     * Open Leaderboard Modal Screen (from Main Menu)
+     */
+    openScreen: function () {
+      var self = this;
+      var existing = document.getElementById("svti-lb-modal");
+      if (existing) existing.remove();
+
+      var modal = document.createElement("div");
+      modal.id = "svti-lb-modal";
+      modal.className = "svti-lb-overlay";
+      modal.innerHTML = [
+        '<div class="svti-lb-container">',
+        '  <div class="svti-lb-header">',
+        '    <h2 class="svti-lb-title">HALL OF VALOR</h2>',
+        '    <button class="svti-lb-close" id="svti-lb-btn-close">&times;</button>',
+        '  </div>',
+        '  <div class="svti-lb-tabs">',
+        '    <button class="svti-lb-tab active" data-board="kills">MOST KILLS</button>',
+        '    <button class="svti-lb-tab" data-board="fastwin">FASTEST WIN</button>',
+        '    <button class="svti-lb-tab" data-board="week">THIS WEEK</button>',
+        '  </div>',
+        '  <div class="svti-lb-list-wrap">',
+        '    <div id="svti-lb-loading" class="svti-lb-status">SUMMONING HEROES...</div>',
+        '    <table class="svti-lb-table" id="svti-lb-table" style="display:none;">',
+        '      <thead>',
+        '        <tr><th>#</th><th>HERO</th><th>KILLS</th><th>TIME</th><th>LVL</th></tr>',
+        '      </thead>',
+        '      <tbody id="svti-lb-tbody"></tbody>',
+        '    </table>',
+        '  </div>',
+        '  <div class="svti-lb-footer">',
+        '    Follow @' + self.config.instagramHost + '!',
+        '  </div>',
+        '</div>'
+      ].join('\n');
+
+      document.body.appendChild(modal);
+
+      document.getElementById("svti-lb-btn-close").onclick = function () {
+        modal.remove();
+      };
+
+      var tabs = modal.querySelectorAll(".svti-lb-tab");
+      for (var i = 0; i < tabs.length; i++) {
+        tabs[i].onclick = function () {
+          for (var j = 0; j < tabs.length; j++) tabs[j].classList.remove("active");
+          this.classList.add("active");
+          self._renderBoard(this.getAttribute("data-board"));
+        };
+      }
+
+      this._renderBoard("kills");
+    },
+
+    /**
+     * Show End-of-Run Result Card ready for Instagram Story screenshot.
+     */
+    showResultCard: function (runData, onDone) {
+      var self = this;
+      var existing = document.getElementById("svti-card-modal");
+      if (existing) existing.remove();
+
+      var timeStr = self._formatTime(runData.survival_time || 0);
+      var savedHandle = self.getSavedHandle();
+      var isWon = !!runData.won;
+
+      var modal = document.createElement("div");
+      modal.id = "svti-card-modal";
+      modal.className = "svti-lb-overlay";
+      modal.innerHTML = [
+        '<div class="svti-card-box">',
+        '  <div class="svti-card-badge ' + (isWon ? 'won' : 'died') + '">' + (isWon ? 'VICTORY!' : 'SLAIN IN BATTLE') + '</div>',
+        '  <div class="svti-card-title">SORCERESS VS THE IDIOTS</div>',
+        '  <div class="svti-card-meta">v' + self.config.gameVersion + ' &bull; ' + new Date().toLocaleDateString() + '</div>',
+        '  <div class="svti-card-stats-grid">',
+        '    <div class="stat-item"><span class="lbl">KILLS</span><span class="val highlight">' + (runData.kills || 0) + '</span></div>',
+        '    <div class="stat-item"><span class="lbl">SURVIVED</span><span class="val">' + timeStr + '</span></div>',
+        '    <div class="stat-item"><span class="lbl">LEVEL</span><span class="val">' + (runData.level || 1) + '</span></div>',
+        '  </div>',
+        '  <div class="svti-card-input-row">',
+        '    <label>Your Instagram handle (optional):</label>',
+        '    <div class="input-wrap">',
+        '      <span class="at">@</span>',
+        '      <input type="text" id="svti-inp-handle" placeholder="your_handle" value="' + savedHandle + '" maxlength="30" />',
+        '    </div>',
+        '  </div>',
+        '  <div class="svti-card-actions">',
+        '    <button class="svti-btn-sub" id="svti-btn-submit-score">SUBMIT & SAVE</button>',
+        '    <button class="svti-btn-skip" id="svti-btn-skip">CONTINUE</button>',
+        '  </div>',
+        '  <div class="svti-card-story-hint">',
+        '    &#128248; Screenshot this & tag <strong>@' + self.config.instagramHost + '</strong> on your story!',
+        '  </div>',
+        '</div>'
+      ].join('\n');
+
+      document.body.appendChild(modal);
+
+      var submitted = false;
+      var handleInp = document.getElementById("svti-inp-handle");
+      var submitBtn = document.getElementById("svti-btn-submit-score");
+      var skipBtn = document.getElementById("svti-btn-skip");
+
+      submitBtn.onclick = function () {
+        if (submitted) return;
+        var handleVal = handleInp.value.trim().replace(/^@/, "");
+        self.setSavedHandle(handleVal);
+        runData.handle = handleVal;
+        submitBtn.innerText = "SUBMITTING...";
+        submitBtn.disabled = true;
+
+        self.submit(runData, function (err, res) {
+          submitted = true;
+          if (err) {
+            submitBtn.innerText = "SAVED OFFLINE &#10003;";
+          } else {
+            submitBtn.innerText = "SUBMITTED &#10003;";
+          }
+          setTimeout(function () {
+            modal.remove();
+            if (onDone) onDone();
+          }, 900);
+        });
+      };
+
+      skipBtn.onclick = function () {
+        if (!submitted) {
+          // Silent anonymous submit
+          runData.handle = null;
+          self.submit(runData);
+        }
+        modal.remove();
+        if (onDone) onDone();
+      };
+    },
+
+    _renderBoard: function (board) {
+      var self = this;
+      var loading = document.getElementById("svti-lb-loading");
+      var table = document.getElementById("svti-lb-table");
+      var tbody = document.getElementById("svti-lb-tbody");
+
+      loading.style.display = "block";
+      loading.innerText = "SUMMONING HEROES...";
+      table.style.display = "none";
+      tbody.innerHTML = "";
+
+      this.top(board, function (err, items) {
+        loading.style.display = "none";
+        if (err || !items || items.length === 0) {
+          loading.style.display = "block";
+          loading.innerText = err ? "COULD NOT CONNECT TO LEADERBOARD" : "NO SCORES REGISTERED YET. BE THE FIRST!";
+          return;
+        }
+
+        table.style.display = "table";
+        var rows = [];
+        for (var i = 0; i < items.length; i++) {
+          var item = items[i];
+          var rank = i + 1;
+          var rankBadge = rank === 1 ? '&#129351;' : (rank === 2 ? '&#129352;' : (rank === 3 ? '&#129353;' : rank));
+          var displayName = item.handle ? ('@' + item.handle) : (item.player_name || 'Anonymous');
+          var timeStr = self._formatTime(item.survival_time);
+
+          rows.push([
+            '<tr class="' + (rank <= 3 ? 'top-rank' : '') + '">',
+            '  <td class="r-col">' + rankBadge + '</td>',
+            '  <td class="name-col">' + self._escapeHtml(displayName) + (item.won ? ' &#11088;' : '') + '</td>',
+            '  <td class="kills-col">' + item.kills + '</td>',
+            '  <td class="time-col">' + timeStr + '</td>',
+            '  <td class="lvl-col">' + item.level + '</td>',
+            '</tr>'
+          ].join(''));
+        }
+        tbody.innerHTML = rows.join('\n');
+      });
+    },
+
+    _formatTime: function (secs) {
+      var total = Math.floor(secs || 0);
+      var m = Math.floor(total / 60);
+      var s = total % 60;
+      return (m < 10 ? '0' : '') + m + ':' + (s < 10 ? '0' : '') + s;
+    },
+
+    _escapeHtml: function (str) {
+      return String(str).replace(/[&<>"']/g, function (m) {
+        return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m];
+      });
+    },
+
+    _queueRetry: function (payload) {
+      try {
+        localStorage.setItem(STORAGE_KEY_RETRY, JSON.stringify(payload));
+      } catch (e) {}
+    },
+
+    _processPendingRetry: function () {
+      var self = this;
+      try {
+        var raw = localStorage.getItem(STORAGE_KEY_RETRY);
+        if (!raw) return;
+        var pending = JSON.parse(raw);
+        localStorage.removeItem(STORAGE_KEY_RETRY);
+        self.submit(pending);
+      } catch (e) {}
+    },
+
+    _injectStyles: function () {
+      if (document.getElementById("svti-lb-styles")) return;
+      var css = [
+        '.svti-lb-overlay { position: fixed; inset: 0; background: rgba(20, 16, 28, 0.88); z-index: 999999; display: flex; align-items: center; justify-content: center; font-family: "Trebuchet MS", "Segoe UI", Roboto, Arial, sans-serif; font-weight: 700; -webkit-font-smoothing: antialiased; padding: 12px; box-sizing: border-box; }',
+        '.svti-lb-container, .svti-card-box { background: #1c152b; border: 4px solid #ffd23f; border-radius: 12px; box-shadow: 0 10px 0 #000, 0 0 25px rgba(255, 210, 63, 0.3); color: #fff; width: 100%; max-width: 440px; max-height: 90vh; display: flex; flex-direction: column; overflow: hidden; box-sizing: border-box; }',
+        '.svti-lb-header { display: flex; align-items: center; justify-content: space-between; padding: 12px 18px; background: #281e3d; border-bottom: 3px solid #ffd23f; }',
+        '.svti-lb-title { font-size: 26px; font-weight: 800; color: #ffd23f; margin: 0; letter-spacing: 1px; }',
+        '.svti-lb-close { background: #ee4266; color: #fff; border: 2px solid #000; font-size: 20px; font-weight: bold; border-radius: 6px; width: 34px; height: 34px; cursor: pointer; box-shadow: 2px 2px 0 #000; }',
+        '.svti-lb-close:active { transform: translate(1px, 1px); box-shadow: none; }',
+        '.svti-lb-tabs { display: flex; background: #14101c; border-bottom: 2px solid #3b2c59; }',
+        '.svti-lb-tab { flex: 1; padding: 10px 4px; background: transparent; color: #a59cb8; border: none; font-size: 14px; font-weight: bold; cursor: pointer; border-bottom: 3px solid transparent; font-family: inherit; }',
+        '.svti-lb-tab.active { color: #ffd23f; border-bottom-color: #ffd23f; background: #231a37; text-shadow: 1px 1px 0 #000; }',
+        '.svti-lb-list-wrap { flex: 1; overflow-y: auto; padding: 8px 12px; min-height: 240px; }',
+        '.svti-lb-table { width: 100%; border-collapse: collapse; font-size: 16px; }',
+        '.svti-lb-table th { text-align: left; padding: 8px 6px; color: #ffd23f; border-bottom: 2px solid #3b2c59; font-size: 13px; }',
+        '.svti-lb-table td { padding: 8px 6px; border-bottom: 1px solid #281e3d; }',
+        '.svti-lb-table tr.top-rank td { color: #ffd23f; font-weight: bold; }',
+        '.svti-lb-status { text-align: center; color: #a59cb8; padding: 40px 10px; font-size: 16px; }',
+        '.svti-lb-footer { background: #14101c; text-align: center; padding: 10px; font-size: 12px; color: #ffd23f; border-top: 2px solid #3b2c59; }',
+        // Result Card Specific Styles
+        '.svti-card-box { padding: 20px; text-align: center; }',
+        '.svti-card-badge { display: inline-block; padding: 4px 16px; border-radius: 20px; font-size: 18px; font-weight: bold; border: 2px solid #000; box-shadow: 2px 2px 0 #000; margin-bottom: 8px; }',
+        '.svti-card-badge.won { background: #ffd23f; color: #14101c; }',
+        '.svti-card-badge.died { background: #ee4266; color: #fff; }',
+        '.svti-card-title { font-size: 21px; font-weight: 800; color: #ffd23f; text-shadow: 1px 1px 0 #000; margin-bottom: 2px; }',
+        '.svti-card-meta { font-size: 12px; color: #9c92b2; margin-bottom: 16px; }',
+        '.svti-card-stats-grid { display: flex; justify-content: space-around; background: #14101c; border: 2px solid #3b2c59; border-radius: 8px; padding: 12px; margin-bottom: 16px; }',
+        '.svti-card-stats-grid .stat-item { display: flex; flex-direction: column; align-items: center; }',
+        '.svti-card-stats-grid .lbl { font-size: 11px; color: #a59cb8; margin-bottom: 4px; }',
+        '.svti-card-stats-grid .val { font-size: 22px; font-weight: bold; color: #fff; }',
+        '.svti-card-stats-grid .val.highlight { color: #ffd23f; text-shadow: 1px 1px 0 #000; }',
+        '.svti-card-input-row { text-align: left; margin-bottom: 16px; }',
+        '.svti-card-input-row label { display: block; font-size: 12px; color: #e0d8ef; margin-bottom: 6px; }',
+        '.svti-card-input-row .input-wrap { display: flex; align-items: center; background: #14101c; border: 2px solid #ffd23f; border-radius: 6px; padding: 4px 8px; }',
+        '.svti-card-input-row .at { color: #ffd23f; font-size: 16px; font-weight: bold; margin-right: 4px; }',
+        '.svti-card-input-row input { flex: 1; background: transparent; border: none; color: #fff; font-size: 16px; font-family: inherit; outline: none; }',
+        '.svti-card-actions { display: flex; gap: 10px; margin-bottom: 12px; }',
+        '.svti-btn-sub { flex: 2; background: #ffd23f; color: #14101c; border: 2px solid #000; padding: 10px; border-radius: 6px; font-size: 16px; font-weight: bold; font-family: inherit; cursor: pointer; box-shadow: 3px 3px 0 #000; }',
+        '.svti-btn-skip { flex: 1; background: #3b2c59; color: #e0d8ef; border: 2px solid #000; padding: 10px; border-radius: 6px; font-size: 14px; font-family: inherit; cursor: pointer; box-shadow: 3px 3px 0 #000; }',
+        '.svti-btn-sub:active, .svti-btn-skip:active { transform: translate(1px, 1px); box-shadow: none; }',
+        '.svti-card-story-hint { font-size: 12px; color: #ffd23f; border-top: 1px dashed #3b2c59; padding-top: 10px; }'
+      ].join('\n');
+
+      var styleTag = document.createElement("style");
+      styleTag.id = "svti-lb-styles";
+      styleTag.textContent = css;
+      document.head.appendChild(styleTag);
+    }
+  };
+
+  root.SVTI_Leaderboard = LB;
+})(typeof window !== 'undefined' ? window : this);
+
+  </script>
   <script src="audio/sfx-data.js?v=20"></script>
   <script>
   (() => {
@@ -688,6 +1069,17 @@
     const ctlHasHand = () => { try { return !!localStorage.getItem(CTL_HAND_KEY); } catch (_) { return false; } };
     let handPref = 'left'; // 'left' = dash right (old layout), 'right' = dash left
     try { const saved = localStorage.getItem(CTL_HAND_KEY); if (saved === 'left' || saved === 'right') handPref = saved; } catch (_) {}
+    // Leaderboard: stays off until the Worker URL replaces PLACEHOLDER. ?lbapi=<url> only works on localhost (testing).
+    const LB_API = 'https://sorceress-leaderboard.ek-relay.workers.dev';
+    const lbBase = (/^(localhost|127\.0\.0\.1)$/.test(location.hostname) && urlParams.get('lbapi')) || LB_API;
+    const lbOn = !!window.SVTI_Leaderboard && !lbBase.includes('PLACEHOLDER');
+    if (lbOn) {
+      window.SVTI_Leaderboard.init({ apiBase: lbBase, gameVersion: '1.0' });
+      const lbBtn = document.createElement('button'); // created here, not in the markup, so the mobile build's menu patches keep matching
+      lbBtn.id = 'menu-lb'; lbBtn.className = 'menu-lb'; lbBtn.type = 'button'; lbBtn.innerHTML = '&#127942; LEADERBOARD';
+      document.getElementById('main-menu').appendChild(lbBtn);
+      lbBtn.addEventListener('click', () => window.SVTI_Leaderboard.openScreen());
+    }
 
     // --- CANVAS & SCREEN RESIZE ---
     const canvas = document.getElementById('game-canvas');
@@ -1384,40 +1776,27 @@
 
     // Spatial Hash Grid for fast performance with 300+ enemies
     const SPATIAL_CELL = 110;
-    let spatialGrid = new Map();
-
-    function hashPos(x, y) {
-      const cx = Math.floor(x / SPATIAL_CELL);
-      const cy = Math.floor(y / SPATIAL_CELL);
-      return `${cx}_${cy}`;
-    }
+    // flat 32x32 cell array, integer index (no per-frame string keys); cells past the edge clamp into the border cell, so a query still finds everything the old map did
+    const SPATIAL_N = 32, spatialCells = [];
+    for (let i = 0; i < SPATIAL_N * SPATIAL_N; i++) spatialCells.push([]);
+    const spatialCl = v => { v = (v / SPATIAL_CELL) | 0; return v < 0 ? 0 : v > SPATIAL_N - 1 ? SPATIAL_N - 1 : v; };
 
     function rebuildSpatialGrid(enemiesList) {
-      spatialGrid.clear();
+      for (let i = 0; i < spatialCells.length; i++) spatialCells[i].length = 0;
       for (let i = 0; i < enemiesList.length; i++) {
         const e = enemiesList[i];
-        const key = hashPos(e.x, e.y);
-        let cell = spatialGrid.get(key);
-        if (!cell) {
-          cell = [];
-          spatialGrid.set(key, cell);
-        }
-        cell.push(e);
+        spatialCells[spatialCl(e.x) * SPATIAL_N + spatialCl(e.y)].push(e);
       }
     }
 
     function getNearbyEnemies(x, y, radius) {
-      const minCx = Math.floor((x - radius) / SPATIAL_CELL);
-      const maxCx = Math.floor((x + radius) / SPATIAL_CELL);
-      const minCy = Math.floor((y - radius) / SPATIAL_CELL);
-      const maxCy = Math.floor((y + radius) / SPATIAL_CELL);
-      const res = [];
+      const minCx = spatialCl(x - radius), maxCx = spatialCl(x + radius);
+      const minCy = spatialCl(y - radius), maxCy = spatialCl(y + radius);
+      const res = []; // fresh array on purpose: callers hold it while other queries run
       for (let cx = minCx; cx <= maxCx; cx++) {
         for (let cy = minCy; cy <= maxCy; cy++) {
-          const cell = spatialGrid.get(`${cx}_${cy}`);
-          if (cell) {
-            for (let i = 0; i < cell.length; i++) res.push(cell[i]);
-          }
+          const cell = spatialCells[cx * SPATIAL_N + cy];
+          for (let i = 0; i < cell.length; i++) res.push(cell[i]);
         }
       }
       return res;
@@ -4495,6 +4874,9 @@
       `;
 
       modal.style.display = 'flex';
+      if (lbOn && (!(urlParams.has('god') || urlParams.has('speed')) || urlParams.get('lbapi'))) {
+        window.SVTI_Leaderboard.showResultCard({ kills: killCount, survival_time: Math.floor(gameTime), level: hero.level, won: !!victory });
+      }
       document.getElementById('restart-btn').onclick = () => {
         window.location.reload();
       };
@@ -4551,38 +4933,41 @@
       // 3. Soul Gems
       drawSoulGems();
 
-      // 4. Characters, Vases, Pickups & Sprite VFX (Depth sorted in world space)
+      // 4. Characters, Vases, Pickups & Sprite VFX (Pre-culled & Depth sorted in world space)
       renderables.length = 0;
-      for (let i = 0; i < enemies.length; i++) {
-        renderables.push(enemies[i]);
-      }
       renderables.push(hero);
+      for (let i = 0; i < enemies.length; i++) {
+        const e = enemies[i];
+        if (e.isBoss || (e.x >= CAMERA.vl && e.x <= CAMERA.vr && e.y >= CAMERA.vt && e.y <= CAMERA.vb)) renderables.push(e);
+      }
       for (let i = 0; i < vases.length; i++) {
-        renderables.push(vases[i]);
+        const v = vases[i];
+        if (v.x >= CAMERA.vl && v.x <= CAMERA.vr && v.y >= CAMERA.vt && v.y <= CAMERA.vb) renderables.push(v);
       }
       for (let i = 0; i < pickups.length; i++) {
-        renderables.push(pickups[i]);
+        const p = pickups[i];
+        if (p.x >= CAMERA.vl && p.x <= CAMERA.vr && p.y >= CAMERA.vt && p.y <= CAMERA.vb) renderables.push(p);
       }
       for (let i = 0; i < VFX_POOL_SIZE; i++) {
         const v = vfxPool[i];
-        if (v.active) renderables.push(v);
+        if (v.active && v.x >= CAMERA.vl - 300 && v.x <= CAMERA.vr + 300 && v.y >= CAMERA.vt - 300 && v.y <= CAMERA.vb + 300) renderables.push(v);
       }
 
-      // depth key computed once per item (the comparator used to recompute it, with a Set lookup, on every comparison)
-      for (let i = 0; i < renderables.length; i++) {
+      const rLen = renderables.length;
+      for (let i = 0; i < rLen; i++) {
         const a = renderables[i];
-        a._sy = (((a === hero) ? hero.y : (a.y + (a.name ? (GROUND_VFX.has(a.name) ? -10000 : 2) : 0))) * 4) | 0; // quarter-pixel integer key: the comparator then returns small ints (no boxed number per comparison)
+        a._sy = (((a === hero) ? hero.y : (a.y + (a.name ? (GROUND_VFX.has(a.name) ? -10000 : 2) : 0))) * 4) | 0;
       }
       renderables.sort((a, b) => a._sy - b._sy);
 
-      renderables.forEach(item => {
-        if (item !== hero && !item.isBoss) { const m = item.name ? 300 : 0; if (item.x < CAMERA.vl - m || item.x > CAMERA.vr + m || item.y < CAMERA.vt - m || item.y > CAMERA.vb + m) return; }
+      for (let i = 0; i < rLen; i++) {
+        const item = renderables[i];
         if (item === hero) drawHero(hero);
         else if (item.name) drawVFXInstance(item);
         else if (item.broken !== undefined) drawVase(item);
         else if (item.bobOffset !== undefined) drawPickup(item);
         else drawEnemy(item);
-      });
+      }
 
       // 5. Projectiles, Green Lightning & Numbers
       drawProjectilesAndEffects();
@@ -4625,6 +5010,18 @@
     };
     LAVA.ctx = LAVA.canvas.getContext('2d');
     if (LAVA.reduced) LAVA.every = 8;
+
+    const ORB_CANV = document.createElement('canvas'); // arcane orb glow, drawn once (was a new radial gradient per orb per frame)
+    ORB_CANV.width = ORB_CANV.height = 64;
+    {
+      const oc = ORB_CANV.getContext('2d');
+      const g = oc.createRadialGradient(32, 32, 0, 32, 32, 32);
+      g.addColorStop(0, '#ffffff');
+      g.addColorStop(0.35, '#d8b4fe');
+      g.addColorStop(1, 'rgba(168, 85, 247, 0)');
+      oc.fillStyle = g;
+      oc.beginPath(); oc.arc(32, 32, 32, 0, Math.PI * 2); oc.fill();
+    }
 
     function makeLavaNoise(size) {
       // tileable value noise, 3 octaves, mapped to a hot ramp (black -> ember -> orange -> gold)
@@ -4807,54 +5204,37 @@
 
     // --- SOUL GEMS ---
     function drawSoulGems() {
-      soulGems.forEach(gem => {
-        if (gem.x < CAMERA.vl || gem.x > CAMERA.vr || gem.y < CAMERA.vt || gem.y > CAMERA.vb) return;
-        ctx.save();
-        ctx.translate(gem.x, gem.y);
-
+      ctx.fillStyle = 'rgba(10,8,16,0.45)';
+      const sLen = soulGems.length;
+      for (let i = 0; i < sLen; i++) {
+        const gem = soulGems[i];
+        if (gem.x < CAMERA.vl || gem.x > CAMERA.vr || gem.y < CAMERA.vt || gem.y > CAMERA.vb) continue;
         const isBig = gem.type === 'medium' || gem.type === 'large';
         const pulse = isBig ? (1 + Math.sin(gameTime * 6 + gem.y) * 0.12) : 1;
         const bob = Math.sin(gameTime * 6 + gem.x) * 3;
         const s = gem.size * pulse;
 
-        ctx.fillStyle = 'rgba(10,8,16,0.45)';
         ctx.beginPath();
-        ctx.ellipse(0, 4, s * 0.8, s * 0.4, 0, 0, Math.PI * 2);
+        ctx.ellipse(gem.x | 0, (gem.y + 4) | 0, (s * 0.8) | 0, (s * 0.4) | 0, 0, 0, Math.PI * 2);
         ctx.fill();
 
-        ctx.translate(0, -6 + bob);
-        // Painted soul gem (Flow art): green small, blue medium, gold large
         const gemImg = SPRITES[gem.type === 'large' ? 'soul-large' : (gem.type === 'medium' ? 'soul-medium' : 'soul-small')];
         if (gemImg && gemImg.complete && gemImg.naturalWidth) {
           const gh = s * 3.4;
           const gw = gh * gemImg.naturalWidth / gemImg.naturalHeight;
-          ctx.drawImage(gemImg, -gw / 2, -gh / 2, gw, gh);
-          ctx.restore();
-          return;
+          ctx.drawImage(gemImg, (gem.x - gw * 0.5) | 0, (gem.y - 6 + bob - gh * 0.5) | 0, gw | 0, gh | 0);
+          continue;
         }
-        ctx.lineWidth = 2.5;
-        ctx.strokeStyle = '#1a1a1a';
 
+        ctx.save();
+        ctx.translate(gem.x | 0, (gem.y - 6 + bob) | 0);
+        ctx.lineWidth = 2.5; ctx.strokeStyle = '#1a1a1a';
         ctx.fillStyle = gem.type === 'large' ? '#fde047' : (gem.type === 'medium' ? '#7dd3fc' : '#86efac');
-        ctx.beginPath();
-        ctx.moveTo(0, -s);
-        ctx.lineTo(-s * 0.8, 0);
-        ctx.lineTo(0, s);
-        ctx.closePath();
-        ctx.fill();
-        ctx.stroke();
-
+        ctx.beginPath(); ctx.moveTo(0, -s); ctx.lineTo(-s * 0.8, 0); ctx.lineTo(0, s); ctx.closePath(); ctx.fill(); ctx.stroke();
         ctx.fillStyle = gem.color;
-        ctx.beginPath();
-        ctx.moveTo(0, -s);
-        ctx.lineTo(s * 0.8, 0);
-        ctx.lineTo(0, s);
-        ctx.closePath();
-        ctx.fill();
-        ctx.stroke();
-
+        ctx.beginPath(); ctx.moveTo(0, -s); ctx.lineTo(s * 0.8, 0); ctx.lineTo(0, s); ctx.closePath(); ctx.fill(); ctx.stroke();
         ctx.restore();
-      });
+      }
     }
 
     // --- CHARACTER RENDERING (HERO, ENEMIES, VASES, PICKUPS) ---
@@ -5523,7 +5903,10 @@
       }
 
       // Hero Projectiles (Outlined Crystal Shard + 3-segment trail)
-      heroProjectiles.forEach(p => {
+      const hpLen = heroProjectiles.length;
+      for (let _hpi = 0; _hpi < hpLen; _hpi++) {
+        const p = heroProjectiles[_hpi];
+        if (p.x < CAMERA.vl - 100 || p.x > CAMERA.vr + 100 || p.y < CAMERA.vt - 100 || p.y > CAMERA.vb + 100) continue;
         ctx.save();
         const ang = Math.atan2(p.vy, p.vx);
 
@@ -5581,7 +5964,7 @@
         ctx.fill();
 
         ctx.restore();
-      });
+      }
 
       // Enemy Projectiles
       const orbImg = SPRITES['vfx-enemyorb'];
@@ -5613,7 +5996,10 @@
       });
 
       // Chain Lightning & Retained Particles
-      particles.forEach(pt => {
+      const pLen = particles.length;
+      for (let _pi = 0; _pi < pLen; _pi++) {
+        const pt = particles[_pi];
+        if (pt.type !== 'lightning_bolt' && (pt.x < CAMERA.vl - 140 || pt.x > CAMERA.vr + 140 || pt.y < CAMERA.vt - 140 || pt.y > CAMERA.vb + 140)) continue;
         ctx.save();
         if (pt.type === 'lightning_bolt') {
           if (pt.fromTip) { const tp = staffTip(); pt.x1 = tp.x; pt.y1 = tp.y; }
@@ -5667,12 +6053,14 @@
         } else if (pt.type === 'meteor_telegraph') {
           // Red ground-warning circle that tightens as the meteor comes in
           const p = Math.min(1, 1 - pt.timer / pt.totalTimer);
-          ctx.fillStyle = `rgba(239, 68, 68, ${0.18 + 0.22 * p})`;
-          ctx.strokeStyle = '#ef4444';
-          ctx.lineWidth = 3.5;
+          ctx.globalAlpha = 0.18 + 0.22 * p;
+          ctx.fillStyle = '#ef4444';
           ctx.beginPath();
           ctx.ellipse(pt.x, pt.y, pt.radius, pt.radius * 0.65, 0, 0, Math.PI * 2);
           ctx.fill();
+          ctx.globalAlpha = 1;
+          ctx.strokeStyle = '#ef4444';
+          ctx.lineWidth = 3.5;
           ctx.stroke();
           ctx.beginPath();
           ctx.ellipse(pt.x, pt.y, pt.radius * (1 - p), pt.radius * 0.65 * (1 - p), 0, 0, Math.PI * 2);
@@ -5711,15 +6099,8 @@
           ctx.lineWidth = 2;
           ctx.stroke();
         } else if (pt.type === 'arcane_orb') {
-          const r = 7 * pt.size;
-          const g = ctx.createRadialGradient(pt.x, pt.y, 0, pt.x, pt.y, r * 2.2);
-          g.addColorStop(0, '#ffffff');
-          g.addColorStop(0.35, '#d8b4fe');
-          g.addColorStop(1, 'rgba(168, 85, 247, 0)');
-          ctx.fillStyle = g;
-          ctx.beginPath();
-          ctx.arc(pt.x, pt.y, r * 2.2, 0, Math.PI * 2);
-          ctx.fill();
+          const r = (7 * pt.size * 2.2) | 0;
+          ctx.drawImage(ORB_CANV, (pt.x - r) | 0, (pt.y - r) | 0, (r * 2) | 0, (r * 2) | 0);
         } else if (pt.type === 'hex_totem') {
           const fade = Math.min(1, pt.life / 0.4);
           const age = pt.maxLife - pt.life;
@@ -5772,11 +6153,13 @@
           const prog = 1 - pt.life / pt.maxLife;
           for (let k = 0; k < 3; k++) {
             const rr = pt.rad * (1 - ((prog * 2 + k / 3) % 1));
-            ctx.strokeStyle = `rgba(168, 85, 247, ${0.25 + 0.5 * (1 - rr / pt.rad)})`;
+            ctx.globalAlpha = 0.25 + 0.5 * (1 - rr / pt.rad);
+            ctx.strokeStyle = '#a855f7';
             ctx.lineWidth = 4;
             ctx.beginPath();
             ctx.ellipse(pt.x, pt.y, rr, rr * 0.65, gameTime * 3 + k, 0, Math.PI * 1.4);
             ctx.stroke();
+            ctx.globalAlpha = 1;
           }
           ctx.fillStyle = '#1e0b33';
           ctx.beginPath();
@@ -5810,7 +6193,7 @@
           ctx.fillText(pt.text, pt.x, pt.y);
         }
         ctx.restore();
-      });
+      }
 
       // Damage Numbers with pop-in and dark outline (supports green heal)
       damageNumbers.forEach(dn => {
@@ -6482,6 +6865,7 @@
       tip: () => ({ ...staffTip() }),
       pose: () => ({ ...heroPose, anim: hero.anim, animT: hero.animT, facing: hero.facing, x: hero.x, y: hero.y, beam: !!activeBeam }),
       face: f => { hero.facing = f; },
+      end: v => triggerGameOver(!!v), // leaderboard test: end the run
       spawn: (type, dx = 200, dy = 0, elite = false) => spawnEnemy(type, hero.x + dx, hero.y + dy, elite), // e.g. 'mootaur'
       passive: id => { if (PASSIVE_REGISTRY[id] && hero.passives[id] < MAX_LEVEL) PASSIVE_REGISTRY[id].apply(); return hero.passives[id]; },
       hurt: n => { hero.hp = Math.max(1, hero.hp - n); return hero.hp; }, // HUD juice QA: god mode skips hitHero
