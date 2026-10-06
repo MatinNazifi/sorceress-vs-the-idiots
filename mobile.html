@@ -1089,6 +1089,7 @@
     // adaptive render scale (mobile): drop the canvas resolution when frames run slow, raise it again when there is headroom
     const GFX = { maxDpr: 3, scale: 1, min: 0.67, avg: 16, slow: 0, fast: 0, mode: 60, downAt: 0, upAt: 0, lock: 0 };
     let fpsOn = false;
+    let lastWorkMs = 0, lastDrawMs = 0, workEma = 0, drawEma = 0;
     const fpsLog = [];
     const spikeLog = [];
     let lastResizeAt = 0;
@@ -1984,9 +1985,9 @@
       const s = fpsLog.slice().sort((a, b) => a - b), avg = s.reduce((a, b) => a + b, 0) / s.length;
       fpsBox.textContent = Math.round(1000 / avg) + ' fps  p95 ' + s[Math.floor(s.length * 0.95)].toFixed(0) + 'ms  max ' + s[s.length - 1].toFixed(0) + 'ms\n'
         + 'sharp ' + (dpr).toFixed(2) + 'x  ' + GFX.mode + 'fps  ' + canvas.width + 'x' + canvas.height + '\n'
-        + 'enemies ' + enemies.length + '  t ' + Math.floor(gameTime) + 's'
+        + 'enemies ' + enemies.length + '  t ' + Math.floor(gameTime) + 's  js ' + workEma.toFixed(0) + ' dr ' + drawEma.toFixed(0) + 'ms'
         + spikeLog.filter(s => performance.now() - s.at < 60000).sort((a, b) => b.ms - a.ms).slice(0, 3)
-            .map(s => '\n! ' + s.ms.toFixed(0) + 'ms @' + Math.floor(s.t / 60) + ':' + String(s.t % 60).padStart(2, '0') + ' n' + s.n + (s.rs ? ' RESIZE' : '')).join('');
+            .map(s => '\n! ' + s.ms.toFixed(0) + 'ms @' + Math.floor(s.t / 60) + ':' + String(s.t % 60).padStart(2, '0') + ' n' + s.n + (s.rs ? ' RESIZE' : '') + ' js' + s.w.toFixed(0) + ' dr' + s.d.toFixed(0)).join('');
     }, 500);
     const dashBtn = document.getElementById('dash-btn');
     function onDashTap(e) {
@@ -4886,7 +4887,8 @@
     const renderables = [];
     const GROUND_VFX = new Set(['fire', 'firetrail', 'icering']); // drawn flat under characters
 
-    function draw() {
+    function draw() { const d0 = performance.now(); drawBody(); lastDrawMs = performance.now() - d0; drawEma += (lastDrawMs - drawEma) * 0.05; }
+    function drawBody() {
       ctx.save();
       ctx.scale(dpr, dpr);
 
@@ -6782,7 +6784,7 @@
     function gfxAdapt(ms) {
       if (window.__perfLog) window.__perfLog.push(ms);
       if (fpsOn && ms < 250) { fpsLog.push(ms); if (fpsLog.length > 180) fpsLog.shift(); }
-      if (fpsOn && ms >= 28 && ms < 250) { const nw = performance.now(); spikeLog.push({ ms, at: nw, t: Math.floor(gameTime), n: enemies.length, rs: nw - lastResizeAt < 1500 }); if (spikeLog.length > 60) spikeLog.shift(); }
+      if (fpsOn && ms >= 28 && ms < 250) { const nw = performance.now(); spikeLog.push({ ms, at: nw, t: Math.floor(gameTime), n: enemies.length, rs: nw - lastResizeAt < 1500, w: lastWorkMs, d: lastDrawMs }); if (spikeLog.length > 60) spikeLog.shift(); }
       if (ms >= 100 || document.hidden) return;
       GFX.avg += (ms - GFX.avg) * 0.05;
       if (GFX.avg > 24) { GFX.slow++; GFX.fast = 0; }
@@ -6794,7 +6796,8 @@
     }
     window.__gfx = GFX; window.__gfxAdapt = gfxAdapt; // test hooks
 
-    function loop(currentTimestamp) {
+    function loop(currentTimestamp) { const w0 = performance.now(); try { loopBody(currentTimestamp); } finally { if (performance.now() - w0 > 1) { lastWorkMs = performance.now() - w0; workEma += (lastWorkMs - workEma) * 0.05; } } }
+    function loopBody(currentTimestamp) {
       requestAnimationFrame(loop);
       if (currentTimestamp - lastTimestamp < (GFX.mode === 30 ? 30.5 : 14.5)) return; // 120 Hz screens: render every 2nd refresh
 
