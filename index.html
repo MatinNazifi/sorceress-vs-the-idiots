@@ -1673,6 +1673,8 @@
     const BEAM_MAXN = 24, beamCx = new Float32Array(BEAM_MAXN), beamCy = new Float32Array(BEAM_MAXN), beamMx = new Float32Array(BEAM_MAXN), beamMy = new Float32Array(BEAM_MAXN); // beam scratch (no per-frame allocation)
     const beamHash = (i, k, f) => { const v = Math.sin(i * 127.1 + k * 311.7 + f * 74.7) * 43758.5453; return v - Math.floor(v) - 0.5; };
     let activeBeam = null, beamSeq = 0;
+    const CHAIN_TAU = Math.PI * 2;
+    function chainFlare(x, y, r) { x |= 0; y |= 0; ctx.fillStyle = 'rgba(70,160,255,0.32)'; ctx.beginPath(); ctx.arc(x, y, (r * 1.7) | 0, 0, CHAIN_TAU); ctx.fill(); ctx.fillStyle = 'rgba(215,240,255,0.65)'; ctx.beginPath(); ctx.arc(x, y, (r * 0.8) | 0, 0, CHAIN_TAU); ctx.fill(); }
     const gemFlash = [0, 0, 0, 0, 0, 0, 0, 0];
 
     function makeFrog() {
@@ -4341,11 +4343,12 @@
         if (v.active) renderables.push(v);
       }
 
-      renderables.sort((a, b) => {
-        const ay = (a === hero) ? hero.y : (a.y + (a.name ? (GROUND_VFX.has(a.name) ? -10000 : 2) : 0));
-        const by = (b === hero) ? hero.y : (b.y + (b.name ? (GROUND_VFX.has(b.name) ? -10000 : 2) : 0));
-        return ay - by;
-      });
+      // depth key computed once per item (the comparator used to recompute it, with a Set lookup, on every comparison)
+      for (let i = 0; i < renderables.length; i++) {
+        const a = renderables[i];
+        a._sy = (((a === hero) ? hero.y : (a.y + (a.name ? (GROUND_VFX.has(a.name) ? -10000 : 2) : 0))) * 4) | 0; // quarter-pixel integer key: the comparator then returns small ints (no boxed number per comparison)
+      }
+      renderables.sort((a, b) => a._sy - b._sy);
 
       renderables.forEach(item => {
         if (item === hero) drawHero(hero);
@@ -5404,37 +5407,45 @@
           ctx.globalAlpha = Math.min(1, 0.4 + 0.6 * (pt.life / pt.maxLife));
           ctx.lineCap = 'round'; ctx.lineJoin = 'round';
           ctx.globalCompositeOperation = 'lighter';
-          ctx.beginPath(); ctx.moveTo(pt.x1, pt.y1); ctx.lineTo(pt.x2, pt.y2);
-          ctx.lineWidth = chw * 1.9; ctx.strokeStyle = 'rgba(40,130,255,0.12)'; ctx.stroke();
-          ctx.lineWidth = chw; ctx.strokeStyle = 'rgba(120,200,255,0.18)'; ctx.stroke();
+          ctx.beginPath(); ctx.moveTo(pt.x1 | 0, pt.y1 | 0); ctx.lineTo(pt.x2 | 0, pt.y2 | 0);
+          ctx.lineWidth = 17.1; ctx.strokeStyle = 'rgba(40,130,255,0.12)'; ctx.stroke();
+          ctx.lineWidth = 9; ctx.strokeStyle = 'rgba(120,200,255,0.18)'; ctx.stroke();
           ctx.globalCompositeOperation = 'source-over';
+          if (pt._cf !== cF || pt._cn !== cn) { // cache the noise per bolt: recomputed only when the 30 Hz noise frame (or length bucket) changes
+            if (!pt._j) { pt._j = new Float32Array(3 * BEAM_MAXN + 12); pt._e = new Float32Array(BEAM_MAXN); }
+            const J = pt._j, E = pt._e;
+            for (let i = 0; i <= cn; i++) E[i] = Math.sin(Math.PI * (i / cn)) * 0.9 + (i > 0 && i < cn ? 0.1 : 0);
+            for (let k = 0; k < 3; k++) for (let i = 0; i <= cn; i++) J[k * BEAM_MAXN + i] = beamHash(i, k + 11, cF);
+            for (let f = 0; f < 3; f++) { const o = 3 * BEAM_MAXN + f * 4; J[o] = beamHash(f, 17, cF); J[o + 1] = beamHash(f, 19, cF); J[o + 2] = beamHash(f, 13, cF); J[o + 3] = beamHash(f, 15, cF); }
+            pt._cf = cF; pt._cn = cn;
+          }
+          const cJ = pt._j, cE = pt._e;
           for (let k = 0; k < 3; k++) {
             const amp = chw * (k === 0 ? 0.6 : 0.85);
             for (let i = 0; i <= cn; i++) {
-              const t = i / cn, e = Math.sin(Math.PI * t) * 0.9 + (i > 0 && i < cn ? 0.1 : 0);
-              const j = beamHash(i, k + 11, cF) * 2 * amp * e;
+              const t = i / cn, e = cE[i];
+              const j = cJ[k * BEAM_MAXN + i] * 2 * amp * e;
               beamCx[i] = pt.x1 + cdx * t + cnx * j; beamCy[i] = pt.y1 + cdy * t + cny * j;
             }
             if (k === 0) for (let i = 0; i <= cn; i++) { beamMx[i] = beamCx[i]; beamMy[i] = beamCy[i]; }
-            const thick = k === 0 ? 1 : 0.6;
-            ctx.beginPath(); ctx.moveTo(beamCx[0], beamCy[0]);
-            for (let i = 1; i <= cn; i++) ctx.lineTo(beamCx[i], beamCy[i]);
-            ctx.lineWidth = 9 * thick; ctx.strokeStyle = '#081a3a'; ctx.stroke();
-            ctx.lineWidth = 5.4 * thick; ctx.strokeStyle = k === 0 ? '#2f9bff' : '#5cb8ff'; ctx.stroke();
-            ctx.lineWidth = 2.2 * thick; ctx.strokeStyle = '#f0f8ff'; ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(beamCx[0] | 0, beamCy[0] | 0); // whole-pixel vertices: integers are not boxed per call (the bolt was ~11 MB/s of garbage)
+            for (let i = 1; i <= cn; i++) ctx.lineTo(beamCx[i] | 0, beamCy[i] | 0);
+            ctx.lineWidth = k === 0 ? 9 : 5.4; ctx.strokeStyle = '#081a3a'; ctx.stroke();
+            ctx.lineWidth = k === 0 ? 5.4 : 3.24; ctx.strokeStyle = k === 0 ? '#2f9bff' : '#5cb8ff'; ctx.stroke();
+            ctx.lineWidth = k === 0 ? 2.2 : 1.32; ctx.strokeStyle = '#f0f8ff'; ctx.stroke();
           }
           ctx.strokeStyle = '#8fd0ff'; ctx.lineWidth = 2.6;
           for (let f = 0; f < 3; f++) {
-            const p = 1 + Math.floor((beamHash(f, 17, cF) + 0.5) * (cn - 1)), side = beamHash(f, 19, cF) > 0 ? 1 : -1;
-            const ang = Math.atan2(cdy, cdx) + side * (0.55 + (beamHash(f, 13, cF) + 0.5) * 0.5), len = chw * (1.6 + (beamHash(f, 15, cF) + 0.5) * 1.2);
-            ctx.beginPath(); ctx.moveTo(beamMx[p], beamMy[p]); ctx.lineTo(beamMx[p] + Math.cos(ang) * len * 0.5, beamMy[p] + Math.sin(ang) * len * 0.5); ctx.lineTo(beamMx[p] + Math.cos(ang) * len, beamMy[p] + Math.sin(ang) * len); ctx.stroke();
+            const o = 3 * BEAM_MAXN + f * 4;
+            const p = 1 + Math.floor((cJ[o] + 0.5) * (cn - 1)), side = cJ[o + 1] > 0 ? 1 : -1;
+            const ang = Math.atan2(cdy, cdx) + side * (0.55 + (cJ[o + 2] + 0.5) * 0.5), len = chw * (1.6 + (cJ[o + 3] + 0.5) * 1.2);
+            ctx.beginPath(); ctx.moveTo(beamMx[p] | 0, beamMy[p] | 0); ctx.lineTo((beamMx[p] + Math.cos(ang) * len * 0.5) | 0, (beamMy[p] + Math.sin(ang) * len * 0.5) | 0); ctx.lineTo((beamMx[p] + Math.cos(ang) * len) | 0, (beamMy[p] + Math.sin(ang) * len) | 0); ctx.stroke();
           }
           // flares at the staff and at the target, plus an impact ring
           ctx.globalCompositeOperation = 'lighter';
-          const cfl = (x, y, r) => { ctx.fillStyle = 'rgba(70,160,255,0.32)'; ctx.beginPath(); ctx.arc(x, y, r * 1.7, 0, Math.PI * 2); ctx.fill(); ctx.fillStyle = 'rgba(215,240,255,0.65)'; ctx.beginPath(); ctx.arc(x, y, r * 0.8, 0, Math.PI * 2); ctx.fill(); };
-          cfl(pt.x1, pt.y1, chw * 0.8); cfl(pt.x2, pt.y2, chw * 1.1);
+          chainFlare(pt.x1, pt.y1, chw * 0.8); chainFlare(pt.x2, pt.y2, chw * 1.1);
           ctx.strokeStyle = 'rgba(180,220,255,0.7)'; ctx.lineWidth = 3;
-          ctx.beginPath(); ctx.arc(pt.x2, pt.y2, chw * (1.5 + 0.5 * ((gameTime * 6) % 1)), 0, Math.PI * 2); ctx.stroke();
+          ctx.beginPath(); ctx.arc(pt.x2 | 0, pt.y2 | 0, (chw * (1.5 + 0.5 * ((gameTime * 6) % 1))) | 0, 0, CHAIN_TAU); ctx.stroke();
         } else if (pt.type === 'meteor_telegraph') {
           // Red ground-warning circle that tightens as the meteor comes in
           const p = Math.min(1, 1 - pt.timer / pt.totalTimer);
