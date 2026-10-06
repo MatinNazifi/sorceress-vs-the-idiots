@@ -1482,7 +1482,7 @@
       const h = joystick.hist;
       h.push({ t: now, x, y });
       while (h.length > 1 && now - h[0].t > 110) h.shift();
-      if (!swipeDash || !runStarted || now < joystick.flickLock || now - joystick.t0 < 120 || h.length < 2) return;
+      if (!swipeDash || !runStarted || now < joystick.flickLock || h.length < 2) return;
       const dx = x - h[0].x, dy = y - h[0].y, d = Math.hypot(dx, dy), dtm = Math.max(now - h[0].t, 16);
       if (d < FLICK_MIN_PX || d / dtm < FLICK_MIN_SPEED) return;
       joystick.flickLock = now + 350;
@@ -1539,6 +1539,7 @@
           joystick.dy = 0;
           joystick.t0 = performance.now();
           joystick.hist.length = 0;
+          joystick.hist.push({ t: joystick.t0, x: t.clientX, y: t.clientY }); // the touch-down point counts, so a quick swipe straight from a fresh touch dashes
         }
       }
     }, { passive: false });
