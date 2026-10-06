@@ -4,6 +4,9 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <title>Sorceress vs the Idiots</title>
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="theme-color" content="#0d0818">
   <style>
     * {
       box-sizing: border-box;
@@ -458,6 +461,9 @@
       text-shadow: var(--ink-outline);
     }
     .pause-action .icon-btn { width: 60px; height: 60px; }
+    .pause-actions { align-items: flex-start; row-gap: 8px; }
+    .pause-action { justify-content: flex-start; }
+    .pause-action .icon-btn[style*="background:none"] { display: flex; align-items: center; justify-content: center; font-size: 30px !important; }
 
     #main-menu {
       position: absolute;
@@ -629,6 +635,9 @@
           <button id="pause-home" class="pause-action" type="button"><span class="icon-btn btn-home"></span>Menu</button>
           <button class="pause-action" type="button" data-sound-toggle><span class="icon-btn sound-toggle"></span>Sound</button>
           <button id="pause-hand" class="pause-action" type="button"><span class="icon-btn" style="background:none;font-size:20px;line-height:1;">&#9995;</span>Hand</button>
+          <button id="pause-swipe" class="pause-action" type="button"><span class="icon-btn" style="background:none;font-size:20px;line-height:1;">&#10148;</span>Swipe dash: ON</button>
+          <button id="pause-fps" class="pause-action" type="button"><span class="icon-btn" style="background:none;font-size:20px;line-height:1;">&#9201;</span>Show FPS: OFF</button>
+          <button id="pause-full" class="pause-action" type="button"><span class="icon-btn" style="background:none;font-size:20px;line-height:1;">&#9974;</span>Full screen</button>
         </div>
       </div>
     </div>
@@ -665,6 +674,17 @@
 
     // --- HAND PREFERENCE ---
     const CTL_HAND_KEY = 'ctl-hand';
+    const isFull = () => !!(document.fullscreenElement || document.webkitFullscreenElement);
+    function goFull() {
+      const el = document.documentElement;
+      const f = el.requestFullscreen || el.webkitRequestFullscreen;
+      if (!f || isFull()) return;
+      try { const p = f.call(el, { navigationUI: 'hide' }); if (p && p.catch) p.catch(() => {}); } catch (_) {}
+    }
+    function leaveFull() { try { (document.exitFullscreen || document.webkitExitFullscreen).call(document); } catch (_) {} }
+    let fullRetries = 3; // the PLAY tap may not count as a gesture on some phones: retry on the next taps, then stop nagging
+    window.addEventListener('touchend', () => { if (fullRetries > 0 && runStarted && !isFull()) { fullRetries--; goFull(); } }, { passive: true });
+    document.getElementById('pause-full').addEventListener('click', () => { fullRetries = 0; isFull() ? leaveFull() : goFull(); });
     const ctlHasHand = () => { try { return !!localStorage.getItem(CTL_HAND_KEY); } catch (_) { return false; } };
     let handPref = 'left'; // 'left' = dash right (old layout), 'right' = dash left
     try { const saved = localStorage.getItem(CTL_HAND_KEY); if (saved === 'left' || saved === 'right') handPref = saved; } catch (_) {}
@@ -675,7 +695,10 @@
     let screenW = window.innerWidth;
     let screenH = window.innerHeight;
     // adaptive render scale (mobile): drop the canvas resolution when frames run slow, raise it again when there is headroom
-    const GFX = { maxDpr: 2, scale: 1, min: 0.6, avg: 16, slow: 0, fast: 0 };
+    const GFX = { maxDpr: 3, scale: 1, min: 0.67, avg: 16, slow: 0, fast: 0, mode: 60 };
+    let fpsOn = false;
+    const fpsLog = [];
+
     let dpr = Math.min(window.devicePixelRatio || 1, GFX.maxDpr);
 
     function resize() {
@@ -1445,8 +1468,32 @@
       currY: 0,
       dx: 0,
       dy: 0,
-      maxRadius: 52
+      maxRadius: 52,
+      t0: 0,
+      hist: [],
+      flickLock: 0
     };
+    const FLICK_MIN_PX = 45;      // distance covered inside the 110 ms window
+    const FLICK_MIN_SPEED = 0.85; // px per ms (a normal drag out to the edge is ~0.3-0.5)
+    let swipeDash = true;
+    try { swipeDash = localStorage.getItem('ctl-swipe') !== '0'; } catch (_) {}
+    function flickCheck(x, y) {
+      const now = performance.now();
+      const h = joystick.hist;
+      h.push({ t: now, x, y });
+      while (h.length > 1 && now - h[0].t > 110) h.shift();
+      if (!swipeDash || !runStarted || now < joystick.flickLock || now - joystick.t0 < 120 || h.length < 2) return;
+      const dx = x - h[0].x, dy = y - h[0].y, d = Math.hypot(dx, dy), dtm = Math.max(now - h[0].t, 16);
+      if (d < FLICK_MIN_PX || d / dtm < FLICK_MIN_SPEED) return;
+      joystick.flickLock = now + 350;
+      h.length = 0;
+      triggerDash(dx / d, dy / d);
+      // re-anchor so the stick keeps pointing the flick way and a quick reverse works
+      joystick.startX = x - (dx / d) * joystick.maxRadius * 0.9;
+      joystick.startY = y - (dy / d) * joystick.maxRadius * 0.9;
+      joystick.dx = (dx / d) * 0.9;
+      joystick.dy = (dy / d) * 0.9;
+    }
 
     function isUITouch(x, y) {
       // Dash button
@@ -1490,6 +1537,8 @@
           joystick.currY = t.clientY;
           joystick.dx = 0;
           joystick.dy = 0;
+          joystick.t0 = performance.now();
+          joystick.hist.length = 0;
         }
       }
     }, { passive: false });
@@ -1508,6 +1557,7 @@
             joystick.dx = (diffX / dist) * (clamped / joystick.maxRadius);
             joystick.dy = (diffY / dist) * (clamped / joystick.maxRadius);
           }
+          flickCheck(t.clientX, t.clientY);
         }
       }
     }, { passive: false });
@@ -1526,6 +1576,33 @@
     window.addEventListener('touchend', endTouch);
     window.addEventListener('touchcancel', endTouch);
 
+    const swipeBtn = document.getElementById('pause-swipe');
+    function setSwipe(v) {
+      swipeDash = v;
+      try { localStorage.setItem('ctl-swipe', v ? '1' : '0'); } catch (_) {}
+      swipeBtn.lastChild.textContent = 'Swipe dash: ' + (v ? 'ON' : 'OFF');
+    }
+    setSwipe(swipeDash);
+    swipeBtn.addEventListener('click', () => setSwipe(!swipeDash));
+    const fpsBtn = document.getElementById('pause-fps');
+    const fpsBox = document.createElement('div');
+    fpsBox.style.cssText = 'position:fixed;left:6px;top:6px;z-index:9999;font:11px/1.35 monospace;color:#9f9;background:rgba(0,0,0,.6);padding:3px 7px;border-radius:5px;pointer-events:none;display:none;white-space:pre';
+    document.body.appendChild(fpsBox);
+    function setFps(v) {
+      fpsOn = v; fpsBox.style.display = v ? 'block' : 'none'; fpsLog.length = 0;
+      try { localStorage.setItem('ctl-fps', v ? '1' : '0'); } catch (_) {}
+      fpsBtn.lastChild.textContent = 'Show FPS: ' + (v ? 'ON' : 'OFF');
+    }
+    let fpsSaved = false; try { fpsSaved = localStorage.getItem('ctl-fps') === '1'; } catch (_) {}
+    setFps(fpsSaved || urlParams.get('fps') === '1');
+    fpsBtn.addEventListener('click', () => setFps(!fpsOn));
+    setInterval(() => {
+      if (!fpsOn || fpsLog.length < 10) return;
+      const s = fpsLog.slice().sort((a, b) => a - b), avg = s.reduce((a, b) => a + b, 0) / s.length;
+      fpsBox.textContent = Math.round(1000 / avg) + ' fps  p95 ' + s[Math.floor(s.length * 0.95)].toFixed(0) + 'ms  max ' + s[s.length - 1].toFixed(0) + 'ms\n'
+        + 'sharp ' + (dpr).toFixed(2) + 'x  ' + GFX.mode + 'fps  ' + canvas.width + 'x' + canvas.height + '\n'
+        + 'enemies ' + enemies.length + '  t ' + Math.floor(gameTime) + 's';
+    }, 500);
     const dashBtn = document.getElementById('dash-btn');
     function onDashTap(e) {
       e.stopPropagation();
@@ -1536,7 +1613,7 @@
     dashBtn.addEventListener('click', onDashTap);
     dashBtn.addEventListener('touchstart', onDashTap, { passive: false });
 
-    function triggerDash() {
+    function triggerDash(fx, fy) {
       if (hero.dashCharges > 0 && !hero.isDashing) {
         hero.dashCharges--;
         hero.isDashing = true;
@@ -1549,8 +1626,8 @@
         addShake(7);
         kickCamera(hero.facing * 7, 0);
 
-        let dX = hero.vx;
-        let dY = hero.vy;
+        let dX = fx !== undefined ? fx : hero.vx;
+        let dY = fy !== undefined ? fy : hero.vy;
         if (Math.hypot(dX, dY) < 0.1) {
           dX = hero.facing;
           dY = 0;
@@ -4445,6 +4522,8 @@
       const halfViewH = (screenH / 2) / CAMERA.zoom;
       CAMERA.x = Math.max(CAM_EDGE + halfViewW, Math.min(ARENA_W - CAM_EDGE - halfViewW, CAMERA.x));
       CAMERA.y = Math.max(CAM_EDGE + halfViewH, Math.min(ARENA_H - CAM_EDGE - halfViewH, CAMERA.y));
+      CAMERA.vl = CAMERA.x - halfViewW - 220; CAMERA.vr = CAMERA.x + halfViewW + 220; // cull box (tall sprites reach up, so more room above)
+      CAMERA.vt = CAMERA.y - halfViewH - 420; CAMERA.vb = CAMERA.y + halfViewH + 220;
 
       ctx.fillStyle = '#0d0c13';
       ctx.fillRect(0, 0, screenW, screenH);
@@ -4488,6 +4567,7 @@
       });
 
       renderables.forEach(item => {
+        if (item !== hero && !item.isBoss) { const m = item.name ? 300 : 0; if (item.x < CAMERA.vl - m || item.x > CAMERA.vr + m || item.y < CAMERA.vt - m || item.y > CAMERA.vb + m) return; }
         if (item === hero) drawHero(hero);
         else if (item.name) drawVFXInstance(item);
         else if (item.broken !== undefined) drawVase(item);
@@ -4719,6 +4799,7 @@
     // --- SOUL GEMS ---
     function drawSoulGems() {
       soulGems.forEach(gem => {
+        if (gem.x < CAMERA.vl || gem.x > CAMERA.vr || gem.y < CAMERA.vt || gem.y > CAMERA.vb) return;
         ctx.save();
         ctx.translate(gem.x, gem.y);
 
@@ -5027,8 +5108,6 @@
 
       // Facing (sign of velocity) + procedural juice. Art that faces LEFT on disk is mirrored per
       // sprite key just before drawing (SPRITE_FACES_LEFT), so every enemy faces where it walks.
-      ctx.scale(e.facing, 1);
-
       let hopY = 0;
       let squishX = e.squashX || 1; // hit squash + spawn pop (springs back in updateEnemies)
       let squishY = e.squashY || 1;
@@ -5089,9 +5168,9 @@
         tilt += 0.22 * k * e.hurtDir * e.facing;
       }
 
-      ctx.translate(lungeX, hopY + lungeY);
-      ctx.rotate(tilt);
-      ctx.scale(squishX, squishY);
+      // scale(facing) . translate(lunge) . rotate(tilt) . scale(squish) folded into one matrix
+      const eCos = Math.cos(tilt), eSin = Math.sin(tilt);
+      ctx.transform(e.facing * eCos * squishX, eSin * squishX, -e.facing * eSin * squishY, eCos * squishY, e.facing * lungeX, hopY + lungeY);
 
       let targetHeight = 60;
       let spriteKey = e.type;
@@ -5298,10 +5377,8 @@
         const drawH = height;
         const drawW = height * aspect;
 
-        ctx.save();
         ctx.drawImage(img, srcX, srcY, srcW, srcH, -drawW / 2, -drawH, drawW, drawH);
-        if (isWhiteFlash) { ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = 0.9; ctx.drawImage(img, srcX, srcY, srcW, srcH, -drawW / 2, -drawH, drawW, drawH); } // additive flash, no filter
-        ctx.restore();
+        if (isWhiteFlash) { ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = 0.9; ctx.drawImage(img, srcX, srcY, srcW, srcH, -drawW / 2, -drawH, drawW, drawH); ctx.restore(); } // additive flash, no filter
       } else {
         ctx.save();
         ctx.fillStyle = isWhiteFlash ? '#ffffff' : '#334155';
@@ -6194,6 +6271,7 @@
       }
       // The PLAY click bubbles to window, so it is also the audio-unlock gesture for initAudio.
       const startRun = () => {
+        goFull();
         mainMenu.classList.add('hidden');
         setTimeout(() => {
           mainMenu.style.display = 'none';
@@ -6281,19 +6359,22 @@
     let lastTimestamp = performance.now();
 
     function gfxAdapt(ms) {
+      if (window.__perfLog) window.__perfLog.push(ms);
+      if (fpsOn && ms < 250) { fpsLog.push(ms); if (fpsLog.length > 180) fpsLog.shift(); }
       if (ms >= 100 || document.hidden) return;
       GFX.avg += (ms - GFX.avg) * 0.05;
-      if (GFX.avg > 18) { GFX.slow++; GFX.fast = 0; }
-      else if (GFX.avg < 12) { GFX.fast++; GFX.slow = 0; }
+      if (GFX.avg > 24) { GFX.slow++; GFX.fast = 0; }
+      else if (GFX.avg < 19) { GFX.fast++; GFX.slow = 0; }
       else { GFX.slow = 0; GFX.fast = 0; }
-      if (GFX.slow >= 30 && GFX.scale > GFX.min + 0.01) { GFX.scale = Math.max(GFX.min, GFX.scale - 0.1); GFX.slow = 0; resize(); }
-      else if (GFX.fast >= 180 && GFX.scale < 0.99) { GFX.scale = Math.min(1, GFX.scale + 0.1); GFX.fast = 0; resize(); }
+      if (GFX.mode === 60 && GFX.slow >= 45 && GFX.scale <= GFX.min + 0.01) { GFX.mode = 30; GFX.scale = 1; GFX.avg = 33; GFX.slow = 0; GFX.fast = 0; resize(); }
+      else if (GFX.mode === 60 && GFX.slow >= 45 && GFX.scale > GFX.min + 0.01) { GFX.scale = Math.max(GFX.min, GFX.scale - 0.11); GFX.slow = 0; resize(); }
+      else if (GFX.fast >= 900 && GFX.scale < 0.99) { GFX.scale = Math.min(1, GFX.scale + 0.11); GFX.fast = 0; resize(); }
     }
     window.__gfx = GFX;
 
     function loop(currentTimestamp) {
       requestAnimationFrame(loop);
-      if (currentTimestamp - lastTimestamp < 14.5) return; // 120 Hz screens: render every 2nd refresh
+      if (currentTimestamp - lastTimestamp < (GFX.mode === 30 ? 30.5 : 14.5)) return; // 120 Hz screens: render every 2nd refresh
 
       const rawDt = Math.min((currentTimestamp - lastTimestamp) / 1000, 0.1);
       lastTimestamp = currentTimestamp;
