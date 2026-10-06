@@ -5609,24 +5609,45 @@
         ctx.save();
         if (pt.type === 'lightning_bolt') {
           if (pt.fromTip) { const tp = staffTip(); pt.x1 = tp.x; pt.y1 = tp.y; }
-          ctx.beginPath();
-          ctx.moveTo(pt.x1, pt.y1);
-          const midX = (pt.x1 + pt.x2) / 2 + (Math.random() - 0.5) * 35;
-          const midY = (pt.y1 + pt.y2) / 2 + (Math.random() - 0.5) * 35;
-          ctx.lineTo(midX, midY);
-          ctx.lineTo(pt.x2, pt.y2);
-
-          ctx.lineWidth = 7;
-          ctx.strokeStyle = '#1a1a1a';
-          ctx.stroke();
-
-          ctx.lineWidth = 3.5;
-          ctx.strokeStyle = '#fde047';
-          ctx.stroke();
-
-          ctx.lineWidth = 1.5;
-          ctx.strokeStyle = '#ffffff';
-          ctx.stroke();
+          // Chain Lightning as BLUE lightning (same look as the Arcane Beam, other colour): soft aura, 3 jagged strands, short forks, glowing flares at the staff and at the target
+          const cdx = pt.x2 - pt.x1, cdy = pt.y2 - pt.y1, cLen = Math.hypot(cdx, cdy) || 1;
+          const cnx = -cdy / cLen, cny = cdx / cLen;
+          const cn = Math.max(6, Math.min(BEAM_MAXN - 1, Math.round(cLen / 28)));
+          const cF = Math.floor(gameTime * 30) + ((pt.x2 * 13 + pt.y2 * 7) | 0), chw = 9;
+          ctx.globalAlpha = Math.min(1, 0.4 + 0.6 * (pt.life / pt.maxLife));
+          ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+          ctx.globalCompositeOperation = 'lighter';
+          ctx.beginPath(); ctx.moveTo(pt.x1, pt.y1); ctx.lineTo(pt.x2, pt.y2);
+          ctx.lineWidth = chw * 1.9; ctx.strokeStyle = 'rgba(40,130,255,0.12)'; ctx.stroke();
+          ctx.lineWidth = chw; ctx.strokeStyle = 'rgba(120,200,255,0.18)'; ctx.stroke();
+          ctx.globalCompositeOperation = 'source-over';
+          for (let k = 0; k < 3; k++) {
+            const amp = chw * (k === 0 ? 0.6 : 0.85);
+            for (let i = 0; i <= cn; i++) {
+              const t = i / cn, e = Math.sin(Math.PI * t) * 0.9 + (i > 0 && i < cn ? 0.1 : 0);
+              const j = beamHash(i, k + 11, cF) * 2 * amp * e;
+              beamCx[i] = pt.x1 + cdx * t + cnx * j; beamCy[i] = pt.y1 + cdy * t + cny * j;
+            }
+            if (k === 0) for (let i = 0; i <= cn; i++) { beamMx[i] = beamCx[i]; beamMy[i] = beamCy[i]; }
+            const thick = k === 0 ? 1 : 0.6;
+            ctx.beginPath(); ctx.moveTo(beamCx[0], beamCy[0]);
+            for (let i = 1; i <= cn; i++) ctx.lineTo(beamCx[i], beamCy[i]);
+            ctx.lineWidth = 9 * thick; ctx.strokeStyle = '#081a3a'; ctx.stroke();
+            ctx.lineWidth = 5.4 * thick; ctx.strokeStyle = k === 0 ? '#2f9bff' : '#5cb8ff'; ctx.stroke();
+            ctx.lineWidth = 2.2 * thick; ctx.strokeStyle = '#f0f8ff'; ctx.stroke();
+          }
+          ctx.strokeStyle = '#8fd0ff'; ctx.lineWidth = 2.6;
+          for (let f = 0; f < 3; f++) {
+            const p = 1 + Math.floor((beamHash(f, 17, cF) + 0.5) * (cn - 1)), side = beamHash(f, 19, cF) > 0 ? 1 : -1;
+            const ang = Math.atan2(cdy, cdx) + side * (0.55 + (beamHash(f, 13, cF) + 0.5) * 0.5), len = chw * (1.6 + (beamHash(f, 15, cF) + 0.5) * 1.2);
+            ctx.beginPath(); ctx.moveTo(beamMx[p], beamMy[p]); ctx.lineTo(beamMx[p] + Math.cos(ang) * len * 0.5, beamMy[p] + Math.sin(ang) * len * 0.5); ctx.lineTo(beamMx[p] + Math.cos(ang) * len, beamMy[p] + Math.sin(ang) * len); ctx.stroke();
+          }
+          // flares at the staff and at the target, plus an impact ring
+          ctx.globalCompositeOperation = 'lighter';
+          const cfl = (x, y, r) => { ctx.fillStyle = 'rgba(70,160,255,0.32)'; ctx.beginPath(); ctx.arc(x, y, r * 1.7, 0, Math.PI * 2); ctx.fill(); ctx.fillStyle = 'rgba(215,240,255,0.65)'; ctx.beginPath(); ctx.arc(x, y, r * 0.8, 0, Math.PI * 2); ctx.fill(); };
+          cfl(pt.x1, pt.y1, chw * 0.8); cfl(pt.x2, pt.y2, chw * 1.1);
+          ctx.strokeStyle = 'rgba(180,220,255,0.7)'; ctx.lineWidth = 3;
+          ctx.beginPath(); ctx.arc(pt.x2, pt.y2, chw * (1.5 + 0.5 * ((gameTime * 6) % 1)), 0, Math.PI * 2); ctx.stroke();
         } else if (pt.type === 'meteor_telegraph') {
           // Red ground-warning circle that tightens as the meteor comes in
           const p = Math.min(1, 1 - pt.timer / pt.totalTimer);
