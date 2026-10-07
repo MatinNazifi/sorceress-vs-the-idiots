@@ -1099,7 +1099,7 @@
     function resize() {
       screenW = window.innerWidth;
       screenH = window.innerHeight;
-      dpr = Math.min(window.devicePixelRatio || 1, GFX.maxDpr) * GFX.scale * (GFX.burst ? BURST_SCALE : 1);
+      dpr = Math.min(window.devicePixelRatio || 1, GFX.maxDpr) * GFX.scale;
       lastResizeAt = performance.now();
       canvas.width = screenW * dpr;
       canvas.height = screenH * dpr;
@@ -1701,8 +1701,11 @@
     let isVictory = false;
     let killCount = 0;
     let hitStopFrames = 0;
-    let bigHitStopDone = false, eliteHitCount = 0;
+    let bigHitStopDone = false, eliteHitCount = 0, lastJuiceAt = -1e9;
     let slowMoT = 0, slowMoDur = 0; // real-time seconds of slow motion left / total
+    // Minimum REAL-time gap between two hit-stop/slow-mo moments: 2.5 s from 4:00, +1 s per minute from minute 6 (cap 12 s).
+    // The every-Nth-hit rule alone is not enough: a screen of elites lands hundreds of hits a second.
+    function juiceGapMs() { return Math.min(12000, 2500 + 1000 * Math.max(0, Math.floor(gameTime / 60) - 5)); }
     function slowMo(sec) { if (sec > slowMoT) { slowMoT = sec; slowMoDur = sec; } }
     const HITSTOP_RESUME_AT = 240; // seconds
     let heartbeatTimer = 0;
@@ -3078,7 +3081,7 @@
             const perpDist = Math.abs(-toEx * sinA + toEy * cosA);
             if (perpDist < (activeBeam.width + e.radius)) {
               // registers as a hit every 0.12 s (same damage per second as before: dmg x 4), not every frame
-              if (!e.beamT || gameTime - e.beamT >= 0.12) { e.beamT = gameTime; const firstOfCast = e.beamId !== activeBeam.id; e.beamId = activeBeam.id; damageEnemy(e, activeBeam.dmg * 0.48, cosA >= 0 ? 1 : -1, false, !firstOfCast); }
+              if (!e.beamT || gameTime - e.beamT >= 0.12) { e.beamT = gameTime; const firstOfCast = e.beamId !== activeBeam.id; e.beamId = activeBeam.id; const loud = firstOfCast && !activeBeam.juiced; if (loud) activeBeam.juiced = true; /* a whole beam cast = ONE attack for hit-stop / slow-mo, however many enemies it crosses */ damageEnemy(e, activeBeam.dmg * 0.48, cosA >= 0 ? 1 : -1, false, !loud); }
             }
           }
         });
@@ -4052,7 +4055,7 @@
         // none until 4:00, then a short freeze every 4th elite/boss hit, growing by one more hit per minute from minute 6
         // (every 5th at 6:00, every 6th at 7:00 ...) so a screen full of elites/bosses stays playable.
         if (!bigHitStopDone) { bigHitStopDone = true; hitStopFrames = 4; slowMo(1.1); addShake(8); }
-        else if (gameTime >= HITSTOP_RESUME_AT && ((e.juiceHits = (e.juiceHits || 0) + 1) % (4 + Math.max(0, Math.floor(gameTime / 60) - 5)) === 1)) { hitStopFrames = 2; slowMo(0.45); } // hits 1, N+1, 2N+1 ... on this elite/boss
+        else if (gameTime >= HITSTOP_RESUME_AT && (++eliteHitCount % (4 + Math.max(0, Math.floor(gameTime / 60) - 5)) === 1) && performance.now() - lastJuiceAt >= juiceGapMs()) { lastJuiceAt = performance.now(); hitStopFrames = 2; slowMo(0.45); } // ONE shared count over every elite/boss: hits 1, N+1, 2N+1 ... of the whole screen, not per enemy
         addShake(isCrit ? 5 : 3);
         kickCamera(hitDirX * 5, 0);
       }
@@ -6862,25 +6865,30 @@
     // --- MAIN GAME LOOP ---
     let lastTimestamp = performance.now();
 
-    const BURST_SCALE = 0.8, BURST_MS = 30, BURST_FRAMES = 12, BURST_HOLD_MS = 4000, BURST_CALM_MS = 20, BURST_CALM_FRAMES = 45, BURST_AFTER_S = 45;
-    let burstEma = 16, burstBad = 0, burstCalm = 0;
-    function gfxBurst(ms) {
-      burstEma += (ms - burstEma) * 0.15;
-      if (GFX.mode !== 60 || gameTime < BURST_AFTER_S) return; // the first 45 s stay exactly as they were (smooth)
-      if (!GFX.burst) {
-        burstBad = burstEma > BURST_MS ? burstBad + 1 : 0;
-        if (burstBad >= BURST_FRAMES) { GFX.burst = 1; GFX.burstAt = performance.now(); burstBad = 0; burstCalm = 0; resize(); }
-      } else {
-        burstCalm = burstEma < BURST_CALM_MS ? burstCalm + 1 : 0;
-        if (burstCalm >= BURST_CALM_FRAMES && performance.now() - GFX.burstAt > BURST_HOLD_MS) { GFX.burst = 0; burstCalm = 0; resize(); }
-      }
+    const SM = { lv: [1, 0.52, 0.45, 0.38], i: 0, ema: 16, bad: 0, calm: 0, stepAt: 0, upAt: 0, hold: 6000, dips: 0 };
+    const SM_FROM_S = 15, SM_BAD_MS = 26, SM_CALM_MS = 19, SM_FIRST_BAD = 8, SM_NEXT_BAD = 40, SM_FLOOR_BAD = 90, SM_CALM_FRAMES = 60;
+    function smSet(i) { SM.i = i; SM.bad = 0; SM.calm = 0; SM.stepAt = performance.now(); GFX.scale = SM.lv[i]; resize(); }
+    function gfxSmart(ms) {
+      if (GFX.mode !== 60) return false;
+      SM.ema += (ms - SM.ema) * 0.2;
+      if (gameTime < SM_FROM_S) return true; // the first seconds stay exactly as they were
+      const now = performance.now();
+      if (SM.ema > SM_BAD_MS) { SM.bad++; SM.calm = 0; } else { SM.bad = 0; SM.calm = SM.ema < SM_CALM_MS ? SM.calm + 1 : 0; }
+      if (SM.bad >= (SM.i === 0 ? SM_FIRST_BAD : SM_NEXT_BAD)) {
+        if (SM.i < SM.lv.length - 1) {
+          if (SM.upAt && now - SM.upAt < 20000) SM.hold = Math.min(SM.hold * 2, 60000);
+          if (SM.i === 0) SM.dips++;
+          smSet(SM.i + 1);
+        } else if (SM.bad >= SM_FLOOR_BAD) { GFX.mode = 30; SM.i = 0; GFX.scale = 1; GFX.avg = 33; GFX.slow = 0; GFX.fast = 0; SM.bad = 0; resize(); }
+      } else if (SM.i > 0 && SM.calm >= SM_CALM_FRAMES && now - SM.stepAt > SM.hold) { SM.upAt = now; SM.ema = 16; smSet(SM.i - 1); }
+      return true;
     }
     function gfxAdapt(ms) {
       if (window.__perfLog) window.__perfLog.push(ms);
       if (fpsOn && ms < 250) { fpsLog.push(ms); if (fpsLog.length > 180) fpsLog.shift(); }
       if (fpsOn && ms >= 28 && ms < 250) { const nw = performance.now(); spikeLog.push({ ms, at: nw, t: Math.floor(gameTime), n: enemies.length, rs: nw - lastResizeAt < 1500, w: lastWorkMs, d: lastDrawMs }); if (spikeLog.length > 60) spikeLog.shift(); }
       if (ms >= 100 || document.hidden) return;
-      gfxBurst(ms);
+      if (gfxSmart(ms)) return;
       GFX.avg += (ms - GFX.avg) * 0.05;
       if (GFX.avg > 24) { GFX.slow++; GFX.fast = 0; }
       else if (GFX.avg < 19) { GFX.fast++; GFX.slow = 0; }
@@ -6889,7 +6897,7 @@
       else if (GFX.mode === 60 && GFX.slow >= 45 && GFX.scale > GFX.min + 0.01) { GFX.scale = Math.max(GFX.min, GFX.scale - 0.15); GFX.slow = 0; if (GFX.upAt && performance.now() - GFX.upAt < 60000) GFX.lock = 1; GFX.downAt = performance.now(); resize(); }
       else if (GFX.fast >= 900 && GFX.scale < 0.99 && !GFX.lock && performance.now() - GFX.downAt > 120000) { GFX.scale = Math.min(1, GFX.scale + 0.11); GFX.fast = 0; GFX.upAt = performance.now(); resize(); }
     }
-    window.__gfx = GFX; window.__gfxAdapt = gfxAdapt; // test hooks (GFX.burst / burstAt show the burst state)
+    window.__gfx = GFX; window.__gfxAdapt = gfxAdapt; window.__sm = SM; // test hooks
 
     function loop(currentTimestamp) { const w0 = performance.now(); try { loopBody(currentTimestamp); } finally { if (performance.now() - w0 > 1) { lastWorkMs = performance.now() - w0; workEma += (lastWorkMs - workEma) * 0.05; } } }
     function loopBody(currentTimestamp) {
