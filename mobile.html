@@ -7076,8 +7076,12 @@
       var fb = encodeURIComponent('https://' + path + '?play=1');
       open.href = 'intent://' + path + '#Intent;scheme=https;package=com.android.chrome;S.browser_fallback_url=' + fb + ';end';
     } else {
-      open.style.display = 'none'; // iPhone: no way to force Safari, the menu instructions below do it
-      document.getElementById('iab-how').innerHTML = 'Tap the <b>&#8226;&#8226;&#8226;</b> menu and choose <b>Open in Safari</b>.';
+      // iPhone has no Chrome-style intent: Instagram's own extbrowser link hands the page to the default browser (Safari);
+      // Facebook/others take the x-safari scheme. Neither is guaranteed, so the menu instructions stay underneath.
+      var full = encodeURIComponent('https://' + path);
+      open.textContent = 'Open in Safari';
+      open.href = /Instagram/.test(ua) ? 'instagram://extbrowser/?url=' + full : 'x-safari-https://' + path;
+      document.getElementById('iab-how').innerHTML = 'If the button does nothing, tap the <b>&#8226;&#8226;&#8226;</b> menu and choose <b>Open in Safari</b> (or Open in external browser).';
     }
     document.getElementById('iab-stay').addEventListener('click', function () {
       try { sessionStorage.setItem('iab-stay', '1'); } catch (e) {}
