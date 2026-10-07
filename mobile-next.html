@@ -6394,8 +6394,59 @@
       return null;
     }
 
-    // frac: 0 = ready (bright), 1 = just fired (fully dark); dark part shrinks clockwise from 12 o'clock
+    // Slot art is baked once per (icon, label, size, dpr): bright + dark layers and the label. Per frame = 2-3 drawImage + the wedge clip.
+    const invBake = new Map();
+    let invBakeDpr = 0;
+    function invBakeSlot(id, reg, label, evo, s) {
+      if (invBakeDpr !== dpr) { invBake.clear(); invBakeDpr = dpr; }
+      const key = id + '|' + label + '|' + evo + '|' + s;
+      let b = invBake.get(key);
+      if (b) return b;
+      const icon = invIcon(id, reg);
+      if (!icon) return null; // icon still loading: use the live path, bake next frame
+      const pad = s + 6, h = s / 2;
+      const mk = () => { const c = document.createElement('canvas'); c.width = c.height = Math.ceil(pad * dpr); const cx = c.getContext('2d'); cx.scale(dpr, dpr); cx.translate(pad / 2, pad / 2); return [c, cx]; };
+      const layer = (dark) => {
+        const [c, cx] = mk();
+        cx.beginPath(); cx.roundRect(-h, -h, s, s, 5); cx.fillStyle = '#1e192c'; cx.fill();
+        cx.save(); cx.clip();
+        cx.drawImage(icon, -h + 1, -h + 1, s - 2, s - 2);
+        if (dark) { cx.fillStyle = INV_DARK; cx.fillRect(-h, -h, s, s); }
+        cx.restore();
+        cx.beginPath(); cx.roundRect(-h, -h, s, s, 5); cx.lineWidth = evo ? 2.5 : 1.5; cx.strokeStyle = evo ? '#ffd23f' : '#8a6d3b'; cx.stroke();
+        return c;
+      };
+      const [lc, lx] = mk(), size = evo ? 8 : 10;
+      lx.font = `900 ${size}px Trebuchet MS`; lx.textAlign = 'center'; lx.textBaseline = 'middle'; lx.lineJoin = 'round';
+      lx.lineWidth = Math.max(2.5, size * 0.28); lx.strokeStyle = HUD_OUTLINE; lx.fillStyle = evo ? '#ffd23f' : HUD_TEXT;
+      const tx = h - (evo ? 9 : 4), ty = h - 4;
+      lx.strokeText(label, tx, ty); lx.fillText(label, tx, ty);
+      b = { bright: layer(false), dark: layer(true), label: lc, pad };
+      invBake.set(key, b);
+      return b;
+    }
     function drawInvSlot(x, y, s, id, reg, label, evo, frac, pop) {
+      const b = invBakeSlot(id, reg, label, evo, s);
+      if (!b) return drawInvSlotLive(x, y, s, id, reg, label, evo, frac, pop);
+      const k = pop > 0 ? pop / INV_POP_S : 0, p = b.pad, cxp = x + s / 2, cyp = y + s / 2;
+      ctx.save();
+      ctx.translate(cxp, cyp);
+      if (k > 0) ctx.scale(1 + 0.22 * k, 1 + 0.22 * k);
+      ctx.drawImage(b.bright, -p / 2, -p / 2, p, p);
+      if (frac > 0) {
+        const top = -Math.PI / 2;
+        ctx.save();
+        ctx.beginPath(); ctx.moveTo(0, 0); ctx.arc(0, 0, s, top + (1 - frac) * Math.PI * 2, top + Math.PI * 2); ctx.closePath(); ctx.clip();
+        ctx.drawImage(b.dark, -p / 2, -p / 2, p, p);
+        ctx.restore();
+      }
+      if (k > 0) { const h = s / 2; ctx.beginPath(); ctx.roundRect(-h, -h, s, s, 5); ctx.fillStyle = `rgba(255, 255, 255, ${0.55 * k})`; ctx.fill(); }
+      ctx.restore();
+      ctx.drawImage(b.label, cxp - p / 2, cyp - p / 2, p, p);
+    }
+
+    // frac: 0 = ready (bright), 1 = just fired (fully dark); dark part shrinks clockwise from 12 o'clock
+    function drawInvSlotLive(x, y, s, id, reg, label, evo, frac, pop) {
       const k = pop > 0 ? pop / INV_POP_S : 0;
       ctx.save();
       ctx.translate(x + s / 2, y + s / 2);
