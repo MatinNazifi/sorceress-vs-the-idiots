@@ -6865,15 +6865,15 @@
     // --- MAIN GAME LOOP ---
     let lastTimestamp = performance.now();
 
-    const SM = { lv: [1, 0.52, 0.45, 0.38], i: 0, ema: 16, bad: 0, calm: 0, stepAt: 0, upAt: 0, hold: 6000, dips: 0 };
-    const SM_FROM_S = 15, SM_BAD_MS = 26, SM_CALM_MS = 19, SM_FIRST_BAD = 8, SM_NEXT_BAD = 40, SM_FLOOR_BAD = 90, SM_CALM_FRAMES = 60;
+    const SM = { lv: [1, 0.52, 0.45, 0.38, 0.32], i: 0, ema: 16, bad: 0, calm: 0, stepAt: 0, upAt: 0, hold: 6000, dips: 0 };
+    const SM_FROM_S = 15, SM_BAD_MS = 26, SM_CALM_MS = 19, SM_FIRST_BAD = 5, SM_NEXT_BAD = 14, SM_FLOOR_BAD = 90, SM_CALM_FRAMES = 60;
     function smSet(i) { SM.i = i; SM.bad = 0; SM.calm = 0; SM.stepAt = performance.now(); GFX.scale = SM.lv[i]; resize(); }
     function gfxSmart(ms) {
       if (GFX.mode !== 60) return false;
       SM.ema += (ms - SM.ema) * 0.2;
       if (gameTime < SM_FROM_S) return true; // the first seconds stay exactly as they were
       const now = performance.now();
-      if (SM.ema > SM_BAD_MS) { SM.bad++; SM.calm = 0; } else { SM.bad = 0; SM.calm = SM.ema < SM_CALM_MS ? SM.calm + 1 : 0; }
+      if (SM.ema > SM_BAD_MS) { SM.bad += ms > 45 ? 3 : 1; SM.calm = 0; } else { SM.bad = 0; SM.calm = SM.ema < SM_CALM_MS ? SM.calm + 1 : 0; }
       if (SM.bad >= (SM.i === 0 ? SM_FIRST_BAD : SM_NEXT_BAD)) {
         if (SM.i < SM.lv.length - 1) {
           if (SM.upAt && now - SM.upAt < 20000) SM.hold = Math.min(SM.hold * 2, 60000);
