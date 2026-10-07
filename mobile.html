@@ -1267,6 +1267,11 @@
       if (LOAD.done >= LOAD.total) {
         Object.keys(SPRITES).forEach(k => { try { ctx.drawImage(SPRITES[k], 0, 0, 1, 1); } catch (e) {} }); // warm the GPU textures
         const wait = Math.max(0, LOAD.MIN_MS - (performance.now() - LOAD.shownAt));
+        // UI art that used to download the first time it was shown (level-up cards, pause panel, buttons, icons): fetch + decode it now, quietly, behind the loading fade
+        window.__uiKeep = ['card-normal','card-evolve','card-relic','panel','button','dash-button','btn-pause','btn-play','btn-home','btn-restart','btn-settings','btn-sound-on','btn-sound-off','btn-skull']
+          .map(n => 'sprites/ui/' + n + '.png')
+          .concat(['bolt','chain','frost','blades','beam','runes','frog','meteor','fire','area','damage','speed','cooldown','health','magnet'].map(n => 'sprites/icons/' + n + '.png'))
+          .map(u => { const im = new Image(); im.decoding = 'async'; im.src = u; if (im.decode) im.decode().catch(() => {}); return im; });
         setTimeout(() => {
           const ls = document.getElementById('loading-screen');
           if (ls) { ls.classList.add('done'); setTimeout(() => { ls.style.display = 'none'; }, 600); }
