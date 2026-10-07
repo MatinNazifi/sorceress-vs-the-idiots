@@ -3995,6 +3995,7 @@
       hero.hp = Math.max(0, hero.hp - damage);
       hero.iFrames = 0.8;
       hero.flashTimer = 0.15;
+      tutHurt = true; // read by the tutorial (declared further down; runs long after load)
       Sound.hurt();
       addShake(18);
       screenRedFlash = 0.35;
@@ -4477,6 +4478,7 @@
       // Two level-ups 430 ms apart used to rebuild the open modal and silently eat one: queue it instead
       if (isPausedForModal) { pendingLevelUps++; return; }
       isPausedForModal = true;
+      tutHide();
       const modal = document.getElementById('level-modal');
       const heading = document.getElementById('modal-heading');
       const subheading = document.getElementById('modal-subheading');
@@ -4486,6 +4488,11 @@
       heading.innerText = 'LEVEL UP!';
       heading.style.color = '#ffd23f';
       subheading.innerText = 'Choose your arcana power';
+      // First level-up ever: say what the cards are (typeof guard: the tutorial block is declared later in the file)
+      if (!isChest && typeof tutSeen !== 'undefined' && tutOn && !tutSeen.cards) {
+        subheading.innerText = 'Tap a card: a NEW power or an upgrade. EVOLVE is the strongest!';
+        tutMark('cards');
+      }
 
       const closeModal = () => {
         modal.style.display = 'none';
@@ -4596,6 +4603,7 @@
     ];
     function openRelicModal() {
       isPausedForModal = true;
+      tutHide();
       const modal = document.getElementById('level-modal');
       const heading = document.getElementById('modal-heading');
       const subheading = document.getElementById('modal-subheading');
@@ -6748,6 +6756,7 @@
     function setPaused(on) {
       if (on && (!runStarted || isGameOver || isPausedForModal)) return;
       isPausedByUser = on;
+      if (on) tutHide();
       pauseModal.style.display = on ? 'flex' : 'none';
     }
     pauseBtn.addEventListener('click', () => setPaused(true));
@@ -6783,6 +6792,72 @@
 
     // Call once on load to set initial pause button position (will be updated in drawHUD)
     placePauseButton(screenW - 8 - PAUSE_BTN_SIZE, 10);
+
+    // --- PROGRESSIVE TUTORIAL ---
+    // One hint at the moment it matters, each shown once per player (localStorage). Never pauses the game.
+    // Skipped in test mode (benchmarks) unless ?tut=1; reset a player's hints with ?tut=reset.
+    const TUT_KEY = 'svti-tut';
+    const TUT_MODE = urlParams.get('tut'); // '1' on in test mode, 'touch' forces the phone text, 'reset' forgets seen hints
+    let tutHurt = false;
+    const TUT_TOUCH = TUT_MODE === 'touch' || (window.matchMedia && matchMedia('(pointer: coarse)').matches) || 'ontouchstart' in window;
+    const TUT_STEPS = [
+      { id: 'move', ms: 6500, text: TUT_TOUCH ? 'Drag anywhere to move.<br>Your staff fires on its own.' : 'WASD or arrow keys to move.<br>Your staff fires on its own.',
+        when: () => runStarted },
+      { id: 'goal', ms: 7000, text: '<b>Survive 10 minutes!</b><br>Kill the Idiots. Never let them touch you.',
+        when: () => gameTime > 7 },
+      { id: 'gems', ms: 7500, text: 'Enemies drop <b>glowing gems</b>. Walk over them<br>to fill the XP bar. Full bar = <b>LEVEL UP</b>!',
+        when: () => gameTime > 17 || hero.xp > 0 || hero.level > 1 },
+      { id: 'hurt', ms: 5000, text: TUT_TOUCH ? 'Ouch! Keep moving, and tap the<br>dash button (bottom right) to dodge.' : 'Ouch! Keep moving, and press<br>SPACE to dash out of danger.',
+        when: () => tutHurt },
+      { id: 'elite', ms: 5500, text: 'Gold-glow enemies are <b>ELITES</b>.<br>Tougher, but worth the fight.',
+        when: () => enemies.some(e => e.isElite && !e.isBoss && e.hp > 0) },
+      { id: 'boss', ms: 5500, text: '<b>BOSS!</b> Keep your distance<br>and dodge its attacks.',
+        when: () => enemies.some(e => e.isBoss && e.hp > 0) },
+      { id: 'lowhp', ms: 5000, text: 'Low health! Run clear of the crowd.<br>You slowly heal while you move.',
+        when: () => hero.hp / hero.maxHp < 0.3 }
+    ];
+    const tutOn = !isTestMode || TUT_MODE === '1' || TUT_MODE === 'touch';
+    let tutSeen = {};
+    try {
+      if (TUT_MODE === 'reset') localStorage.removeItem(TUT_KEY);
+      tutSeen = JSON.parse(localStorage.getItem(TUT_KEY) || '{}') || {};
+    } catch (err) { /* storage blocked: hints show each run instead of once */ }
+    function tutMark(id) {
+      tutSeen[id] = 1;
+      try { localStorage.setItem(TUT_KEY, JSON.stringify(tutSeen)); } catch (err) { /* not persisted */ }
+    }
+    const tutEl = document.createElement('div');
+    tutEl.style.cssText = 'position:fixed;left:50%;top:17%;width:max-content;transform:translate(-50%,-8px);z-index:40;pointer-events:none;opacity:0;transition:opacity .35s,transform .35s;' +
+      'background:rgba(20,16,28,.88);color:#fff;border:2px solid #ffd23f;border-radius:12px;padding:10px 18px;max-width:82vw;text-align:center;' +
+      'font:700 clamp(14px,3.6vw,19px)/1.35 "Trebuchet MS","Segoe UI",Roboto,sans-serif;box-shadow:0 4px 0 #000;';
+    document.body.appendChild(tutEl);
+    let tutTimer = 0, tutCheckT = 0, tutHeroStart = null, tutShownAt = 0; // tutTimer counts game seconds, so menus and pauses freeze it
+    function tutShow(step) {
+      tutMark(step.id);
+      tutEl.innerHTML = step.text;
+      tutEl.style.opacity = '1';
+      tutEl.style.transform = 'translate(-50%,0)';
+      tutTimer = step.ms / 1000;
+      tutShownAt = gameTime;
+    }
+    function tutHide() {
+      tutTimer = 0;
+      tutEl.style.opacity = '0';
+      tutEl.style.transform = 'translate(-50%,-8px)';
+    }
+    function updateTutorial(dt) {
+      if (tutTimer > 0 && (tutTimer -= dt) <= 0) tutHide();
+      tutCheckT -= dt;
+      if (tutCheckT > 0) return;
+      tutCheckT = 0.15;
+      if (!tutHeroStart) tutHeroStart = { x: hero.x, y: hero.y };
+      // The move hint has done its job once the hero has walked a little: clear it early
+      if (tutTimer > 0 && tutSeen.move && gameTime - tutShownAt > 3 && Math.hypot(hero.x - tutHeroStart.x, hero.y - tutHeroStart.y) > 120) tutHide();
+      if (tutTimer > 0) return; // one hint at a time
+      for (const step of TUT_STEPS) {
+        if (!tutSeen[step.id] && step.when()) { tutShow(step); return; }
+      }
+    }
 
     // --- MAIN GAME LOOP ---
     let lastTimestamp = performance.now();
@@ -6854,6 +6929,7 @@
       updateHero(dt);
       updateEnemies(dt);
       updateProjectilesAndEffects(dt);
+      if (tutOn) updateTutorial(dt);
 
       draw();
     }
