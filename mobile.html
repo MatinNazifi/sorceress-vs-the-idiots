@@ -6917,7 +6917,7 @@
     // --- MAIN GAME LOOP ---
     let lastTimestamp = performance.now();
 
-    const SM_TOP = Math.min(1, Math.max(0.5, parseFloat(new URLSearchParams(location.search).get('top')) || (/Instagram|FBAN|FBAV|FB_IAB/.test(navigator.userAgent) ? 0.55 : 0.75)));
+    const SM_TOP = Math.min(1, Math.max(0.5, parseFloat(new URLSearchParams(location.search).get('top')) || (/Instagram|FBAN|FBAV|FB_IAB/.test(navigator.userAgent) ? 0.45 : 0.75)));
     const SM_LV = [SM_TOP, SM_TOP * 0.78, SM_TOP * 0.6, SM_TOP * 0.48, 0.34];
     const SM = { lv: SM_LV, i: 0, ema: 16, bad: 0, calm: 0, slow: 0, stepAt: 0, upAt: 0, hold: 5000, dips: 0, emaAtStep: 0, futile: false };
     const SM_FROM_S = 15, SM_BAD_MS = 18, SM_CALM_MS = 17.2, SM_FIRST_BAD = 2, SM_NEXT_BAD = 14, SM_SLOW_MS = 30, SM_FLOOR_SLOW = 90, SM_CALM_FRAMES = 90;
@@ -7052,5 +7052,40 @@
 
   })();
   </script>
+
+<div id="iab-gate" style="display:none;position:fixed;inset:0;z-index:100000;background:#0d0818;color:#fff;font-family:'Trebuchet MS',system-ui,sans-serif;text-align:center;padding:28px 22px;overflow:auto">
+  <div style="max-width:420px;margin:0 auto;padding-top:8vh">
+    <div style="font-size:26px;font-weight:900;color:#ffd23f;line-height:1.15">Sorceress vs the Idiots</div>
+    <p style="font-size:17px;line-height:1.45;margin:18px 0 6px">Instagram's built-in browser is too slow for this game.</p>
+    <p style="font-size:17px;line-height:1.45;margin:0 0 22px">For smooth play, open it in your browser:</p>
+    <a id="iab-open" href="#" style="display:block;background:#7c3aed;color:#fff;text-decoration:none;font-weight:900;font-size:21px;padding:18px 12px;border-radius:14px;margin:0 0 12px">Open in Chrome</a>
+    <p id="iab-how" style="font-size:15px;line-height:1.5;color:#cbbbe8;margin:0 0 20px">Or tap the <b>&#8942;</b> / <b>&#8226;&#8226;&#8226;</b> menu (top right) and choose <b>Open in browser</b>.</p>
+    <p dir="rtl" style="font-size:16px;line-height:1.7;margin:0 0 20px">&#1576;&#1585;&#1575;&#1740; &#1575;&#1580;&#1585;&#1575;&#1740; &#1585;&#1608;&#1575;&#1606; &#1576;&#1575;&#1586;&#1740;&#1548; &#1570;&#1606; &#1585;&#1575; &#1583;&#1585; &#1605;&#1585;&#1608;&#1585;&#1711;&#1585; &#1576;&#1575;&#1586; &#1705;&#1606;&#1740;&#1583; (&#1605;&#1606;&#1608;&#1740; &#8942; &#1576;&#1575;&#1604;&#1575; &#1587;&#1605;&#1578; &#1585;&#1575;&#1587;&#1578; &larr; Open in browser)</p>
+    <button id="iab-stay" style="background:none;border:1px solid #6b5a8e;color:#cbbbe8;font-size:15px;padding:12px 18px;border-radius:12px">Play here anyway (lower quality)</button>
+  </div>
+</div>
+<script>
+(function () {
+  try {
+    var ua = navigator.userAgent || '', inApp = /Instagram|FBAN|FBAV|FB_IAB/.test(ua);
+    var skip = /[?&]play=1/.test(location.search) || sessionStorage.getItem('iab-stay') === '1';
+    if (!inApp || skip) return;
+    var gate = document.getElementById('iab-gate'), open = document.getElementById('iab-open');
+    var path = location.host + location.pathname;
+    if (/Android/i.test(ua)) {
+      var fb = encodeURIComponent('https://' + path + '?play=1');
+      open.href = 'intent://' + path + '#Intent;scheme=https;package=com.android.chrome;S.browser_fallback_url=' + fb + ';end';
+    } else {
+      open.style.display = 'none'; // iPhone: no way to force Safari, the menu instructions below do it
+      document.getElementById('iab-how').innerHTML = 'Tap the <b>&#8226;&#8226;&#8226;</b> menu and choose <b>Open in Safari</b>.';
+    }
+    document.getElementById('iab-stay').addEventListener('click', function () {
+      try { sessionStorage.setItem('iab-stay', '1'); } catch (e) {}
+      gate.style.display = 'none';
+    });
+    gate.style.display = 'block';
+  } catch (e) {}
+})();
+</script>
 </body>
 </html>
