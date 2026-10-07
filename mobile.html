@@ -1983,10 +1983,10 @@
     document.body.appendChild(fpsBox);
     function setFps(v) {
       fpsOn = v; fpsBox.style.display = v ? 'block' : 'none'; fpsLog.length = 0;
-      try { localStorage.setItem('ctl-fps', v ? '1' : '0'); } catch (_) {}
+      
       fpsBtn.lastChild.textContent = 'Show FPS: ' + (v ? 'ON' : 'OFF');
     }
-    let fpsSaved = false; try { fpsSaved = localStorage.getItem('ctl-fps') === '1'; } catch (_) {}
+    let fpsSaved = false; try { localStorage.removeItem('ctl-fps'); } catch (_) {}
     setFps(fpsSaved || urlParams.get('fps') === '1');
     fpsBtn.addEventListener('click', () => setFps(!fpsOn));
     setInterval(() => {
