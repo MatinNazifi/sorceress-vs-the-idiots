@@ -6917,7 +6917,7 @@
     // --- MAIN GAME LOOP ---
     let lastTimestamp = performance.now();
 
-    const SM_TOP = Math.min(1, Math.max(0.5, parseFloat(new URLSearchParams(location.search).get('top')) || 0.85));
+    const SM_TOP = Math.min(1, Math.max(0.5, parseFloat(new URLSearchParams(location.search).get('top')) || 0.75));
     const SM_LV = [SM_TOP, SM_TOP * 0.78, SM_TOP * 0.6, SM_TOP * 0.48, 0.34];
     const SM = { lv: SM_LV, i: 0, ema: 16, bad: 0, calm: 0, slow: 0, stepAt: 0, upAt: 0, hold: 5000, dips: 0, emaAtStep: 0, futile: false };
     const SM_FROM_S = 15, SM_BAD_MS = 18, SM_CALM_MS = 17.2, SM_FIRST_BAD = 2, SM_NEXT_BAD = 14, SM_SLOW_MS = 30, SM_FLOOR_SLOW = 90, SM_CALM_FRAMES = 90;
