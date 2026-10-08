@@ -6972,27 +6972,52 @@
   })();
   </script>
 
-<div id="qtest" style="position:fixed;left:6px;bottom:6px;z-index:99999;display:flex;gap:5px;font:600 12px system-ui;opacity:.88;flex-wrap:wrap;max-width:62vw">
-<button data-s="auto">1 AUTO</button><button data-s="0.7">2 70%</button><button data-s="0.6">3 60%</button><button data-s="0.52">4 52%</button><button data-s="0.45">5 45%</button>
+<div id="qtest" style="position:fixed;left:6px;bottom:6px;z-index:99999;display:flex;gap:5px;font:600 12px system-ui;opacity:.88;flex-wrap:wrap;max-width:70vw">
+<button data-s="auto">1 AUTO</button><button data-s="0.7">2 70%</button><button data-s="0.6">3 60%</button><button data-s="0.52">4 52%</button><button data-s="0.45">5 45%</button><button data-s="smart52">6 SMART 52</button><button data-s="smart45">7 SMART 45</button>
 <span id="qtl" style="color:#fff;align-self:center;text-shadow:0 0 3px #000"></span></div>
 <script>
 (function(){
   var tgt = localStorage.getItem('qtest5') || 'auto', applied = null;
   var bs = document.querySelectorAll('#qtest button');
+  // SMART state: full sharpness until pressure, then a quick dip; flap guard doubles the hold if pressure returns soon after recovery
+  var S = { low: false, ema: 16, bad: 0, calm: 0, lowAt: 0, lastUp: 0, hold: 6000, dips: 0 };
+  var SMART_FROM_S = 30, BAD_MS = 26, BAD_FRAMES = 8, CALM_MS = 19, CALM_FRAMES = 60;
+  function setScale(s){ var g = window.__gfx; if (g && Math.abs(g.scale - s) > .001) { g.scale = s; window.dispatchEvent(new Event('resize')); } }
+  function smartTarget(){ return tgt === 'smart45' ? 0.45 : 0.52; }
+  window.__smart = S; // test hook
+  window.__perfLog = { push: function(ms){   // the game calls this with every frame time
+    if (tgt.indexOf('smart') !== 0 || ms >= 100 || document.hidden) return;
+    S.ema += (ms - S.ema) * 0.2;
+    var t = window.__state ? window.__state().time : 0, now = performance.now();
+    if (!S.low) {
+      if (t < SMART_FROM_S) { S.bad = 0; return; }
+      S.bad = S.ema > BAD_MS ? S.bad + 1 : 0;
+      if (S.bad >= BAD_FRAMES) { S.low = true; S.bad = 0; S.calm = 0; S.lowAt = now; S.dips++;
+        if (S.lastUp && now - S.lastUp < 20000) S.hold = Math.min(S.hold * 2, 60000);
+        setScale(smartTarget()); }
+    } else {
+      S.calm = S.ema < CALM_MS ? S.calm + 1 : 0;
+      if (S.calm >= CALM_FRAMES && now - S.lowAt > S.hold) { S.low = false; S.lastUp = now; S.ema = 16; setScale(1); }
+    }
+  } };
   bs.forEach(function(b){ b.style.cssText='padding:7px 9px;border-radius:8px;border:1px solid #fff8;background:#000a;color:#fff';
-    b.addEventListener('click', function(e){ e.stopPropagation(); tgt = b.dataset.s; try{localStorage.setItem('qtest5', tgt);}catch(_){} apply(); });
+    b.addEventListener('click', function(e){ e.stopPropagation(); tgt = b.dataset.s; try{localStorage.setItem('qtest5', tgt);}catch(_){} applied = null; apply(); });
     b.addEventListener('touchstart', function(e){ e.stopPropagation(); }, {passive:true}); });
   function apply(){ var g = window.__gfx; if(!g) return;
+    var label;
     if (tgt === 'auto') {
       if (applied !== 'auto') { g.lock = 0; g.mode = 60; g.slow = 0; g.fast = 0; g.downAt = 0; g.upAt = 0; g.avg = 16; g.scale = 1; window.dispatchEvent(new Event('resize')); applied = 'auto'; }
+      label = 'auto (live)';
+    } else if (tgt.indexOf('smart') === 0) {
+      g.mode = 60; g.slow = 0; g.fast = 0; g.lock = 1; g.avg = 16;           // old governor held off; SMART drives the resolution
+      if (applied !== tgt) { S.low = false; S.bad = 0; S.calm = 0; S.hold = 6000; S.dips = 0; S.lastUp = 0; setScale(1); applied = tgt; }
+      label = 'smart: ' + (S.low ? 'LOW ' + Math.round(smartTarget() * 100) + '%' : 'full') + '  dips ' + S.dips;
     } else {
-      var s = +tgt;
-      g.mode = 60; g.slow = 0; g.fast = 0; g.lock = 1; g.avg = 16;
-      if (Math.abs(g.scale - s) > .001) { g.scale = s; window.dispatchEvent(new Event('resize')); }
-      applied = tgt;
+      var s = +tgt; g.mode = 60; g.slow = 0; g.fast = 0; g.lock = 1; g.avg = 16; setScale(s); applied = tgt;
+      label = 'pinned ' + Math.round(s * 100) + '%';
     }
     bs.forEach(function(b){ b.style.background = (b.dataset.s === tgt) ? '#7c3aedcc' : '#000a'; });
-    document.getElementById('qtl').textContent = tgt === 'auto' ? 'auto (live)' : 'pinned ' + Math.round(+tgt * 100) + '%'; }
+    document.getElementById('qtl').textContent = label; }
   setInterval(apply, 150);
 })();
 </script>

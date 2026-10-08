@@ -580,6 +580,12 @@
     #loading-screen .load-text { margin-top: 10px; color: #f3e6c4; font: 700 15px/1.2 'Trebuchet MS', sans-serif;
       text-shadow: 0 2px 0 #1a1a1a, 0 0 8px #000; letter-spacing: 0.5px; }
 </style>
+<script>
+// stale-copy self-heal: if the browser/CDN served an older page than the server has now, refetch once and reload
+(function(){try{if(sessionStorage.getItem('svti_fresh'))return;
+fetch(location.pathname,{method:'HEAD',cache:'no-store'}).then(function(r){var lm=Date.parse(r.headers.get('last-modified')||''),dl=Date.parse(document.lastModified);
+if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(location.pathname,{cache:'reload'}).then(function(){location.reload();});}}).catch(function(){});}catch(e){}})();
+</script>
 </head>
 <body>
   <canvas id="game-canvas"></canvas>
@@ -4389,9 +4395,9 @@
         }
 
         if (gem.magnetized) {
-          const pullSpeed = 460 + (hero.magnetRadius - dHero) * 3;
-          gem.vx = ((hero.x - gem.x) / dHero) * pullSpeed;
-          gem.vy = ((hero.y - gem.y) / dHero) * pullSpeed;
+          const pullSpeed = 460 + Math.max(0, hero.magnetRadius - dHero) * 3; // was negative past ~280px: far gems got pushed away after a magnet pickup
+          gem.vx = ((hero.x - gem.x) / (dHero || 1)) * pullSpeed;
+          gem.vy = ((hero.y - gem.y) / (dHero || 1)) * pullSpeed;
           gem.x += gem.vx * dt;
           gem.y += gem.vy * dt;
 
@@ -6917,21 +6923,22 @@
     // --- MAIN GAME LOOP ---
     let lastTimestamp = performance.now();
 
-    const SM_TOP = Math.min(1, Math.max(0.5, parseFloat(new URLSearchParams(location.search).get('top')) || (/Instagram|FBAN|FBAV|FB_IAB/.test(navigator.userAgent) ? 0.45 : 0.75)));
+    const SM_TOP = Math.min(1, Math.max(0.5, parseFloat(new URLSearchParams(location.search).get('top')) || 0.75));
     const SM_LV = [SM_TOP, SM_TOP * 0.78, SM_TOP * 0.6, SM_TOP * 0.48, 0.34];
     const SM = { lv: SM_LV, i: 0, ema: 16, bad: 0, calm: 0, slow: 0, stepAt: 0, upAt: 0, hold: 5000, dips: 0, emaAtStep: 0, futile: false };
     const SM_FROM_S = 15, SM_BAD_MS = 18, SM_CALM_MS = 17.2, SM_FIRST_BAD = 2, SM_NEXT_BAD = 14, SM_SLOW_MS = 30, SM_FLOOR_SLOW = 90, SM_CALM_FRAMES = 90;
-    function smSet(i) { SM.i = i; SM.bad = 0; SM.calm = 0; SM.slow = 0; SM.futile = false; SM.emaAtStep = SM.ema; SM.stepAt = performance.now(); GFX.scale = SM.lv[i]; SPARK_CAP = i >= 2 ? 90 : 150; if (!LAVA.reduced) LAVA.every = i >= 1 ? 4 : 2; resize(); }
+    function smSet(i) { SM.i = i; SM.bad = 0; SM.calm = 0; SM.slow = 0; SM.futile = false; SM.emaAtStep = SM.ema; SM.ema = 17; SM.settle = 25; SM.stepAt = performance.now(); GFX.scale = SM.lv[i]; SPARK_CAP = i >= 2 ? 90 : 150; if (!LAVA.reduced) LAVA.every = i >= 1 ? 4 : 2; resize(); }
     function gfxSmart(ms) {
       if (GFX.mode !== 60) return false;
       if (!SM.init) { SM.init = true; SM.stepAt = performance.now(); GFX.scale = SM.lv[0]; resize(); }
+      if (SM.settle > 0) { SM.settle--; return true; }
       SM.ema += (ms - SM.ema) * 0.25;
       if (gameTime < SM_FROM_S) return true; // the first seconds stay exactly as they were
       const now = performance.now(), last = SM.lv.length - 1;
       if (SM.ema > SM_BAD_MS || ms > 25) { SM.bad += ms > 45 ? 3 : ms > 25 ? 2 : 1; SM.calm = 0; } else { SM.bad = 0; SM.calm = SM.ema < SM_CALM_MS ? SM.calm + 1 : 0; }
       SM.slow = SM.ema > SM_SLOW_MS ? SM.slow + 1 : 0;
       if (SM.bad >= (SM.i === 0 ? SM_FIRST_BAD : SM_NEXT_BAD) && !SM.futile) {
-        if (SM.i > 0 && SM.ema > SM.emaAtStep - 0.5) SM.futile = true; // the last drop bought nothing: logic-bound, resolution cannot help
+        if (SM.i >= 3 && SM.ema > SM.emaAtStep - 0.5) SM.futile = true; // the last drop bought nothing: logic-bound, resolution cannot help
         else if (SM.i < last) {
           if (SM.upAt && now - SM.upAt < 20000) SM.hold = Math.min(SM.hold * 2, 60000);
           if (SM.i === 0) SM.dips++;
@@ -7052,44 +7059,5 @@
 
   })();
   </script>
-
-<div id="iab-gate" style="display:none;position:fixed;inset:0;z-index:100000;background:#0d0818;color:#fff;font-family:'Trebuchet MS',system-ui,sans-serif;text-align:center;padding:28px 22px;overflow:auto">
-  <div style="max-width:420px;margin:0 auto;padding-top:8vh">
-    <div style="font-size:26px;font-weight:900;color:#ffd23f;line-height:1.15">Sorceress vs the Idiots</div>
-    <p style="font-size:17px;line-height:1.45;margin:18px 0 6px">Instagram's built-in browser is too slow for this game.</p>
-    <p style="font-size:17px;line-height:1.45;margin:0 0 22px">For smooth play, open it in your browser:</p>
-    <a id="iab-open" href="#" style="display:block;background:#7c3aed;color:#fff;text-decoration:none;font-weight:900;font-size:21px;padding:18px 12px;border-radius:14px;margin:0 0 12px">Open in Chrome</a>
-    <p id="iab-how" style="font-size:15px;line-height:1.5;color:#cbbbe8;margin:0 0 20px">Or tap the <b>&#8942;</b> / <b>&#8226;&#8226;&#8226;</b> menu (top right) and choose <b>Open in browser</b>.</p>
-    <p dir="rtl" style="font-size:16px;line-height:1.7;margin:0 0 20px">&#1576;&#1585;&#1575;&#1740; &#1575;&#1580;&#1585;&#1575;&#1740; &#1585;&#1608;&#1575;&#1606; &#1576;&#1575;&#1586;&#1740;&#1548; &#1570;&#1606; &#1585;&#1575; &#1583;&#1585; &#1605;&#1585;&#1608;&#1585;&#1711;&#1585; &#1576;&#1575;&#1586; &#1705;&#1606;&#1740;&#1583; (&#1605;&#1606;&#1608;&#1740; &#8942; &#1576;&#1575;&#1604;&#1575; &#1587;&#1605;&#1578; &#1585;&#1575;&#1587;&#1578; &larr; Open in browser)</p>
-    <button id="iab-stay" style="background:none;border:1px solid #6b5a8e;color:#cbbbe8;font-size:15px;padding:12px 18px;border-radius:12px">Play here anyway (lower quality)</button>
-  </div>
-</div>
-<script>
-(function () {
-  try {
-    var ua = navigator.userAgent || '', inApp = /Instagram|FBAN|FBAV|FB_IAB/.test(ua);
-    var skip = /[?&]play=1/.test(location.search) || sessionStorage.getItem('iab-stay') === '1';
-    if (!inApp || skip) return;
-    var gate = document.getElementById('iab-gate'), open = document.getElementById('iab-open');
-    var path = location.host + location.pathname;
-    if (/Android/i.test(ua)) {
-      var fb = encodeURIComponent('https://' + path + '?play=1');
-      open.href = 'intent://' + path + '#Intent;scheme=https;package=com.android.chrome;S.browser_fallback_url=' + fb + ';end';
-    } else {
-      // iPhone has no Chrome-style intent: Instagram's own extbrowser link hands the page to the default browser (Safari);
-      // Facebook/others take the x-safari scheme. Neither is guaranteed, so the menu instructions stay underneath.
-      var full = encodeURIComponent('https://' + path);
-      open.textContent = 'Open in Safari';
-      open.href = /Instagram/.test(ua) ? 'instagram://extbrowser/?url=' + full : 'x-safari-https://' + path;
-      document.getElementById('iab-how').innerHTML = 'If the button does nothing, tap the <b>&#8226;&#8226;&#8226;</b> menu and choose <b>Open in Safari</b> (or Open in external browser).';
-    }
-    document.getElementById('iab-stay').addEventListener('click', function () {
-      try { sessionStorage.setItem('iab-stay', '1'); } catch (e) {}
-      gate.style.display = 'none';
-    });
-    gate.style.display = 'block';
-  } catch (e) {}
-})();
-</script>
 </body>
 </html>
