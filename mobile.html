@@ -1450,6 +1450,7 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
       dash: [1, 0.1, 0.04], gem: [0.7, 0.07, 0.06], levelup: [1, 0.3, 0], evolve: [1, 0.5, 0],
       roar: [0.75, 1.0, 0], slam: [1, 0.3, 0.03], hurt: [0.55, 0.35, 0.04], victory: [0.7, 1, 0], defeat: [0.7, 1, 0]
     };
+    let masterGain = null;
     const music = { a: null, b: null, cur: null, boss: false, gains: {} };
     const MUSIC_VOL = 0.3;
 
@@ -1464,7 +1465,11 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
         comp.threshold.value = -24; comp.knee.value = 18; comp.ratio.value = 4;
         comp.attack.value = 0.005; comp.release.value = 0.2;
         sfxBus.connect(comp);
-        comp.connect(audioCtx.destination);
+        // one master gain after everything: mute = gain 0 (instant, no async suspend/resume race)
+        masterGain = audioCtx.createGain();
+        masterGain.gain.value = isMuted ? 0 : 1;
+        masterGain.connect(audioCtx.destination);
+        comp.connect(masterGain);
         sfxMeter = audioCtx.createAnalyser();
         sfxBus.connect(sfxMeter);
         SFX_FILES.forEach(n => {
@@ -1523,7 +1528,7 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
       const g = audioCtx.createGain();
       g.gain.value = 0;
       audioCtx.createMediaElementSource(el).connect(g);
-      g.connect(audioCtx.destination);
+      g.connect(masterGain);
       return { el, g };
     }
 
@@ -6723,19 +6728,16 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
         b.classList.toggle('muted', isMuted);
         b.setAttribute('aria-label', isMuted ? 'Sound off' : 'Sound on');
       });
-      if (!audioCtx) return;
-      if (isMuted) audioCtx.suspend();
-      else if (audioCtx.state === 'suspended') audioCtx.resume();
+      if (!audioCtx || !masterGain) return;
+      masterGain.gain.cancelScheduledValues(audioCtx.currentTime);
+      masterGain.gain.setValueAtTime(isMuted ? 0 : 1, audioCtx.currentTime);
+      if (!isMuted && audioCtx.state !== 'running') audioCtx.resume();
     }
     function toggleMute() {
       isMuted = !isMuted;
       try { localStorage.setItem(MUTE_KEY, isMuted ? '1' : '0'); } catch (err) { /* choice not persisted */ }
       applyMute();
     }
-    // The audio block resumes the context on every gesture; re-suspend right after it while muted.
-    ['pointerdown', 'click', 'touchstart', 'keydown'].forEach(ev => window.addEventListener(ev, () => {
-      if (isMuted && audioCtx && audioCtx.state !== 'suspended') audioCtx.suspend();
-    }));
     document.querySelectorAll('[data-sound-toggle]').forEach(b => b.addEventListener('click', toggleMute));
     applyMute();
 
