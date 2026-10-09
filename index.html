@@ -368,6 +368,19 @@
     }
     .end-btn:hover { background-color: transparent; filter: brightness(1.15) drop-shadow(0 5px 6px rgba(0, 0, 0, 0.6)); }
     .end-btn:active { box-shadow: none; }
+    /* Lucky Die reroll: same stone button art + parchment/ink text as the other menu buttons */
+    #dice-reroll {
+      display: none; align-items: center; gap: 8px;
+      margin-top: 10px; min-width: 250px; justify-content: center;
+      background: url('sprites/ui/button.png') center / 100% 100% no-repeat;
+      border: none; color: var(--parchment); font-size: 16px; font-weight: 800;
+      text-shadow: var(--ink-outline); padding: 16px 30px; cursor: pointer;
+      filter: drop-shadow(0 5px 6px rgba(0, 0, 0, 0.6));
+      transition: translate 0.15s ease, scale 0.15s ease, filter 0.15s ease;
+    }
+    #dice-reroll img { width: 40px; height: 40px; margin: -8px 0; filter: drop-shadow(0 0 6px #b84dff); }
+    #dice-reroll:hover { translate: 0 -3px; scale: 1.04; filter: brightness(1.15) drop-shadow(0 0 8px #b84dff) drop-shadow(0 5px 6px rgba(0, 0, 0, 0.6)); }
+    #dice-reroll:active { translate: 0 2px; scale: 0.98; }
 
     #dash-btn {
       width: 88px;
@@ -575,6 +588,7 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
       <p id="modal-subheading" style="font-size: 13px; color: #cbd5e1; margin-bottom: 16px;">Choose your arcana power</p>
       </div>
       <div id="cards-container" class="modal-card-container"></div>
+      <button id="dice-reroll" type="button"><img src="sprites/icons/reroll.png" alt="" style="width:34px;height:34px"><span id="dice-reroll-label"></span></button>
     </div>
 
     <!-- End Game Modal -->
@@ -1161,6 +1175,7 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
       'potion': 'sprites/items/potion.png',
       'magnet': 'sprites/items/magnet.png',
       'boots': 'sprites/items/boots.png',
+      'dice': 'sprites/items/dice.png',
       // Elite drops & Relics
       'chest': 'sprites/items/chest.png',
       'storm-staff': 'sprites/items/storm-staff.png',
@@ -2349,6 +2364,7 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
       addShake(4);
       Sound.clunk();
 
+      if (rollLuckyDie(v)) return;
       const r = Math.random();
       if (r < 0.40) {
         // 40% chance: 3-6 soul gems
@@ -2367,6 +2383,17 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
         spawnPickup('boots', v.x, v.y);
       }
       // 5% chance: nothing
+    }
+
+    // Lucky Die: very rare reroll token from vases. Hard cap per run, chance ramps up while none drops (pity).
+    const DICE_MAX_PER_RUN = 3, DICE_BASE_CHANCE = 0.03, DICE_PITY_STEP = 0.003;
+    let diceHeld = 0, diceFound = 0, vasesSinceDice = 0;
+    function rollLuckyDie(v) {
+      if (diceFound >= DICE_MAX_PER_RUN) return false;
+      if (Math.random() >= DICE_BASE_CHANCE + vasesSinceDice * DICE_PITY_STEP) { vasesSinceDice++; return false; }
+      vasesSinceDice = 0; diceFound++;
+      spawnPickup('dice', v.x, v.y);
+      return true;
     }
 
     function spawnPickup(type, x, y) {
@@ -2389,6 +2416,10 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
       } else if (p.type === 'magnet') {
         soulGems.forEach(g => { g.magnetized = true; });
         playVFX('spark', hero.x, hero.y - 12, { scale: 0.8, fps: 24 });
+      } else if (p.type === 'dice') {
+        diceHeld++;
+        spawnDamageNumber(hero.x, hero.y - 30, `LUCKY DIE x${diceHeld}`, false, true);
+        playVFX('levelup', hero.x, hero.y - 15, { scale: 0.7, fps: 16, tint: 'gold' });
       } else if (p.type === 'boots') {
         hero.speedBuffTimer = 8.0;
         playVFX('spark', hero.x, hero.y - 12, { scale: 0.7, fps: 24 });
@@ -4376,6 +4407,17 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
         container.appendChild(card);
       });
 
+      const rr = document.getElementById('dice-reroll');
+      rr.style.display = (!isChest && diceHeld > 0) ? 'inline-flex' : 'none';
+      document.getElementById('dice-reroll-label').innerText = `Reroll cards (${diceHeld} left)`;
+      rr.onclick = () => {
+        if (diceHeld <= 0) return;
+        diceHeld--;
+        Sound.gem();
+        isPausedForModal = false; // redraw the same level-up with fresh cards; it is not spent
+        openLevelUpModal(isChest);
+      };
+
       modal.style.display = 'flex';
     }
 
@@ -5261,13 +5303,13 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
       const img = SPRITES[p.type];
       if (img && img.complete && img.naturalWidth > 0) {
         // keep the art's own proportions (was forced into a 36x36 square = squashed/thin)
-        const PICK = 40, k = PICK / Math.max(img.naturalWidth, img.naturalHeight);
+        const PICK = p.type === 'dice' ? 50 : 40, k = PICK / Math.max(img.naturalWidth, img.naturalHeight);
         const w = img.naturalWidth * k, h = img.naturalHeight * k;
         ctx.drawImage(img, -w / 2, -h / 2, w, h);
       } else {
         ctx.font = '24px sans-serif';
         ctx.textAlign = 'center';
-        ctx.fillText(p.type === 'potion' ? '🧪' : (p.type === 'magnet' ? '🧲' : '👢'), 0, 8);
+        ctx.fillText(p.type === 'potion' ? '🧪' : (p.type === 'magnet' ? '🧲' : (p.type === 'dice' ? '🎲' : '👢')), 0, 8);
       }
       ctx.restore();
     }
@@ -6704,6 +6746,7 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
       passive: id => { if (PASSIVE_REGISTRY[id] && hero.passives[id] < MAX_LEVEL) PASSIVE_REGISTRY[id].apply(); return hero.passives[id]; },
       hurt: n => { hero.hp = Math.max(1, hero.hp - n); return hero.hp; }, // HUD juice QA: god mode skips hitHero
       heal: n => { hero.hp = Math.min(hero.maxHp, hero.hp + n); return hero.hp; },
+      die: (atHero) => { if (atHero) spawnPickup('dice', hero.x + 40, hero.y); else diceHeld++; return { held: diceHeld, found: diceFound }; },
       levelUp: () => openLevelUpModal(false), // opens the real level-up modal (pick with .upgrade-card clicks)
       chest: (allRelics) => { if (allRelics) Object.keys(RELIC_REGISTRY).forEach(id => hero.relics.add(id)); openRelicModal(); },
       // god-mode test hook: an unowned registry weapon is granted first; optional level / evo ('A'|'B')
