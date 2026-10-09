@@ -4731,6 +4731,17 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
         container.appendChild(card);
       });
 
+      // Lucky Die: reroll the relic/blessing choices (this modal), not the level-up cards
+      const rr = document.getElementById('dice-reroll');
+      rr.style.display = diceHeld > 0 ? 'inline-flex' : 'none';
+      document.getElementById('dice-reroll-label').innerText = `Reroll relics (${diceHeld} left)`;
+      rr.onclick = () => {
+        if (diceHeld <= 0) return;
+        diceHeld--;
+        Sound.gem();
+        openRelicModal();
+      };
+
       modal.style.display = 'flex';
     }
 
