@@ -1292,7 +1292,7 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
         // UI art that used to download the first time it was shown (level-up cards, pause panel, buttons, icons): fetch + decode it now, quietly, behind the loading fade
         window.__uiKeep = ['card-normal','card-evolve','card-relic','panel','button','dash-button','btn-pause','btn-play','btn-home','btn-restart','btn-settings','btn-sound-on','btn-sound-off','btn-skull']
           .map(n => 'sprites/ui/' + n + '.png')
-          .concat(['bolt','chain','frost','blades','beam','runes','frog','meteor','fire','area','damage','speed','cooldown','health','magnet','vortex'].map(n => 'sprites/icons/' + n + '.png'))
+          .concat(['bolt','chain','frost','blades','beam','runes','frog','meteor','fire','area','damage','speed','cooldown','health','magnet','vortex','orbs','totem'].map(n => 'sprites/icons/' + n + '.png'))
           .map(u => { const im = new Image(); im.decoding = 'async'; im.src = u; if (im.decode) im.decode().catch(() => {}); return im; });
         setTimeout(() => {
           const ls = document.getElementById('loading-screen');
@@ -2242,8 +2242,7 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
         id: 'orbs',
         name: 'Arcane Orbs',
         icon: '🟣',
-        iconSrc: 'sprites/icons/runes.png',
-        iconFilter: 'hue-rotate(70deg) saturate(1.4)',
+        iconSrc: 'sprites/icons/orbs.png',
         desc: 'Homing magic missiles seek out the 3 nearest enemies.',
         levels: [
           { projs: 2, dmg: 20, cd: 1.3 },
@@ -2257,8 +2256,7 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
         id: 'totem',
         name: 'Hex Totem',
         icon: '🗿',
-        iconSrc: 'sprites/icons/chain.png',
-        iconFilter: 'hue-rotate(150deg) saturate(1.3)',
+        iconSrc: 'sprites/icons/totem.png',
         desc: 'Plants a hex totem that zaps nearby enemies for 6 s.',
         levels: [
           { dmg: 18, rad: 170, rate: 0.6, cd: 7.0 },
