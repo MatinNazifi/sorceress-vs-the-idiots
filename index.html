@@ -3571,7 +3571,7 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
               e.state = 'walk';
               Sound.hit(true);
               if (distToHero < 95) {
-                hitHero(e.damage);
+                hitHero(e.damage, e.type);
               }
             }
           } else {
@@ -3732,7 +3732,7 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
 
         if (ENEMY_MELEE.has(e.type) && distToHero < e.radius + hero.radius + ATK_RANGE_PAD) startEnemyAttack(e, false);
         if (distToHero < (e.radius + hero.radius)) {
-          hitHero(e.pulledT > 0 ? e.damage * 0.25 : e.damage);
+          hitHero(e.pulledT > 0 ? e.damage * 0.25 : e.damage, e.type);
         }
       }
     }
@@ -3806,8 +3806,9 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
       if (Math.abs(dx) > 4) e.facing = dx > 0 ? 1 : -1;
     }
 
-    function hitHero(damage) {
+    function hitHero(damage, srcType) {
       if (isGod || hero.iFrames > 0 || isGameOver) return;
+      if (srcType) telemetryHit(srcType); // remembers who last hurt the hero (killer stat)
       // Balance: damage taken * 0.9, then +5% (user: +10% harder overall)
       damage *= 0.9 * 1.05;
       const m = gameTime / 60;
@@ -4046,7 +4047,7 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
         ep.life -= dt;
 
         if (Math.hypot(hero.x - ep.x, hero.y - ep.y) < (hero.radius + ep.radius)) {
-          hitHero(ep.dmg);
+          hitHero(ep.dmg, 'projectile');
           ep.life = 0;
         }
         if (ep.life <= 0) enemyProjectiles.splice(i, 1);
@@ -4711,6 +4712,7 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
     function triggerGameOver(victory) {
       isGameOver = true;
       isVictory = victory;
+      telemetryRun(victory); // anonymous run stats (opt-out in the pause menu)
       stopMusic();
       if (victory) Sound.victory(); else Sound.defeat();
       const modal = document.getElementById('end-modal');
@@ -6836,6 +6838,293 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
       }
     }
 
+// Phase A: Client-side telemetry module (zero per-frame cost, event-driven)
+let telPid = '';
+let telSid = '';
+let telCurrentRid = null;
+let telRunSent = false;
+let telLastKiller = '';
+
+function telGenRandom(len) {
+  let s = '';
+  while (s.length < len) {
+    s += Math.random().toString(36).slice(2);
+  }
+  return s.slice(0, len);
+}
+
+function telUuid() {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') return crypto.randomUUID();
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+    const r = (Math.random() * 16) | 0;
+    return (c === 'x' ? r : ((r & 0x3) | 0x8)).toString(16);
+  });
+}
+
+function telGetOrCreatePid() {
+  try {
+    let id = localStorage.getItem('svti-pid');
+    if (id && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) {
+      return id;
+    }
+    if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+      id = crypto.randomUUID();
+    } else {
+      id = 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+        const r = (Math.random() * 16) | 0;
+        return (c === 'x' ? r : ((r & 0x3) | 0x8)).toString(16);
+      });
+    }
+    localStorage.setItem('svti-pid', id);
+    return id;
+  } catch (e) {
+    return telUuid(); // ponytail: not persisted; each page load counts as a new player when storage is blocked
+  }
+}
+
+function telParseBrowser(ua) {
+  if (/edg/i.test(ua)) return 'edge';
+  if (/samsungbrowser/i.test(ua)) return 'samsung';
+  if (/firefox|fxios/i.test(ua)) return 'firefox';
+  if (/chrome|crios/i.test(ua)) return 'chrome';
+  if (/safari/i.test(ua)) return 'safari';
+  return 'other';
+}
+
+const telClientInfo = (function() {
+  const ua = (typeof navigator !== 'undefined' && navigator.userAgent) || '';
+  const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(ua) ||
+    (typeof navigator !== 'undefined' && navigator.maxTouchPoints > 1 && /Macintosh/.test(ua));
+  const w = (typeof window !== 'undefined' && window.innerWidth) || 1024;
+  return {
+    plat: isMobile ? 'm' : 'd',
+    br: telParseBrowser(ua),
+    iab: /Instagram|FBAN|FBAV|FB_IAB/i.test(ua) ? 1 : 0,
+    scr: w <= 420 ? 's' : (w <= 900 ? 'm' : 'l'),
+    lang: (typeof navigator !== 'undefined' && navigator.language ? navigator.language.slice(0, 2).toLowerCase() : 'en')
+  };
+})();
+
+function telGetEndpoint() {
+  if (typeof window !== 'undefined' && window.__SV_TEL_URL === '') return '';
+  const base = (typeof window !== 'undefined' && window.__SV_TEL_URL) ||
+               (typeof lbBase !== 'undefined' && lbBase) || '';
+  if (!base) return '';
+  return base.replace(/\/+$/, '') + '/t';
+}
+
+let telOptedOut = false; // memory fallback when localStorage is blocked
+function telemetryIsEnabled() {
+  if (telOptedOut) return false;
+  try {
+    if (localStorage.getItem('svti-tel') === '0') return false;
+  } catch (e) {}
+  if (typeof window !== 'undefined' && window.__SV_TEL_URL === '') return false;
+  if (typeof lbBase !== 'undefined' && String(lbBase).indexOf('PLACEHOLDER') >= 0) return false;
+  const hasTelTest = typeof urlParams !== 'undefined' && urlParams && urlParams.get('teltest') === '1'; // QA override: test flags still send
+  if (!hasTelTest) {
+    if (typeof urlParams !== 'undefined' && urlParams) {
+      if (urlParams.has('god') || urlParams.has('speed') || urlParams.has('tut') || urlParams.has('notrack')) {
+        return false;
+      }
+    }
+    if (typeof isGod !== 'undefined' && isGod) return false;
+    if (typeof speedMult !== 'undefined' && speedMult !== 1) return false;
+  }
+
+  const host = (typeof location !== 'undefined' && location.hostname) || '';
+  const isLocal = host === 'localhost' || host === '127.0.0.1' || host === '';
+  if (isLocal && !hasTelTest) return false;
+
+  return !!telGetEndpoint();
+}
+
+function telSend(ev, extra, force) {
+  if (!force && !telemetryIsEnabled()) return;
+  const endpoint = telGetEndpoint();
+  if (!endpoint) return;
+
+  try {
+    const rawVer = typeof GAME_VERSION !== 'undefined' ? GAME_VERSION : (typeof GAME_VER !== 'undefined' ? GAME_VER : '1.0.0');
+    const payload = Object.assign({
+      v: 1,
+      pid: telPid || (telPid = telGetOrCreatePid()),
+      sid: telSid || (telSid = telGenRandom(12)),
+      ch: ((typeof window !== 'undefined' && window.__SV_CHANNEL === 'beta') || (typeof urlParams !== 'undefined' && urlParams && urlParams.get('teltest') === '1')) ? 'beta' : 'stable',
+      ev: ev,
+      ver: String(rawVer).slice(0, 12),
+      plat: telClientInfo.plat,
+      br: telClientInfo.br,
+      iab: telClientInfo.iab,
+      scr: telClientInfo.scr,
+      lang: telClientInfo.lang
+    }, extra || {});
+
+    const body = JSON.stringify(payload);
+    if (body.length > 2048) return;
+
+    if (typeof navigator !== 'undefined' && navigator.sendBeacon) {
+      const blob = new Blob([body], { type: 'text/plain;charset=UTF-8' });
+      if (navigator.sendBeacon(endpoint, blob)) return;
+    }
+    if (typeof fetch === 'function') {
+      fetch(endpoint, {
+        method: 'POST',
+        body: body,
+        keepalive: true,
+        headers: { 'Content-Type': 'text/plain' }
+      }).catch(function() {});
+    }
+  } catch (e) {}
+}
+
+function telemetryHit(enemyType) {
+  if (enemyType) {
+    telLastKiller = String(enemyType).replace(/[^A-Za-z0-9_-]/g, '').slice(0, 16);
+    if (typeof window !== 'undefined') window.__svLastKiller = telLastKiller;
+  }
+}
+
+function telemetryRun(victory, isAbandoned) {
+  if (telRunSent) return;
+  if (!telemetryIsEnabled()) return;
+
+  try {
+    const rawDur = typeof gameTime === 'number' ? Math.floor(gameTime) : 0;
+    if (rawDur <= 0 && !isAbandoned) return;
+
+    const dur = Math.max(0, Math.min(7200, rawDur));
+    const dm = Math.max(0, Math.min(10, Math.floor(dur / 60)));
+    const won = victory ? 1 : 0;
+    const killer = won ? '' : (telLastKiller || (typeof window !== 'undefined' && window.__svLastKiller) || '');
+
+    let wp = '';
+    if (typeof hero !== 'undefined' && hero && Array.isArray(hero.weapons)) {
+      wp = hero.weapons.map(function(w) {
+        if (!w) return '';
+        const id = String(w.id || '').replace(/[^A-Za-z0-9_-]/g, '');
+        const lvl = typeof w.level === 'number' ? w.level : 1;
+        const evo = (w.evo === 'A' || w.evo === 'B') ? w.evo : '';
+        return id + ':' + lvl + ':' + evo;
+      }).filter(Boolean).join(',').slice(0, 160);
+    }
+
+    let rl = '';
+    if (typeof hero !== 'undefined' && hero && hero.relics) {
+      const rArr = (hero.relics instanceof Set) ? Array.from(hero.relics) : (Array.isArray(hero.relics) ? hero.relics : Object.keys(hero.relics));
+      rl = rArr.map(function(id) {
+        return String(id).replace(/[^A-Za-z0-9_-]/g, '');
+      }).filter(Boolean).join(',').slice(0, 80);
+    }
+
+    let pa = '';
+    if (typeof hero !== 'undefined' && hero && hero.passives && typeof hero.passives === 'object') {
+      pa = Object.keys(hero.passives).filter(function(k) {
+        return hero.passives[k] > 0;
+      }).map(function(k) {
+        const id = String(k).replace(/[^A-Za-z0-9_-]/g, '');
+        return id + ':' + Math.floor(hero.passives[k]);
+      }).join(',').slice(0, 120);
+    }
+
+    const lvl = (typeof hero !== 'undefined' && hero && typeof hero.level === 'number') ? Math.max(0, Math.min(100, Math.floor(hero.level))) : 1;
+    const kills = (typeof killCount === 'number') ? Math.max(0, Math.min(100000, Math.floor(killCount))) : 0;
+    const gov = (typeof window !== 'undefined' && typeof window.__svGov === 'number') ? window.__svGov : -1;
+    const ms = (typeof window !== 'undefined' && typeof window.__svMs === 'number') ? Math.round(window.__svMs * 10) / 10 : 0;
+
+    telSend('run', {
+      rid: telCurrentRid || (telCurrentRid = telGenRandom(12)),
+      dur: dur,
+      dm: dm,
+      killer: killer,
+      lvl: lvl,
+      kills: kills,
+      won: won,
+      wp: wp,
+      rl: rl,
+      pa: pa,
+      gov: gov,
+      ms: ms,
+      omen: '',
+      gold: 0,
+      abandoned: isAbandoned ? 1 : 0
+    });
+
+    telRunSent = true;
+    telCurrentRid = null;
+  } catch (e) {}
+}
+
+function telemetrySetOptOut(off) {
+  telOptedOut = !!off;
+  try { if (off) localStorage.setItem('svti-tel', '0'); else localStorage.removeItem('svti-tel'); } catch (e) {}
+  if (off) telSend('opt', { on: 0 }, true);
+}
+
+function telemetryInit() {
+  try {
+    telPid = telGetOrCreatePid();
+    telSid = telGenRandom(12);
+    telSend('session');
+  } catch (e) {}
+}
+
+// 120s Heartbeat: active only during live run with visible tab (zero per-frame cost)
+setInterval(function() {
+  try {
+    if (typeof document !== 'undefined' && (document.hidden || document.visibilityState !== 'visible')) return;
+    const isRunActive = (typeof isGameOver !== 'undefined' ? !isGameOver : true) && (typeof gameTime === 'number' && gameTime > 0);
+    if (!isRunActive) return;
+    telSend('hb');
+  } catch (e) {}
+}, 120000);
+
+if (typeof window !== 'undefined') {
+  window.addEventListener('pagehide', function() {
+    try {
+      const isRunActive = (typeof isGameOver !== 'undefined' ? !isGameOver : true) && (typeof gameTime === 'number' && gameTime > 0);
+      if (isRunActive && !telRunSent) {
+        telemetryRun(false, 1);
+      }
+    } catch (e) {}
+  });
+
+  window.telemetryInit = telemetryInit;
+  window.telemetryRun = telemetryRun;
+  window.telemetryHit = telemetryHit;
+  window.telemetrySetOptOut = telemetrySetOptOut;
+}
+
+// Small UI, built here (not in the shell HTML) so the mobile build's text patches keep matching
+function telBuildUi() {
+  try {
+    const mm = document.getElementById('main-menu');
+    if (mm && !document.getElementById('tel-notice')) {
+      const n = document.createElement('div');
+      n.id = 'tel-notice';
+      n.textContent = 'Anonymous play stats help balance the game. Turn off anytime in the pause menu.';
+      n.style.cssText = 'position:absolute;left:0;right:0;bottom:calc(env(safe-area-inset-bottom,0px) + 6px);text-align:center;font:600 11px Trebuchet MS,Segoe UI,Arial,sans-serif;color:#fff;opacity:.55;pointer-events:none;z-index:2;padding:0 16px';
+      mm.appendChild(n);
+    }
+    const panel = document.querySelector('#pause-modal .pause-panel');
+    if (panel && !document.getElementById('tel-toggle')) {
+      const b = document.createElement('button');
+      b.id = 'tel-toggle';
+      b.type = 'button';
+      b.style.cssText = 'display:block;margin:14px auto 0;background:none;border:0;color:#cbd5e1;font:600 13px Trebuchet MS,Segoe UI,Arial,sans-serif;text-decoration:underline;cursor:pointer;-webkit-tap-highlight-color:transparent';
+      const sync = function() { let off = false; try { off = localStorage.getItem('svti-tel') === '0'; } catch (e) {} b.textContent = 'Share anonymous stats: ' + (off ? 'Off' : 'On'); };
+      b.addEventListener('click', function() {
+        let off = false; try { off = localStorage.getItem('svti-tel') === '0'; } catch (e) {}
+        telemetrySetOptOut(!off); sync();
+      });
+      sync();
+      panel.appendChild(b);
+    }
+  } catch (e) {}
+}
+
+telBuildUi();
+telemetryInit();
     // --- MAIN GAME LOOP ---
     let lastTimestamp = performance.now();
 
