@@ -1145,6 +1145,7 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
       'vfx-spark': 'sprites/vfx/spark.png',
       'vfx-poof': 'sprites/vfx/poof.png',
       'vfx-explosion': 'sprites/vfx/explosion-soft.png',
+      'vfx-void': 'sprites/vfx/void.png',
       'vfx-frost': 'sprites/vfx/frost.png',
       'vfx-levelup': 'sprites/vfx/levelup.png',
       'vfx-fire': 'sprites/vfx/fire.png',
@@ -1209,7 +1210,7 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
         // UI art that used to download the first time it was shown (level-up cards, pause panel, buttons, icons): fetch + decode it now, quietly, behind the loading fade
         window.__uiKeep = ['card-normal','card-evolve','card-relic','panel','button','dash-button','btn-pause','btn-play','btn-home','btn-restart','btn-settings','btn-sound-on','btn-sound-off','btn-skull']
           .map(n => 'sprites/ui/' + n + '.png')
-          .concat(['bolt','chain','frost','blades','beam','runes','frog','meteor','fire','area','damage','speed','cooldown','health','magnet'].map(n => 'sprites/icons/' + n + '.png'))
+          .concat(['bolt','chain','frost','blades','beam','runes','frog','meteor','fire','area','damage','speed','cooldown','health','magnet','vortex'].map(n => 'sprites/icons/' + n + '.png'))
           .map(u => { const im = new Image(); im.decoding = 'async'; im.src = u; if (im.decode) im.decode().catch(() => {}); return im; });
         setTimeout(() => {
           const ls = document.getElementById('loading-screen');
@@ -2047,8 +2048,7 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
         id: 'vortex',
         name: 'Gravity Well',
         icon: '🌀',
-        iconSrc: 'sprites/icons/area.png',
-        iconFilter: 'hue-rotate(110deg) saturate(1.5)',
+        iconSrc: 'sprites/icons/vortex.png',
         desc: 'A vortex drags enemies together, then pops in an explosion.',
         levels: [
           { dmg: 60, rad: 130, cd: 6.0 },
@@ -3443,11 +3443,12 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
         if (d > pt.rad * 1.3 || d < 8) return;
         e.x += (dx / d) * pt.pull * dt;
         e.y += (dy / d) * pt.pull * dt;
+        e.pulledT = 0.3;
       });
       if (pt.life > 0) return;
       Sound.meteor();
       addShake(pt.sing ? 16 : 10);
-      playVFX('explosion', pt.x, pt.y, { scale: pt.rad / 90, fps: 24, tint: 'pink' });
+      playVFX('void', pt.x, pt.y, { scale: pt.rad / 100, fps: 10 }); // painted void collapse + soft shockwave (Flow art)
       getNearbyEnemies(pt.x, pt.y, pt.rad).forEach(e => {
         if (e.hp > 0 && Math.hypot(e.x - pt.x, e.y - pt.y) < pt.rad) damageEnemy(e, pt.dmg, e.x >= pt.x ? 1 : -1, true);
       });
@@ -3534,6 +3535,7 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
         if (e.flashTimer > 0) e.flashTimer -= dt;
         if (e.slowTimer > 0) e.slowTimer -= dt;
         if (e.freezeTimer > 0) e.freezeTimer -= dt;
+        if (e.pulledT > 0) e.pulledT -= dt; // Gravity Well: enemies dragged by it hit the hero for 25% on contact
         if (e.hitFlash > 0) e.hitFlash -= dt;
         if (e.hurtT > 0) e.hurtT -= dt;
         if (e.atkRearm > 0) e.atkRearm -= dt;
@@ -3732,7 +3734,7 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
 
         if (ENEMY_MELEE.has(e.type) && distToHero < e.radius + hero.radius + ATK_RANGE_PAD) startEnemyAttack(e, false);
         if (distToHero < (e.radius + hero.radius)) {
-          hitHero(e.damage);
+          hitHero(e.pulledT > 0 ? e.damage * 0.25 : e.damage);
         }
       }
     }
@@ -4828,6 +4830,7 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
 
       // SCREEN SPACE HUD & FULLSCREEN FLASHES
       drawHUD();
+      drawChestPointers();
 
       // White impact flash
       if (screenFlash > 0) {
@@ -6366,6 +6369,162 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
     }
 
     let invLastT = 0;
+    // Chest pointers: edge arrow for off-screen chests, bobbing marker + glow for on-screen ones
+// Reused fixed arrays outside the frame loop for zero-allocation top-3 selection
+    const _chestNear = [null, null, null];
+    const _chestNearD = [0, 0, 0];
+
+    function drawChestPointers() {
+      const len = chests.length;
+      if (len === 0) return;
+
+      // Reset insertion slots
+      _chestNear[0] = null; _chestNear[1] = null; _chestNear[2] = null;
+      _chestNearD[0] = Infinity; _chestNearD[1] = Infinity; _chestNearD[2] = Infinity;
+
+      const hx = hero.x;
+      const hy = hero.y;
+
+      // ponytail: in-place 3-slot insertion to avoid sorting and array allocations
+      for (let i = 0; i < len; i++) {
+        const ch = chests[i];
+        if (!ch.landed) continue;
+        const dx = ch.x - hx;
+        const dy = ch.y - hy;
+        const d2 = dx * dx + dy * dy;
+
+        if (d2 < _chestNearD[2]) {
+          if (d2 < _chestNearD[1]) {
+            if (d2 < _chestNearD[0]) {
+              _chestNearD[2] = _chestNearD[1]; _chestNear[2] = _chestNear[1];
+              _chestNearD[1] = _chestNearD[0]; _chestNear[1] = _chestNear[0];
+              _chestNearD[0] = d2; _chestNear[0] = ch;
+            } else {
+              _chestNearD[2] = _chestNearD[1]; _chestNear[2] = _chestNear[1];
+              _chestNearD[1] = d2; _chestNear[1] = ch;
+            }
+          } else {
+            _chestNearD[2] = d2; _chestNear[2] = ch;
+          }
+        }
+      }
+
+      const halfW = screenW * 0.5;
+      const halfH = screenH * 0.5;
+      const camX = CAMERA.x;
+      const camY = CAMERA.y;
+      const zoom = CAMERA.zoom;
+      const minX = 24;
+      const maxX = screenW - 24;
+      const minY = 24;
+      const maxY = screenH - 24;
+      const limX = halfW - 48;
+      const limY = halfH - 48;
+
+      const spr = SPRITES['chest'];
+      const hasSprite = spr && spr.complete && spr.naturalWidth > 0;
+
+      for (let k = 0; k < 3; k++) {
+        const ch = _chestNear[k];
+        if (!ch) break;
+
+        const sx = halfW + (ch.x - camX) * zoom;
+        const sy = halfH + (ch.y - camY) * zoom;
+
+        if (sx >= minX && sx <= maxX && sy >= minY && sy <= maxY) {
+          // On-screen: faint ground glow ellipse
+          ctx.save();
+          ctx.beginPath();
+          ctx.ellipse(sx, sy, 30 * zoom, 12 * zoom, 0, 0, 6.2831853);
+          ctx.fillStyle = '#f5c542';
+          ctx.globalAlpha = 0.2 + 0.05 * Math.sin(gameTime * 4);
+          ctx.fill();
+          ctx.restore();
+
+          // On-screen: bobbing downward chevron
+          const bob = Math.sin(gameTime * 6) * 4;
+          const cy = sy - 46 + bob;
+
+          ctx.save();
+          ctx.lineWidth = 4;
+          ctx.strokeStyle = '#2a1208';
+          ctx.lineJoin = 'round';
+          ctx.fillStyle = '#f5c542';
+
+          ctx.beginPath();
+          ctx.moveTo(sx - 13, cy - 8);
+          ctx.lineTo(sx, cy - 2);
+          ctx.lineTo(sx + 13, cy - 8);
+          ctx.lineTo(sx + 13, cy);
+          ctx.lineTo(sx, cy + 9);
+          ctx.lineTo(sx - 13, cy);
+          ctx.closePath();
+          ctx.fill();
+          ctx.stroke();
+
+          // Highlight on upper edge
+          ctx.beginPath();
+          ctx.moveTo(sx - 11, cy - 7);
+          ctx.lineTo(sx, cy - 1);
+          ctx.lineTo(sx + 11, cy - 7);
+          ctx.strokeStyle = '#ffe58a';
+          ctx.lineWidth = 1.5;
+          ctx.stroke();
+          ctx.restore();
+        } else {
+          // Off-screen: clamp direction ray from centre to 48px inset boundary
+          let vx = sx - halfW;
+          let vy = sy - halfH;
+          if (vx === 0 && vy === 0) vy = -1; // ponytail: handle exact centre overlap
+
+          const tx = vx !== 0 ? Math.abs(limX / vx) : Infinity;
+          const ty = vy !== 0 ? Math.abs(limY / vy) : Infinity;
+          const t = tx < ty ? tx : ty;
+
+          const px = halfW + vx * t;
+          const py = halfH + vy * t;
+          const angle = Math.atan2(vy, vx);
+          const pulse = 1.075 + 0.075 * Math.sin(gameTime * 5);
+
+          // Draw unrotated chest sprite inward from arrow base
+          if (hasSprite) {
+            const sprX = px - Math.cos(angle) * 26;
+            const sprY = py - Math.sin(angle) * 26;
+            ctx.drawImage(spr, sprX - 11, sprY - 11, 22, 22);
+          }
+
+          // Draw rotated indicator arrow
+          ctx.save();
+          ctx.translate(px, py);
+          ctx.rotate(angle);
+          ctx.scale(pulse, pulse);
+
+          ctx.lineWidth = 4;
+          ctx.strokeStyle = '#2a1208';
+          ctx.lineJoin = 'round';
+          ctx.fillStyle = '#f5c542';
+
+          ctx.beginPath();
+          ctx.moveTo(14, 0);
+          ctx.lineTo(-8, -11);
+          ctx.lineTo(-3, 0);
+          ctx.lineTo(-8, 11);
+          ctx.closePath();
+          ctx.fill();
+          ctx.stroke();
+
+          // Highlight on leading edge
+          ctx.beginPath();
+          ctx.moveTo(-6, -9);
+          ctx.lineTo(12, 0);
+          ctx.strokeStyle = '#ffe58a';
+          ctx.lineWidth = 1.5;
+          ctx.stroke();
+          ctx.restore();
+        }
+      }
+    }
+
     function drawHUD() {
       const nowT = performance.now() / 1000;
       const hudDt = isPausedByUser || isPausedForModal ? 0 : Math.min(0.05, nowT - invLastT); // real time: pops play out even when ?speed=N
