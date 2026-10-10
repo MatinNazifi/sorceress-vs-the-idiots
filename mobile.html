@@ -7032,6 +7032,7 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
       if (on && (!runStarted || isGameOver || isPausedForModal)) return;
       isPausedByUser = on;
       if (on) tutHide();
+      if (on && typeof pauseInvRender === 'function') pauseInvRender();
       pauseModal.style.display = on ? 'flex' : 'none';
     }
     pauseBtn.addEventListener('click', () => setPaused(true));
@@ -7068,6 +7069,146 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
     // Call once on load to set initial pause button position (will be updated in drawHUD)
     placePauseButton(screenW - 8 - PAUSE_BTN_SIZE, 10);
 
+    // --- PAUSE INVENTORY: everything the hero carries, rebuilt each time the pause menu opens (no per-frame cost) ---
+    (function () {
+      const panel = document.querySelector('#pause-modal .pause-panel');
+      if (!panel) return;
+      const st = document.createElement('style');
+      st.textContent =
+        '#pause-inv{margin:0 0 12px;text-align:left}' +
+        '#pause-inv .pi-stats{text-align:center;font:800 13px "Trebuchet MS",sans-serif;color:var(--parchment);text-shadow:var(--ink-outline);margin-bottom:8px}' +
+        '#pause-inv .pi-list{max-height:min(40vh,300px);overflow-y:auto;overscroll-behavior:contain;padding-right:4px;-webkit-overflow-scrolling:touch}' +
+        '#pause-modal .pause-panel{padding-bottom:20px}' +
+        '#pause-inv h4{margin:8px 0 4px;padding-left:4px;font:900 12px "Trebuchet MS",sans-serif;letter-spacing:2px;color:#ffd23f;text-shadow:var(--ink-outline)}' +
+        '#pause-inv .pi-row{display:flex;align-items:center;gap:8px;padding:4px 6px;margin-bottom:3px;background:rgba(8,6,14,.55);border-radius:8px}' +
+        '#pause-inv .pi-ic{width:34px;height:34px;flex:none;object-fit:contain;display:flex;align-items:center;justify-content:center;font-size:24px}' +
+        '#pause-inv .pi-tx{flex:1;min-width:0}' +
+        '#pause-inv .pi-nm{font:800 13px "Trebuchet MS",sans-serif;color:var(--parchment);text-shadow:var(--ink-outline);display:flex;justify-content:space-between;gap:6px}' +
+        '#pause-inv .pi-lv{color:#ffd23f;white-space:nowrap}' +
+        '#pause-inv .pi-ds{font:600 11px "Trebuchet MS",sans-serif;color:#cbd5e1;opacity:.85;line-height:1.25}';
+      document.head.appendChild(st);
+      const box = document.createElement('div');
+      box.id = 'pause-inv';
+      const title = panel.querySelector('.pause-title');
+      panel.insertBefore(box, title ? title.nextSibling : panel.firstChild);
+
+      function icon(src, emoji) {
+        if (src) { const i = document.createElement('img'); i.className = 'pi-ic'; i.src = src; i.alt = ''; i.draggable = false; return i; }
+        const d = document.createElement('div'); d.className = 'pi-ic'; d.textContent = emoji || '✦'; return d;
+      }
+      function row(ic, name, lv, desc) {
+        const r = document.createElement('div'); r.className = 'pi-row'; r.appendChild(ic);
+        const t = document.createElement('div'); t.className = 'pi-tx';
+        const n = document.createElement('div'); n.className = 'pi-nm';
+        const a = document.createElement('span'); a.textContent = name; n.appendChild(a);
+        if (lv) { const b = document.createElement('span'); b.className = 'pi-lv'; b.textContent = lv; n.appendChild(b); }
+        t.appendChild(n);
+        if (desc) { const d = document.createElement('div'); d.className = 'pi-ds'; d.textContent = desc; t.appendChild(d); }
+        r.appendChild(t); return r;
+      }
+      function section(list, label, rows) {
+        if (!rows.length) return;
+        const h = document.createElement('h4'); h.textContent = label; list.appendChild(h);
+        rows.forEach(r => list.appendChild(r));
+      }
+
+      window.pauseInvRender = function () {
+        try {
+          box.textContent = '';
+          const m = Math.floor(gameTime / 60), s = Math.floor(gameTime % 60);
+          const stats = document.createElement('div'); stats.className = 'pi-stats';
+          stats.textContent = 'Level ' + hero.level + '  ·  HP ' + Math.ceil(hero.hp) + '/' + hero.maxHp + '  ·  ' + killCount + ' kills  ·  ' + m + ':' + (s < 10 ? '0' : '') + s;
+          box.appendChild(stats);
+          const list = document.createElement('div'); list.className = 'pi-list';
+
+          const weapons = hero.weapons.map(w => {
+            const reg = WEAPON_REGISTRY[w.id]; if (!reg) return null;
+            const ev = w.evo && EVOLUTIONS[w.id] && EVOLUTIONS[w.id][w.evo];
+            return row(icon(reg.iconSrc || ('sprites/icons/' + w.id + '.png')), ev ? ev.name : reg.name, ev ? 'EVOLVED' : ('Lv ' + w.level + '/' + MAX_LEVEL), ev ? ev.desc : reg.desc);
+          }).filter(Boolean);
+          section(list, 'WEAPONS', weapons);
+
+          const passives = Object.keys(hero.passives).filter(k => hero.passives[k] > 0 && PASSIVE_REGISTRY[k]).map(k => {
+            const reg = PASSIVE_REGISTRY[k];
+            return row(icon(reg.iconSrc || ('sprites/icons/' + k + '.png'), reg.icon), reg.name, 'Lv ' + hero.passives[k] + '/' + MAX_LEVEL, reg.desc);
+          });
+          section(list, 'UPGRADES', passives);
+
+          const relics = Array.from(hero.relics).filter(id => RELIC_REGISTRY[id]).map(id => {
+            const reg = RELIC_REGISTRY[id]; return row(icon(reg.icon), reg.name, '', reg.desc);
+          });
+          if (blessCount.might) relics.push(row(icon('sprites/icons/damage.png'), 'Arcane Might', 'x' + blessCount.might, '+8% damage each.'));
+          if (blessCount.haste) relics.push(row(icon('sprites/icons/cooldown.png'), 'Swift Sigil', 'x' + blessCount.haste, '-4% weapon cooldowns each.'));
+          section(list, 'RELICS & BLESSINGS', relics);
+
+          if (!list.children.length) { const e = document.createElement('div'); e.className = 'pi-ds'; e.textContent = 'Nothing yet.'; list.appendChild(e); }
+          box.appendChild(list);
+        } catch (e) { box.textContent = ''; } // never let the inventory break pausing
+      };
+    })();
+    // --- PATCH NOTES: "What's new" button (main menu + pause) with a NEW badge until the latest notes are opened ---
+    // To ship notes for a new update: add an entry at the TOP of PATCH_NOTES (newest first). Its id is what the NEW badge tracks.
+    const PATCH_NOTES = [
+      { id: '2026-10-10', ver: '1.1', title: 'Gravity Well, chests and a look inside your pockets', items: [
+        'Pause now shows everything you carry: weapons, upgrades, relics and blessings.',
+        'Gravity Well rework: enemies it drags past you hit 75% softer for a moment. New painted void burst and a new icon.',
+        'Chest arrow: off-screen chests, or ones hidden in the crowd, now show a golden arrow.',
+        'New icons for Arcane Orbs and Hex Totem.',
+        'You can now choose whether to share anonymous play stats (Agree or No thanks, changeable in the pause menu).',
+        'New: this patch notes button.'
+      ] }
+    ];
+    (function () {
+      const KEY = 'svti-patch', latest = PATCH_NOTES[0].id;
+      let seen = ''; try { seen = localStorage.getItem(KEY) || ''; } catch (e) {}
+      let seenMem = seen;
+      const st = document.createElement('style');
+      st.textContent =
+        '.pn-btn{position:relative;margin-top:14px;background:none;border:2px solid #7c4dbd;border-radius:999px;padding:8px 20px;color:var(--parchment);font:800 15px "Trebuchet MS",sans-serif;letter-spacing:1px;text-shadow:var(--ink-outline);cursor:pointer;-webkit-tap-highlight-color:transparent}' +
+        '.pn-btn .pn-new{position:absolute;top:-9px;right:-8px;background:#e8344f;color:#fff;border-radius:999px;padding:1px 7px;font:900 10px "Trebuchet MS",sans-serif;letter-spacing:1px;box-shadow:0 0 10px rgba(232,52,79,.8)}' +
+        '#patch-modal{z-index:150}#patch-modal .pn-panel{width:min(92vw,440px);border:26px solid transparent;border-image:url("sprites/ui/panel.png") 80 70 60 70 fill / 26px stretch;filter:drop-shadow(0 12px 20px rgba(0,0,0,.8));padding:6px 12px 8px;text-align:left}' +
+        '#patch-modal .pn-t{text-align:center;font:900 26px "Trebuchet MS",sans-serif;color:#ffd23f;text-shadow:var(--ink-outline),0 0 18px rgba(255,79,216,.55)}' +
+        '#patch-modal .pn-s{text-align:center;font:700 13px "Trebuchet MS",sans-serif;color:#cbd5e1;margin:2px 0 10px}' +
+        '#patch-modal ul{margin:0;padding-left:20px;max-height:min(46vh,320px);overflow-y:auto;overscroll-behavior:contain}' +
+        '#patch-modal li{font:600 14px "Trebuchet MS",sans-serif;color:var(--parchment);text-shadow:var(--ink-outline);margin-bottom:7px;line-height:1.3}' +
+        '#patch-modal .pn-ok{display:block;margin:12px auto 0}';
+      document.head.appendChild(st);
+
+      const modal = document.createElement('div');
+      modal.id = 'patch-modal'; modal.className = 'modal-overlay';
+      const p = document.createElement('div'); p.className = 'pn-panel';
+      const n = PATCH_NOTES[0];
+      const t = document.createElement('div'); t.className = 'pn-t'; t.textContent = "WHAT'S NEW";
+      const s = document.createElement('div'); s.className = 'pn-s'; s.textContent = 'v' + n.ver + ' · ' + n.title;
+      const ul = document.createElement('ul');
+      n.items.forEach(x => { const li = document.createElement('li'); li.textContent = x; ul.appendChild(li); });
+      const ok = document.createElement('button'); ok.type = 'button'; ok.className = 'pn-btn pn-ok'; ok.textContent = 'Got it';
+      p.appendChild(t); p.appendChild(s); p.appendChild(ul); p.appendChild(ok); modal.appendChild(p);
+      (document.getElementById('main-menu') ? document.getElementById('main-menu').parentNode : document.body).appendChild(modal);
+
+      const buttons = [];
+      function refreshBadges() { buttons.forEach(b => { const x = b.querySelector('.pn-new'); if (x) x.style.display = seenMem === latest ? 'none' : 'block'; }); }
+      function open() {
+        modal.style.display = 'flex'; seenMem = latest;
+        try { localStorage.setItem(KEY, latest); } catch (e) {}
+        refreshBadges();
+      }
+      function close() { modal.style.display = 'none'; }
+      ok.addEventListener('click', close);
+      modal.addEventListener('click', e => { if (e.target === modal) close(); });
+      window.addEventListener('keydown', e => { if (e.code === 'Escape' && modal.style.display === 'flex') { close(); e.stopImmediatePropagation(); } }, true);
+
+      function makeBtn() {
+        const b = document.createElement('button'); b.type = 'button'; b.className = 'pn-btn'; b.textContent = "What's new";
+        const nw = document.createElement('span'); nw.className = 'pn-new'; nw.textContent = 'NEW'; b.appendChild(nw);
+        b.addEventListener('click', open); buttons.push(b); return b;
+      }
+      const play = document.getElementById('menu-play');
+      if (play && play.parentNode) play.parentNode.insertBefore(makeBtn(), play.nextSibling);
+      const actions = document.querySelector('#pause-modal .pause-actions');
+      if (actions && actions.parentNode) { const b = makeBtn(); b.style.marginTop = '10px'; actions.parentNode.insertBefore(b, actions.nextSibling); }
+      refreshBadges();
+    })();
     // --- PROGRESSIVE TUTORIAL ---
     // One hint at the moment it matters, each shown once per player (localStorage). Never pauses the game.
     // Skipped in test mode (benchmarks) unless ?tut=1; reset a player's hints with ?tut=reset.
@@ -7187,6 +7328,21 @@ function telParseBrowser(ua) {
   return 'other';
 }
 
+function telRefClass() {
+  try {
+    const r = document.referrer || '';
+    if (!r) return 'direct';
+    const h = new URL(r).hostname.toLowerCase();
+    if (h === location.hostname) return 'direct';
+    if (/(^|\.)(instagram\.com|l\.instagram\.com)$/.test(h)) return 'ig';
+    if (/(^|\.)(t\.co|twitter\.com|x\.com)$/.test(h)) return 'x';
+    if (/(^|\.)(youtube\.com|youtu\.be)$/.test(h)) return 'yt';
+    if (/(^|\.)(t\.me|telegram\.org|web\.telegram\.org)$/.test(h)) return 'tg';
+    if (/(^|\.)(google\.[a-z.]+|bing\.com|duckduckgo\.com|yandex\.[a-z.]+)$/.test(h)) return 'search';
+    return 'other';
+  } catch (e) { return 'direct'; }
+}
+
 const telClientInfo = (function() {
   const ua = (typeof navigator !== 'undefined' && navigator.userAgent) || '';
   const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(ua) ||
@@ -7197,7 +7353,8 @@ const telClientInfo = (function() {
     br: telParseBrowser(ua),
     iab: /Instagram|FBAN|FBAV|FB_IAB/i.test(ua) ? 1 : 0,
     scr: w <= 420 ? 's' : (w <= 900 ? 'm' : 'l'),
-    lang: (typeof navigator !== 'undefined' && navigator.language ? navigator.language.slice(0, 2).toLowerCase() : 'en')
+    lang: (typeof navigator !== 'undefined' && navigator.language ? navigator.language.slice(0, 2).toLowerCase() : 'en'),
+    ref: telRefClass()
   };
 })();
 
@@ -7210,8 +7367,15 @@ function telGetEndpoint() {
 }
 
 let telOptedOut = false; // memory fallback when localStorage is blocked
-function telemetryIsEnabled() {
+let telAgreedMem = false;
+function telAgreed() {
+  if (telAgreedMem) return true;
+  if (typeof urlParams !== 'undefined' && urlParams && urlParams.get('teltest') === '1') return true;
+  try { return localStorage.getItem('svti-agree') === '1'; } catch (e) { return false; }
+}
+function telemetryIsEnabled(ignoreConsent) {
   if (telOptedOut) return false;
+  if (!ignoreConsent && !telAgreed()) return false;
   try {
     if (localStorage.getItem('svti-tel') === '0') return false;
   } catch (e) {}
@@ -7253,7 +7417,8 @@ function telSend(ev, extra, force) {
       br: telClientInfo.br,
       iab: telClientInfo.iab,
       scr: telClientInfo.scr,
-      lang: telClientInfo.lang
+      lang: telClientInfo.lang,
+      ref: telClientInfo.ref
     }, extra || {});
 
     const body = JSON.stringify(payload);
@@ -7392,6 +7557,41 @@ if (typeof window !== 'undefined') {
 }
 
 // Small UI, built here (not in the shell HTML) so the mobile build's text patches keep matching
+function telBuildAgreement() {
+  try {
+    if (document.getElementById('tel-agree') || telAgreed()) return;
+    let decided = false; try { decided = localStorage.getItem('svti-agree') === '0'; } catch (e) {}
+    if (decided || !telemetryIsEnabled(true)) return; // already said no, or telemetry could never run here (localhost, test flags)
+    const o = document.createElement('div');
+    o.id = 'tel-agree';
+    o.style.cssText = 'position:fixed;inset:0;z-index:100000;display:flex;align-items:center;justify-content:center;background:rgba(8,4,16,.88);padding:max(16px,env(safe-area-inset-top,0px)) 16px max(16px,env(safe-area-inset-bottom,0px));font-family:Trebuchet MS,Segoe UI,Arial,sans-serif;color:#fff';
+    const b = document.createElement('div');
+    b.style.cssText = 'max-width:420px;width:100%;background:#1b1230;border:2px solid #7c4dbd;border-radius:14px;padding:18px 18px 16px;box-shadow:0 8px 40px rgba(0,0,0,.6);text-align:left';
+    b.innerHTML = '<div style="font:700 18px Trebuchet MS,Segoe UI,Arial,sans-serif;margin-bottom:8px">Help make the game better?</div>' +
+      '<div style="font-size:13px;line-height:1.5;opacity:.9">We record <b>anonymous</b> play stats: how long runs last, what you pick, your device type, your country and which site sent you here.<br>' +
+      '<b>Never</b> your name, IP address, email or anything personal. Change your mind anytime in the pause menu.</div>';
+    const row = document.createElement('div');
+    row.style.cssText = 'display:flex;gap:10px;margin-top:14px;flex-wrap:wrap';
+    const mk = function(txt, main) {
+      const x = document.createElement('button');
+      x.type = 'button'; x.textContent = txt;
+      x.style.cssText = 'flex:1 1 150px;min-height:44px;border-radius:10px;font:700 14px Trebuchet MS,Segoe UI,Arial,sans-serif;cursor:pointer;-webkit-tap-highlight-color:transparent;' + (main ? 'background:#f5c542;color:#2a1a00;border:0' : 'background:none;color:#cbd5e1;border:1px solid #5b4a7a');
+      row.appendChild(x); return x;
+    };
+    const yes = mk('Agree & play', true), no = mk('No thanks', false);
+    yes.addEventListener('click', function() {
+      telAgreedMem = true; try { localStorage.setItem('svti-agree', '1'); } catch (e) {}
+      o.remove(); telemetryInit();
+    });
+    no.addEventListener('click', function() {
+      telOptedOut = true; try { localStorage.setItem('svti-agree', '0'); localStorage.setItem('svti-tel', '0'); } catch (e) {}
+      o.remove(); // nothing is sent for a player who declines
+    });
+    b.appendChild(row); o.appendChild(b); document.body.appendChild(o);
+    try { yes.focus(); } catch (e) {}
+  } catch (e) {}
+}
+
 function telBuildUi() {
   try {
     const mm = document.getElementById('main-menu');
@@ -7412,6 +7612,7 @@ function telBuildUi() {
       b.addEventListener('click', function() {
         let off = false; try { off = localStorage.getItem('svti-tel') === '0'; } catch (e) {}
         telemetrySetOptOut(!off); sync();
+        if (off) { telAgreedMem = true; try { localStorage.setItem('svti-agree', '1'); } catch (e) {} telemetryInit(); } // turning it back on is an explicit yes
       });
       sync();
       panel.appendChild(b);
@@ -7420,6 +7621,7 @@ function telBuildUi() {
 }
 
 telBuildUi();
+telBuildAgreement();
 telemetryInit();
     // --- MAIN GAME LOOP ---
     let lastTimestamp = performance.now();
