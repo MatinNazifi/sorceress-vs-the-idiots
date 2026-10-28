@@ -1296,7 +1296,7 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
         // UI art that used to download the first time it was shown (level-up cards, pause panel, buttons, icons): fetch + decode it now, quietly, behind the loading fade
         window.__uiKeep = ['card-normal','card-evolve','card-relic','panel','button','dash-button','btn-pause','btn-play','btn-home','btn-restart','btn-settings','btn-sound-on','btn-sound-off','btn-skull']
           .map(n => 'sprites/ui/' + n + '.png')
-          .concat(['bolt','chain','frost','blades','beam','runes','frog','meteor','fire','area','damage','speed','cooldown','health','magnet','vortex','orbs','totem'].map(n => 'sprites/icons/' + n + '.png'))
+          .concat(['bolt','chain','frost','blades','beam','runes','frog','meteor','meteor-ghost','fire','area','damage','speed','cooldown','health','magnet','vortex','orbs','totem'].map(n => 'sprites/icons/' + n + '.png'))
           .map(u => { const im = new Image(); im.decoding = 'async'; im.src = u; if (im.decode) im.decode().catch(() => {}); return im; });
         setTimeout(() => {
           const ls = document.getElementById('loading-screen');
@@ -2232,7 +2232,8 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
         id: 'meteor',
         name: 'Meteor Call',
         icon: '☄️',
-        desc: 'Calls flaming meteors down onto enemy clusters.',
+        iconSrc: 'sprites/icons/meteor-ghost.png',
+        desc: 'Calls ghost spirits down from the sky onto enemy clusters.',
         levels: [
           { count: 1, dmg: 100, rad: 100, cd: 5.5 },
           { count: 2, dmg: 135, rad: 115, cd: 5.0 },
