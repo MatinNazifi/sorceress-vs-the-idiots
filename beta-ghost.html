@@ -4145,12 +4145,12 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
 
             if (pt.isComet && ghostFx) {
               // Comet: one giant ghost pit sized to the blast (a 256px frame, ring fills most of it)
-              const px = pt.x, py = pt.y, pr = pt.radius;
-              scheduleGame(0.25, () => playVFX('shadepool', px, py, { scale: pr * 2 / 195, fps: 6, loop: true, life: 4, startFrame: 0 }));
+              const pr = pt.radius, ps = pr * 2 / 195, px = pt.x - 4 * ps, py = pt.y - 53 * ps; // ring sits low in its frame
+              scheduleGame(0.25, () => playVFX('shadepool', px, py, { scale: ps, fps: 6, loop: true, life: 4, startFrame: 0 }));
             } else for (let f = 0; f < 3; f++) {
               const fAng = (f / 3) * Math.PI * 2 + Math.random() * 0.5;
               const fDist = 18 + Math.random() * (pt.radius * 0.35);
-              playVFX(ghostFx ? 'shadepool' : 'firetrail', pt.x + Math.cos(fAng) * fDist, pt.y + Math.sin(fAng) * fDist, {
+              playVFX(ghostFx ? 'shadepool' : 'firetrail', pt.x + Math.cos(fAng) * fDist - (ghostFx ? 3 : 0), pt.y + Math.sin(fAng) * fDist - (ghostFx ? 42 : 0), {
                 scale: ghostFx ? 0.8 : 0.5,
                 fps: ghostFx ? 8 : 12,
                 loop: true,
