@@ -4133,10 +4133,10 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
             addShake(18);
             kickCamera((Math.random() - 0.5) * 12, 10);
             screenFlash = 0.24;
-            spawnCrater(pt.x, pt.y, pt.radius * 0.7);
             // Sepid's own cast: black ghost burst + shadow pools; the old explosion and red fire if the ghost art is missing
             const gb = SPRITES['vfx-shadeburst'], gp = SPRITES['vfx-shadepool'];
             const ghostFx = !!(gb && gb.complete && gb.naturalWidth && gp && gp.complete && gp.naturalWidth);
+            if (!ghostFx) spawnCrater(pt.x, pt.y, pt.radius * 0.7);
             playVFX(ghostFx ? 'shadeburst' : 'explosion', pt.x, pt.y, { scale: pt.isComet ? (ghostFx ? pt.radius * 2 / 220 : 3.2) : 1.5, fps: ghostFx ? 16 : 24 });
             if (pt.isComet) {
               addShake(10);
