@@ -4137,7 +4137,7 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
             // Sepid's own cast: black ghost burst + shadow pools; the old explosion and red fire if the ghost art is missing
             const gb = SPRITES['vfx-shadeburst'], gp = SPRITES['vfx-shadepool'];
             const ghostFx = !!(gb && gb.complete && gb.naturalWidth && gp && gp.complete && gp.naturalWidth);
-            playVFX(ghostFx ? 'shadeburst' : 'explosion', pt.x, pt.y, { scale: pt.isComet ? 3.2 : 1.5, fps: ghostFx ? 16 : 24 });
+            playVFX(ghostFx ? 'shadeburst' : 'explosion', pt.x, pt.y, { scale: pt.isComet ? (ghostFx ? pt.radius * 2 / 220 : 3.2) : 1.5, fps: ghostFx ? 16 : 24 });
             if (pt.isComet) {
               addShake(10);
               screenFlash = 0.4;
@@ -4145,7 +4145,8 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
 
             if (pt.isComet && ghostFx) {
               // Comet: one giant ghost pit sized to the blast (a 256px frame, ring fills most of it)
-              playVFX('shadepool', pt.x, pt.y, { scale: Math.min(4, pt.radius * 2.1 / 256), fps: 6, loop: true, life: 4, startFrame: 0 });
+              const px = pt.x, py = pt.y, pr = pt.radius;
+              scheduleGame(0.25, () => playVFX('shadepool', px, py, { scale: pr * 2 / 195, fps: 6, loop: true, life: 4, startFrame: 0 }));
             } else for (let f = 0; f < 3; f++) {
               const fAng = (f / 3) * Math.PI * 2 + Math.random() * 0.5;
               const fDist = 18 + Math.random() * (pt.radius * 0.35);
