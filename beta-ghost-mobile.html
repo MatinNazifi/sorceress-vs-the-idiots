@@ -1237,7 +1237,7 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
       'hextotem': 'sprites/hextotem.png',
       'meteorfall': 'sprites/vfx/meteorfall.png',
       'meteorfall-ghost': 'sprites/vfx/meteorfall-ghost.png', // Sepid's own cast: black ghost with white hair-streaks, falls from the sky
-      'sigil-ghost': 'sprites/vfx/sigil-ghost.png', // her ground warning: black shadow circle with white runes (red stays for enemy danger)
+      'sigil-spirits': 'sprites/vfx/sigil-spirits.png', // her ground warning: a ring of black ghosts chasing each other (red stays for enemy danger)
       'vfx-shadeburst': 'sprites/vfx/shadeburst.png', // meteor impact: black ghosts burst outward
       'vfx-shadepool': 'sprites/vfx/shadepool.png', // what the impact leaves: a shadow pool with rising white wisps (replaces the red fire)
       'petfrog': 'sprites/petfrog.png',
@@ -5952,12 +5952,12 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
       for (let i = 0; i < particles.length; i++) {
         const pt = particles[i];
         if (pt.type === 'meteor_telegraph') {
-          // Ground warning that tightens as the meteor comes in: Sepid's black shadow circle + closing white ring; the old red disc if the art is missing
+          // Ground warning that tightens as the meteor comes in: Sepid's ring of black ghosts + closing white ring; the old red disc if the art is missing
           const p = Math.min(1, 1 - pt.timer / pt.totalTimer);
-          const sig = SPRITES['sigil-ghost'];
+          const sig = SPRITES['sigil-spirits'];
           ctx.lineWidth = 3.5;
           if (sig && sig.complete && sig.naturalWidth) {
-            const sw = sig.naturalWidth / 6, sr = pt.radius * 1.38; // the ring fills ~72% of its cell
+            const sw = sig.naturalWidth / 6, sr = pt.radius * 1.43; // the ring fills ~70% of its cell
             ctx.save();
             ctx.globalAlpha = 0.35 + 0.5 * p; // soft at first, firm as the strike lands (12 circles stack in a max-level shower)
             ctx.translate(pt.x, pt.y);
