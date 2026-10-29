@@ -5347,16 +5347,13 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
             const menuBtn = document.createElement('button');
             menuBtn.type = 'button';
             menuBtn.id = 'menu-shop';
-            menuBtn.className = 'pn-btn';
-            menuBtn.style.display = 'inline-flex';
-            menuBtn.style.alignItems = 'center';
-            menuBtn.style.gap = '6px';
-            const gem = document.createElement('img');
-            gem.src = 'sprites/icons/ruby.png';
-            gem.alt = '';
-            gem.style.height = '20px';
-            menuBtn.appendChild(gem);
-            menuBtn.appendChild(document.createTextNode('Shop'));
+            menuBtn.textContent = 'SHOP';
+            // the Play button's painted look, smaller and without its pulse
+            const btnStyle = document.createElement('style');
+            btnStyle.textContent =
+                '#menu-shop{position:relative;width:min(46vw,170px);aspect-ratio:900/268;margin-top:4px;padding:0;border:none;background:url("sprites/ui/button.png") center/100% 100% no-repeat;color:var(--parchment);font:900 21px "Trebuchet MS",sans-serif;letter-spacing:3px;text-shadow:var(--ink-outline),0 0 10px rgba(255,210,63,.45);cursor:pointer;-webkit-tap-highlight-color:transparent}' +
+                '#menu-shop:hover{filter:brightness(1.15)}#menu-shop:active{scale:.95}';
+            document.head.appendChild(btnStyle);
             menuBtn.addEventListener('click', open);
             // the menu spreads its children out, so Play and Shop share one wrapper to stay together
             const wrap = document.createElement('div');
