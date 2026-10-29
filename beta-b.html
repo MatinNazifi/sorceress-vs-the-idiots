@@ -1117,6 +1117,532 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
       }
     }
 
+// 05b-world-layer.js - Pluggable World Abstraction Layer
+// Wraps 05-world-map.js without reassigning constants.
+
+(function (global) {
+  'use strict';
+
+  // --- LRU Chunk Cache (Max 4 Canvases) ---
+  const CHUNK_CACHE_LIMIT = 9; // a desktop view can touch 3x3 chunks; phones touch at most 2x2
+  const chunkCache = new Map(); // key -> { canvas, lastUsed }
+  let accessCounter = 0;
+
+  function getChunkCanvas(key, drawFn) {
+    if (chunkCache.has(key)) {
+      const entry = chunkCache.get(key);
+      entry.lastUsed = ++accessCounter;
+      return entry.canvas;
+    }
+
+    let canvas;
+    if (chunkCache.size >= CHUNK_CACHE_LIMIT) {
+      let oldestKey = null, oldestTime = Infinity;
+      for (const [k, v] of chunkCache.entries()) {
+        if (v.lastUsed < oldestTime) {
+          oldestTime = v.lastUsed;
+          oldestKey = k;
+        }
+      }
+      if (oldestKey !== null) {
+        const recycled = chunkCache.get(oldestKey);
+        chunkCache.delete(oldestKey);
+        canvas = recycled.canvas;
+      }
+    }
+
+    if (!canvas) {
+      canvas = (typeof document !== 'undefined') ? document.createElement('canvas') : null;
+      if (canvas) { canvas.width = 1024; canvas.height = 1024; }
+    }
+
+    if (canvas) {
+      const cctx = canvas.getContext('2d');
+      drawFn(cctx);
+      chunkCache.set(key, { canvas, lastUsed: ++accessCounter });
+    }
+    return canvas;
+  }
+
+  // --- World Singleton ---
+  const _ring = { x: 0, y: 0 };
+  const World = {
+    id: 'tower',
+    kind: 'tower',
+    w: 2048,
+    h: 2048,
+    chunkSize: 2048,
+    start: { x: 1015, y: 1025 },
+    camEdge: 48,
+    camZoom: 0.9,
+    obstacles: [],
+    pois: [],
+    walkGrid: null,
+
+    inside(x, y) {
+      return this._def ? this._def.inside(x, y) : true;
+    },
+
+    clamp(pos, r = 24) {
+      if (this._def && this._def.clamp) {
+        this._def.clamp(pos, r);
+      }
+    },
+
+    spawnPoints() {
+      return this._def ? this._def.spawnPoints() : [];
+    },
+
+    randomSpawn() {
+      return this._def ? this._def.randomSpawn() : { x: this.start.x, y: this.start.y };
+    },
+
+    bossSpawn() {
+      return this._def ? this._def.bossSpawn() : { x: this.start.x, y: this.start.y };
+    },
+
+    randomFreeSpot(hero) {
+      return this._def ? this._def.randomFreeSpot(hero) : { x: this.start.x, y: this.start.y };
+    },
+
+    isWalkable(x, y, r = 24) {
+      return this._def && this._def.isWalkable ? this._def.isWalkable(x, y, r) : true;
+    },
+
+    // Spawn helpers: Tower keeps the old ring maths exactly; grid worlds land on floor.
+    spawnRing(hero, dist) {
+      if (this._def && this._def.spawnRing) return this._def.spawnRing(hero, dist);
+      const ang = Math.random() * Math.PI * 2;
+      _ring.x = hero.x + Math.cos(ang) * dist;
+      _ring.y = hero.y + Math.sin(ang) * dist;
+      return _ring;
+    },
+
+    snap(x, y) {
+      if (this._def && this._def.snap) return this._def.snap(x, y);
+      _ring.x = x; _ring.y = y;
+      return _ring;
+    },
+
+    // Direction (unit vector) an enemy should walk to reach the hero around walls, or null for a straight line.
+    steer(ex, ey, hx, hy) {
+      return this._def && this._def.steer ? this._def.steer(ex, ey, hx, hy) : null;
+    },
+
+    drawChunks(ctx, cam, sw, sh) {
+      if (this._def && this._def.drawChunks) {
+        this._def.drawChunks(ctx, cam, sw, sh);
+      }
+    },
+
+    load(def) {
+      this._def = def;
+      this.id = def.id;
+      this.kind = def.kind;
+      this.w = def.w;
+      this.h = def.h;
+      this.chunkSize = def.chunkSize || 1024;
+      this.start = def.start || { x: def.w / 2, y: def.h / 2 };
+      this.camEdge = def.camEdge !== undefined ? def.camEdge : 48;
+      this.camZoom = def.camZoom !== undefined ? def.camZoom : 0.9;
+      this.obstacles = def.obstacles || [];
+      this.pois = def.pois || [];
+      this.walkGrid = def.walkGrid || null;
+      chunkCache.clear();
+      accessCounter = 0;
+    }
+  };
+
+  // --- DUNGEON_TOWER (References 05-world-map.js untouched globals) ---
+  const DUNGEON_TOWER = {
+    id: 'tower',
+    kind: 'tower',
+    w: ARENA_W,
+    h: ARENA_H,
+    chunkSize: 2048,
+    start: { x: ARENA_CX, y: ARENA_CY },
+    camEdge: CAM_EDGE,
+    camZoom: CAM_ZOOM,
+    obstacles: PILLARS,
+    pois: [],
+    walkGrid: null,
+
+    inside(x, y) {
+      return pointInOctagon(x, y);
+    },
+
+    clamp(pos, r = 24) {
+      clampToOctagon(pos, r);
+    },
+
+    spawnPoints() {
+      return STAIRS;
+    },
+
+    randomSpawn() {
+      return STAIRS[Math.floor(Math.random() * STAIRS.length)];
+    },
+
+    bossSpawn() {
+      return { x: ARENA_CX, y: OCT_MIN_Y + 60 };
+    },
+
+    randomFreeSpot(hero) { // exact copy of the old getRandomVasePos
+      for (let attempts = 0; attempts < 100; attempts++) {
+        const rx = OCT_MIN_X + Math.random() * (OCT_MAX_X - OCT_MIN_X);
+        const ry = OCT_MIN_Y + Math.random() * (OCT_MAX_Y - OCT_MIN_Y);
+        if (!pointInOctagon(rx, ry)) continue;
+        if (Math.hypot(rx - hero.x, ry - hero.y) < 120) continue;
+        let nearStair = false;
+        for (let s = 0; s < STAIRS.length; s++) {
+          if (Math.hypot(rx - STAIRS[s].x, ry - STAIRS[s].y) < 120) { nearStair = true; break; }
+        }
+        if (nearStair) continue;
+        return { x: rx, y: ry };
+      }
+      return { x: ARENA_CX + (Math.random() - 0.5) * 300, y: ARENA_CY + (Math.random() - 0.5) * 200 };
+    },
+
+    isWalkable(x, y, r = 24) {
+      return pointInOctagon(x, y);
+    },
+
+    drawChunks(ctx, cam, sw, sh) {
+      // Tower uses standard drawArena image blit
+    }
+  };
+
+  // --- DUNGEON_BIGTEST Procedural Generator (6x6 Grid of 1024 Chunks = 6144px) ---
+  function generateBigTest() {
+    const W = 6144, H = 6144, CS = 32, GW = 192, GH = 192;
+    const grid = new Uint8Array(GW * GH); // 0 = wall, 1 = walkable
+
+    let seed = 1337;
+    function rand() {
+      seed = (seed * 1664525 + 1013904223) >>> 0;
+      return seed / 4294967296;
+    }
+
+    function cellOk(px, py) { const cx = (px / CS) | 0, cy = (py / CS) | 0; return cx >= 0 && cx < GW && cy >= 0 && cy < GH && grid[cy * GW + cx] === 1; }
+    const rooms = [];
+    for (let rx = 0; rx < 4; rx++) {
+      for (let ry = 0; ry < 4; ry++) {
+        const rw = Math.floor(14 + rand() * 8);
+        const rh = Math.floor(14 + rand() * 8);
+        const ox = rx * 46 + 6 + Math.floor(rand() * 6);
+        const oy = ry * 46 + 6 + Math.floor(rand() * 6);
+        rooms.push({ x: ox, y: oy, w: rw, h: rh });
+
+        for (let y = oy; y < oy + rh; y++) {
+          for (let x = ox; x < ox + rw; x++) {
+            if (x >= 0 && x < GW && y >= 0 && y < GH) grid[y * GW + x] = 1;
+          }
+        }
+      }
+    }
+
+    // Connect adjacent rooms with corridors (width = 3 cells)
+    for (let i = 0; i < rooms.length; i++) {
+      const r1 = rooms[i];
+      const r2 = rooms[(i + 1) % rooms.length];
+      const cx1 = Math.floor(r1.x + r1.w / 2), cy1 = Math.floor(r1.y + r1.h / 2);
+      const cx2 = Math.floor(r2.x + r2.w / 2), cy2 = Math.floor(r2.y + r2.h / 2);
+
+      const minX = Math.min(cx1, cx2), maxX = Math.max(cx1, cx2);
+      for (let x = minX; x <= maxX; x++) {
+        for (let w = -1; w <= 1; w++) {
+          const y = cy1 + w;
+          if (x >= 0 && x < GW && y >= 0 && y < GH) grid[y * GW + x] = 1;
+        }
+      }
+
+      const minY = Math.min(cy1, cy2), maxY = Math.max(cy1, cy2);
+      for (let y = minY; y <= maxY; y++) {
+        for (let w = -1; w <= 1; w++) {
+          const x = cx2 + w;
+          if (x >= 0 && x < GW && y >= 0 && y < GH) grid[y * GW + x] = 1;
+        }
+      }
+    }
+
+    const startX = Math.floor((rooms[0].x + rooms[0].w / 2) * CS);
+    const startY = Math.floor((rooms[0].y + rooms[0].h / 2) * CS);
+
+    const pois = [
+      {
+        id: 'poi_easter_runes',
+        type: 'easter',
+        x: Math.floor((rooms[1].x + rooms[1].w / 2) * CS),
+        y: Math.floor((rooms[1].y + rooms[1].h / 2) * CS),
+        r: 28,
+        data: { text: 'Carved runes hum with forgotten magic.' }
+      },
+      {
+        id: 'poi_quest_relic',
+        type: 'quest',
+        x: Math.floor((rooms[2].x + rooms[2].w / 2) * CS),
+        y: Math.floor((rooms[2].y + rooms[2].h / 2) * CS),
+        r: 32,
+        data: { questId: 'ancient_sigil', step: 1 }
+      },
+      {
+        id: 'poi_event_portal',
+        type: 'event',
+        x: Math.floor((rooms[3].x + rooms[3].w / 2) * CS),
+        y: Math.floor((rooms[3].y + rooms[3].h / 2) * CS),
+        r: 36,
+        data: { eventType: 'shadow_rift', difficulty: 2 }
+      }
+    ];
+
+    const spawnList = rooms.slice(4).map(r => ({
+      x: Math.floor((r.x + r.w / 2) * CS),
+      y: Math.floor((r.y + r.h / 2) * CS)
+    }));
+
+    // Flow field: BFS steps out from the hero cell, limited to a window so phones stay cheap.
+    const FLOW_R = 48;
+    const fDist = new Uint16Array(GW * GH), fStamp = new Uint32Array(GW * GH), fQueue = new Int32Array(GW * GH);
+    let fCur = 0, fHeroCell = -1, fAt = -1e9;
+    const OUT = { x: 0, y: 0 };
+    function flowBuild(hcx, hcy) {
+      fCur++;
+      let qh = 0, qt = 0;
+      const h0 = hcy * GW + hcx;
+      fStamp[h0] = fCur; fDist[h0] = 0; fQueue[qt++] = h0;
+      while (qh < qt) {
+        const c = fQueue[qh++], cx = c % GW, cy = (c / GW) | 0, d = fDist[c] + 1;
+        for (let k = 0; k < 4; k++) {
+          const nx = cx + (k === 0 ? 1 : k === 1 ? -1 : 0), ny = cy + (k === 2 ? 1 : k === 3 ? -1 : 0);
+          if (nx < 0 || ny < 0 || nx >= GW || ny >= GH || nx - hcx > FLOW_R || hcx - nx > FLOW_R || ny - hcy > FLOW_R || hcy - ny > FLOW_R) continue;
+          const n = ny * GW + nx;
+          if (grid[n] === 0 || fStamp[n] === fCur) continue;
+          fStamp[n] = fCur; fDist[n] = d; fQueue[qt++] = n;
+        }
+      }
+    }
+    function clearLine(x0, y0, x1, y1) {
+      const dx = x1 - x0, dy = y1 - y0, n = Math.ceil(Math.hypot(dx, dy) / 16);
+      for (let i = 1; i < n; i++) if (!cellOk(x0 + dx * i / n, y0 + dy * i / n)) return false;
+      return true;
+    }
+
+    return {
+      id: 'bigtest',
+      kind: 'grid',
+      w: W,
+      h: H,
+      chunkSize: 1024,
+      start: { x: startX, y: startY },
+      camEdge: 48,
+      camZoom: 0.9,
+      obstacles: [],
+      pois: pois,
+      walkGrid: grid,
+      rooms: rooms,
+
+      inside(x, y) {
+        if (x < 0 || x >= W || y < 0 || y >= H) return false;
+        const cx = (x / CS) | 0, cy = (y / CS) | 0;
+        return grid[cy * GW + cx] === 1;
+      },
+
+      clamp(pos, r = 24) {
+        // Zero-allocation grid clamp with independent X/Y wall push
+        if (pos.x < r) pos.x = r;
+        if (pos.x > W - r) pos.x = W - r;
+        if (pos.y < r) pos.y = r;
+        if (pos.y > H - r) pos.y = H - r;
+
+        let cx = (pos.x / CS) | 0;
+        let cy = (pos.y / CS) | 0;
+        if (cx < 0) cx = 0; else if (cx >= GW) cx = GW - 1;
+        if (cy < 0) cy = 0; else if (cy >= GH) cy = GH - 1;
+
+        if (grid[cy * GW + cx] === 0) {
+          const dL = (cx > 0 && grid[cy * GW + (cx - 1)] === 1) ? (pos.x - cx * CS) : 1e7;
+          const dR = (cx < GW - 1 && grid[cy * GW + (cx + 1)] === 1) ? ((cx + 1) * CS - pos.x) : 1e7;
+          const dU = (cy > 0 && grid[(cy - 1) * GW + cx] === 1) ? (pos.y - cy * CS) : 1e7;
+          const dD = (cy < GH - 1 && grid[(cy + 1) * GW + cx] === 1) ? ((cy + 1) * CS - pos.y) : 1e7;
+
+          const minD = Math.min(dL, dR, dU, dD);
+          if (minD < 1e7) {
+            if (minD === dL) pos.x = cx * CS - 0.01;
+            else if (minD === dR) pos.x = (cx + 1) * CS + 0.01;
+            else if (minD === dU) pos.y = cy * CS - 0.01;
+            else if (minD === dD) pos.y = (cy + 1) * CS + 0.01;
+          }
+        }
+
+        // Radial bounding box push-outs
+        if (cx > 0 && grid[cy * GW + (cx - 1)] === 0 && (pos.x - r) < cx * CS) pos.x = cx * CS + r;
+        if (cx < GW - 1 && grid[cy * GW + (cx + 1)] === 0 && (pos.x + r) > (cx + 1) * CS) pos.x = (cx + 1) * CS - r;
+        if (cy > 0 && grid[(cy - 1) * GW + cx] === 0 && (pos.y - r) < cy * CS) pos.y = cy * CS + r;
+        if (cy < GH - 1 && grid[(cy + 1) * GW + cx] === 0 && (pos.y + r) > (cy + 1) * CS) pos.y = (cy + 1) * CS - r;
+      },
+
+      isWalkable(x, y, r = 24) {
+        if (x - r < 0 || x + r >= W || y - r < 0 || y + r >= H) return false;
+        return cellOk(x, y) && cellOk(x - r, y) && cellOk(x + r, y) && cellOk(x, y - r) && cellOk(x, y + r);
+      },
+
+      spawnPoints() {
+        return spawnList;
+      },
+
+      randomSpawn() {
+        // Only rooms the flow field reaches (about 1400 px), else bursts would spawn blind far away; nearest room as fallback.
+        let pick = null, nearest = null, nd = Infinity, n = 0;
+        for (let i = 0; i < spawnList.length; i++) {
+          const s = spawnList[i], d = Math.hypot(s.x - hero.x, s.y - hero.y);
+          if (d < nd) { nd = d; nearest = s; }
+          if (d > 500 && d < 1400 && Math.random() * ++n < 1) pick = s;
+        }
+        return pick || nearest;
+      },
+
+      bossSpawn() {
+        const lastRoom = rooms[rooms.length - 1];
+        return {
+          x: Math.floor((lastRoom.x + lastRoom.w / 2) * CS),
+          y: Math.floor((lastRoom.y + lastRoom.h / 2) * CS)
+        };
+      },
+
+      spawnRing(hero, dist) {
+        // Try a few angles for floor that is off-screen; fall back to the nearest floor.
+        for (let i = 0; i < 24; i++) {
+          const ang = Math.random() * Math.PI * 2;
+          const x = hero.x + Math.cos(ang) * dist, y = hero.y + Math.sin(ang) * dist;
+          if (this.isWalkable(x, y, 28)) { OUT.x = x; OUT.y = y; return OUT; }
+        }
+        return this.snap(hero.x + dist, hero.y);
+      },
+
+      snap(x, y) {
+        // Nearest cell centre with room for a body, searching outward ring by ring.
+        if (this.isWalkable(x, y, 28)) { OUT.x = x; OUT.y = y; return OUT; }
+        const c0x = (x / CS) | 0, c0y = (y / CS) | 0;
+        for (let rr = 1; rr <= 20; rr++) {
+          let bd = Infinity, bx = 0, by = 0;
+          for (let dy = -rr; dy <= rr; dy++) {
+            for (let dx = -rr; dx <= rr; dx++) {
+              if (dx > -rr && dx < rr && dy > -rr && dy < rr) continue; // ring only
+              const px = (c0x + dx) * CS + CS / 2, py = (c0y + dy) * CS + CS / 2;
+              if (!this.isWalkable(px, py, 28)) continue;
+              const d = (px - x) * (px - x) + (py - y) * (py - y);
+              if (d < bd) { bd = d; bx = px; by = py; }
+            }
+          }
+          if (bd < Infinity) { OUT.x = bx; OUT.y = by; return OUT; }
+        }
+        OUT.x = startX; OUT.y = startY;
+        return OUT;
+      },
+
+      steer(ex, ey, hx, hy) {
+        const hcx = (hx / CS) | 0, hcy = (hy / CS) | 0, hc = hcy * GW + hcx;
+        if (hc !== fHeroCell && grid[hc] === 1) {
+          const now = performance.now();
+          if (now - fAt > 80) { flowBuild(hcx, hcy); fHeroCell = hc; fAt = now; }
+        }
+        if (clearLine(ex, ey, hx, hy)) return null;
+        const ecx = (ex / CS) | 0, ecy = (ey / CS) | 0;
+        if (ecx < 0 || ecy < 0 || ecx >= GW || ecy >= GH) return null;
+        const ec = ecy * GW + ecx;
+        if (grid[ec] === 0 || fStamp[ec] !== fCur) return null;
+        let best = fDist[ec], bcx = -1, bcy = -1;
+        for (let dy = -1; dy <= 1; dy++) {
+          for (let dx = -1; dx <= 1; dx++) {
+            if (!dx && !dy) continue;
+            const nx = ecx + dx, ny = ecy + dy;
+            if (nx < 0 || ny < 0 || nx >= GW || ny >= GH) continue;
+            const n = ny * GW + nx;
+            if (fStamp[n] !== fCur || grid[n] === 0) continue;
+            if (dx && dy && (grid[ecy * GW + nx] === 0 || grid[ny * GW + ecx] === 0)) continue; // no corner cutting
+            if (fDist[n] < best) { best = fDist[n]; bcx = nx; bcy = ny; }
+          }
+        }
+        if (bcx < 0) return null;
+        const tx = bcx * CS + CS / 2 - ex, ty = bcy * CS + CS / 2 - ey, l = Math.hypot(tx, ty) || 1;
+        OUT.x = tx / l; OUT.y = ty / l;
+        return OUT;
+      },
+
+      randomFreeSpot(hero) {
+        for (let i = 0; i < 50; i++) {
+          const rx = rooms[Math.floor(Math.random() * rooms.length)];
+          const x = (rx.x + 2 + Math.random() * (rx.w - 4)) * CS;
+          const y = (rx.y + 2 + Math.random() * (rx.h - 4)) * CS;
+          if (hero && Math.hypot(x - hero.x, y - hero.y) < 150) continue;
+          return { x, y };
+        }
+        return { x: startX, y: startY };
+      },
+
+      drawChunks(ctx, cam, sw, sh) {
+        const zoom = cam.zoom || 0.9;
+        const viewW = sw / zoom, viewH = sh / zoom;
+        const minCX = Math.max(0, Math.floor((cam.x - viewW / 2) / 1024));
+        const maxCX = Math.min(5, Math.floor((cam.x + viewW / 2) / 1024));
+        const minCY = Math.max(0, Math.floor((cam.y - viewH / 2) / 1024));
+        const maxCY = Math.min(5, Math.floor((cam.y + viewH / 2) / 1024));
+
+        for (let cy = minCY; cy <= maxCY; cy++) {
+          for (let cx = minCX; cx <= maxCX; cx++) {
+            const chunkKey = `${cx}_${cy}`;
+            const cCanvas = getChunkCanvas(chunkKey, (cctx) => {
+              // Flat color chunk rasterization
+              cctx.fillStyle = '#111217';
+              cctx.fillRect(0, 0, 1024, 1024);
+              cctx.fillStyle = '#2d2f3d';
+
+              const cellStartX = cx * 32, cellStartY = cy * 32;
+              for (let ly = 0; ly < 32; ly++) {
+                for (let lx = 0; lx < 32; lx++) {
+                  const gx = cellStartX + lx, gy = cellStartY + ly;
+                  if (gx < GW && gy < GH && grid[gy * GW + gx] === 1) {
+                    cctx.fillRect(lx * CS, ly * CS, CS, CS);
+                  }
+                }
+              }
+
+              cctx.strokeStyle = 'rgba(255,255,255,0.06)';
+              cctx.strokeRect(0, 0, 1024, 1024);
+            });
+
+            if (cCanvas) {
+              ctx.drawImage(cCanvas, cx * 1024, cy * 1024);
+            }
+          }
+        }
+      }
+    };
+  }
+
+  const DUNGEON_BIGTEST = generateBigTest();
+
+  // Export to environment
+  global.World = World;
+  global.DUNGEON_TOWER = DUNGEON_TOWER;
+  global.DUNGEON_BIGTEST = DUNGEON_BIGTEST;
+
+  // --- URL Switch Handler & Default Load ---
+  let requestedDungeon = 'tower';
+  if (typeof location !== 'undefined' && location.search) {
+    const params = new URLSearchParams(location.search);
+    if (params.get('dungeon') === 'bigtest') {
+      requestedDungeon = 'bigtest';
+    }
+  }
+
+  if (requestedDungeon === 'bigtest') {
+    World.load(DUNGEON_BIGTEST);
+  } else {
+    World.load(DUNGEON_TOWER);
+  }
+
+})(typeof window !== 'undefined' ? window : globalThis);
     // --- SPRITE ASSET MANAGER ---
     const SPRITES = {};
     const SPRITE_URLS = {
@@ -1609,8 +2135,8 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
 
     // Camera with punchy spring kick and shake
     const CAMERA = {
-      x: ARENA_CX,
-      y: ARENA_CY,
+      x: World.start.x,
+      y: World.start.y,
       zoom: CAM_ZOOM,
       shake: 0,
       kickX: 0,
@@ -1628,8 +2154,8 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
 
     // Hero Object
     const hero = {
-      x: ARENA_CX,
-      y: ARENA_CY,
+      x: World.start.x,
+      y: World.start.y,
       vx: 0,
       vy: 0,
       speed: 210,
@@ -2318,29 +2844,14 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
       }
       e.maxHp = e.hp;
 
-      clampToOctagon(e, e.radius);
+      World.clamp(e, e.radius);
       enemies.push(e);
       return e;
     }
 
     // --- VASES & PICKUPS HELPERS ---
     function getRandomVasePos() {
-      for (let attempts = 0; attempts < 100; attempts++) {
-        const rx = OCT_MIN_X + Math.random() * (OCT_MAX_X - OCT_MIN_X);
-        const ry = OCT_MIN_Y + Math.random() * (OCT_MAX_Y - OCT_MIN_Y);
-        if (!pointInOctagon(rx, ry)) continue;
-        if (Math.hypot(rx - hero.x, ry - hero.y) < 120) continue;
-        let nearStair = false;
-        for (let s = 0; s < STAIRS.length; s++) {
-          if (Math.hypot(rx - STAIRS[s].x, ry - STAIRS[s].y) < 120) {
-            nearStair = true;
-            break;
-          }
-        }
-        if (nearStair) continue;
-        return { x: rx, y: ry };
-      }
-      return { x: ARENA_CX + (Math.random() - 0.5) * 300, y: ARENA_CY + (Math.random() - 0.5) * 200 };
+      return World.randomFreeSpot(hero);
     }
 
     function spawnInitialVases() {
@@ -2453,7 +2964,7 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
         Sound.roar();
         addShake(14);
         screenFlash = 0.2;
-        spawnEnemy('mootaur', ARENA_CX, OCT_MIN_Y + 60, false);
+        const bp = World.bossSpawn(); spawnEnemy('mootaur', bp.x, bp.y, false);
       }
 
       if (gameTime >= 570 && !finalBossSpawned) {
@@ -2461,7 +2972,7 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
         Sound.roar();
         addShake(18);
         screenFlash = 0.3;
-        spawnEnemy('mootaur', ARENA_CX, OCT_MIN_Y + 60, true);
+        const bp = World.bossSpawn(); spawnEnemy('mootaur', bp.x, bp.y, true);
       }
 
       // Elite Spawning: first at 2:00, then every 70-90s, one at a time
@@ -2472,7 +2983,7 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
           if (gameTime >= 45) unlocked.push('fishguy');
           if (gameTime >= 90) unlocked.push('grumbo');
           const eliteType = pickUnlockedType(unlocked);
-          const stair = STAIRS[Math.floor(Math.random() * STAIRS.length)];
+          const stair = World.randomSpawn();
           spawnEnemy(eliteType, stair.x, stair.y, true);
           nextEliteTime = gameTime + 70 + Math.random() * 20;
         }
@@ -2533,10 +3044,10 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
     const ENEMY_CAP = 170; // was 380: fps drop late game
     function spawnTrickleEnemy() {
       if (enemies.length >= ENEMY_CAP) return;
-      const ang = Math.random() * Math.PI * 2;
       const dist = (screenW / CAMERA.zoom) * 0.6 + 60;
-      let sx = hero.x + Math.cos(ang) * dist;
-      let sy = hero.y + Math.sin(ang) * dist;
+      const sp = World.spawnRing(hero, dist); // grid maps land on floor, Tower is the old ring
+      let sx = sp.x;
+      let sy = sp.y;
 
       // Balance: Type mix in spawnTrickleEnemy
       let type = 'potbelly';
@@ -2574,7 +3085,7 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
     }
 
     function triggerStairBurst(count) {
-      const stair = STAIRS[Math.floor(Math.random() * STAIRS.length)];
+      const stair = World.randomSpawn();
       // Stair bursts mix all unlocked types
       const unlocked = ['potbelly'];
       if (gameTime >= 45) unlocked.push('fishguy');
@@ -2596,7 +3107,8 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
         const ang = (i / count) * Math.PI * 2;
         const ex = hero.x + Math.cos(ang) * rad;
         const ey = hero.y + Math.sin(ang) * rad;
-        spawnEnemy('potbelly', ex, ey, false);
+        const sp = World.snap(ex, ey);
+        spawnEnemy('potbelly', sp.x, sp.y, false);
       }
       addShake(5);
     }
@@ -2835,7 +3347,7 @@ if (metaFx.regen > 0 && hero.hp > 0) hero.hp = Math.min(hero.maxHp, hero.hp + me
         hero.y += hero.vy * dt;
       }
 
-      clampToOctagon(hero, hero.radius);
+      World.clamp(hero, hero.radius);
 
       for (let i = hero.ghosts.length - 1; i >= 0; i--) {
         hero.ghosts[i].alpha -= dt * 3.5;
@@ -3578,9 +4090,13 @@ if (metaFx.regen > 0 && hero.hp > 0) hero.hp = Math.min(hero.maxHp, hero.hp + me
         }
 
         const effectiveSpeed = e.freezeTimer > 0 ? 0 : e.speed * (e.slowTimer > 0 ? 0.45 : 1.0);
-        const toHeroX = hero.x - e.x;
-        const toHeroY = hero.y - e.y;
+        let toHeroX = hero.x - e.x;
+        let toHeroY = hero.y - e.y;
         const distToHero = Math.hypot(toHeroX, toHeroY);
+        if (World.kind !== 'tower' && distToHero > 40) { // walls in the way: walk the flow field, not a straight line
+          const st = World.steer(e.x, e.y, hero.x, hero.y);
+          if (st) { toHeroX = st.x * distToHero; toHeroY = st.y * distToHero; }
+        }
 
         e.walkTimer += dt * (effectiveSpeed / 40);
 
@@ -3675,12 +4191,12 @@ if (metaFx.regen > 0 && hero.hp > 0) hero.hp = Math.min(hero.maxHp, hero.hp + me
             });
 
             let hitObstacle = false;
-            PILLARS.forEach(p => {
+            World.obstacles.forEach(p => {
               if (Math.hypot(e.x - p.x, e.y - p.y) < (e.radius + p.r)) {
                 hitObstacle = true;
               }
             });
-            if (!pointInOctagon(e.x + e.vx * dt * 3, e.y + e.vy * dt * 3)) {
+            if (!World.inside(e.x + e.vx * dt * 3, e.y + e.vy * dt * 3)) {
               hitObstacle = true;
             }
 
@@ -3740,7 +4256,7 @@ if (metaFx.regen > 0 && hero.hp > 0) hero.hp = Math.min(hero.maxHp, hero.hp + me
         e.recoilX *= 0.85;
         e.recoilY *= 0.85;
 
-        clampToOctagon(e, e.radius);
+        World.clamp(e, e.radius);
 
         const neighbors = getNearbyEnemies(e.x, e.y, e.radius * 2);
         for (let n = 0; n < neighbors.length; n++) {
@@ -5461,11 +5977,11 @@ if (metaFx.regen > 0 && hero.hp > 0) hero.hp = Math.min(hero.maxHp, hero.hp + me
       CAMERA.y += (hero.y - CAMERA.y) * 0.1;
 
       // zoom in just enough that the view always fits inside the map (no bars on any aspect), then clamp
-      CAMERA.zoom = Math.max(CAM_ZOOM, screenW / (ARENA_W - 2 * CAM_EDGE), screenH / (ARENA_H - 2 * CAM_EDGE));
+      CAMERA.zoom = Math.max(CAM_ZOOM, screenW / (World.w - 2 * CAM_EDGE), screenH / (World.h - 2 * CAM_EDGE));
       const halfViewW = (screenW / 2) / CAMERA.zoom;
       const halfViewH = (screenH / 2) / CAMERA.zoom;
-      CAMERA.x = Math.max(CAM_EDGE + halfViewW, Math.min(ARENA_W - CAM_EDGE - halfViewW, CAMERA.x));
-      CAMERA.y = Math.max(CAM_EDGE + halfViewH, Math.min(ARENA_H - CAM_EDGE - halfViewH, CAMERA.y));
+      CAMERA.x = Math.max(CAM_EDGE + halfViewW, Math.min(World.w - CAM_EDGE - halfViewW, CAMERA.x));
+      CAMERA.y = Math.max(CAM_EDGE + halfViewH, Math.min(World.h - CAM_EDGE - halfViewH, CAMERA.y));
 
       ctx.fillStyle = '#0d0c13';
       ctx.fillRect(0, 0, screenW, screenH);
@@ -5665,6 +6181,7 @@ if (metaFx.regen > 0 && hero.hp > 0) hero.hp = Math.min(hero.maxHp, hero.hp + me
 
     // --- ARENA DRAWING (Pillar debug drawing removed, collision retained) ---
     function drawArena() {
+      if (World.kind !== 'tower') { World.drawChunks(ctx, CAMERA, screenW, screenH); return; }
       const mapImg = SPRITES['worldmap'];
       if (mapImg && mapImg.complete && mapImg.naturalWidth > 0) {
         ctx.drawImage(mapImg, 0, 0, ARENA_W, ARENA_H);
@@ -8129,6 +8646,16 @@ telemetryInit();
       weapons: hero.weapons.map(w => ({ id: w.id, lvl: w.level, evo: w.evo || null })),
       threat: enemies.reduce((a, e) => { const dx = e.x - hero.x, dy = e.y - hero.y, d2 = dx * dx + dy * dy + 1; return [a[0] + dx / d2, a[1] + dy / d2]; }, [0, 0])
     });
+    // ?god=1 only: map QA probe (enemies in rock, how many reach the hero)
+    if (isGod) window.__map = () => {
+      let rock = 0, near = 0, far = 0;
+      for (const e of enemies) {
+        if (!World.inside(e.x, e.y)) rock++;
+        const d = Math.hypot(e.x - hero.x, e.y - hero.y);
+        if (d < 150) near++; else if (d > 900) far++;
+      }
+      return { n: enemies.length, rock, near, far, cell: [(hero.x / 32) | 0, (hero.y / 32) | 0], t: Math.round(gameTime) };
+    };
     // ?god=1 only: staff-tip / cast-gesture probe for visual QA
     if (isGod) window.__cast = {
       tip: () => ({ ...staffTip() }),
