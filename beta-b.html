@@ -5341,6 +5341,32 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
             }
         }, true);
 
+        // "Shop" pill right under Play on the main menu (the ruby plate opens it too); 41b puts "What's new" below it
+        const play = document.getElementById('menu-play');
+        if (play && play.parentNode) {
+            const menuBtn = document.createElement('button');
+            menuBtn.type = 'button';
+            menuBtn.id = 'menu-shop';
+            menuBtn.className = 'pn-btn';
+            menuBtn.style.display = 'inline-flex';
+            menuBtn.style.alignItems = 'center';
+            menuBtn.style.gap = '6px';
+            const gem = document.createElement('img');
+            gem.src = 'sprites/icons/ruby.png';
+            gem.alt = '';
+            gem.style.height = '20px';
+            menuBtn.appendChild(gem);
+            menuBtn.appendChild(document.createTextNode('Shop'));
+            menuBtn.addEventListener('click', open);
+            // the menu spreads its children out, so Play and Shop share one wrapper to stay together
+            const wrap = document.createElement('div');
+            wrap.id = 'menu-play-wrap';
+            wrap.style.cssText = 'display:flex;flex-direction:column;align-items:center';
+            play.parentNode.insertBefore(wrap, play);
+            wrap.appendChild(play);
+            wrap.appendChild(menuBtn);
+        }
+
         return { open, close };
     })();
     window.SVShop = SVShop;
@@ -7586,7 +7612,7 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
         const nw = document.createElement('span'); nw.className = 'pn-new'; nw.textContent = 'NEW'; b.appendChild(nw);
         b.addEventListener('click', open); buttons.push(b); return b;
       }
-      const play = document.getElementById('menu-play');
+      const play = document.getElementById('menu-play-wrap') || document.getElementById('menu-play'); // after the Play+Shop group when it exists
       if (play && play.parentNode) play.parentNode.insertBefore(makeBtn(), play.nextSibling);
       const actions = document.querySelector('#pause-modal .pause-actions');
       if (actions && actions.parentNode) { const b = makeBtn(); b.style.marginTop = '10px'; actions.parentNode.insertBefore(b, actions.nextSibling); }
