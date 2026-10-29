@@ -3477,7 +3477,7 @@ if (metaFx.regen > 0 && hero.hp > 0) hero.hp = Math.min(hero.maxHp, hero.hp + me
               type: 'meteor_telegraph',
               x: tx + Math.cos(oAng) * off,
               y: ty + Math.sin(oAng) * off * 0.65,
-              radius: stats.rad * hero.areaMult * (isComet ? 1.9 : 1),
+              radius: isComet ? Math.min(stats.rad * hero.areaMult * 1.5, 240) : stats.rad * hero.areaMult, // Comet: 1.5x, capped at 240 (was 1.9x, up to ~440 at max)
               dmg: stats.dmg * hero.damageMult * (isComet ? 4 : 1),
               isComet,
               timer: 0.75 + k * 0.18,
@@ -4375,7 +4375,7 @@ if (metaFx.regen > 0 && hero.hp > 0) hero.hp = Math.min(hero.maxHp, hero.hp + me
             const gb = SPRITES['vfx-shadeburst'], gp = SPRITES['vfx-shadepool'];
             const ghostFx = !!(gb && gb.complete && gb.naturalWidth && gp && gp.complete && gp.naturalWidth);
             if (!ghostFx) spawnCrater(pt.x, pt.y, pt.radius * 0.7);
-            playVFX(ghostFx ? 'shadeburst' : 'explosion', pt.x, pt.y, { scale: pt.isComet ? (ghostFx ? pt.radius * 2 / 220 : 3.2) : 1.5, fps: ghostFx ? 9 : 24 }); // 9 fps = ~0.65 s so the exploding ghosts and wisps can be seen
+            playVFX(ghostFx ? 'shadeburst' : 'explosion', pt.x, pt.y, { scale: pt.isComet ? (ghostFx ? Math.min(pt.radius * 2 / 220, 1.6) : 3.2) : 1.5, fps: ghostFx ? 9 : 24 }); // 9 fps = ~0.65 s so the exploding ghosts and wisps can be seen
             if (pt.isComet) {
               addShake(10);
               screenFlash = 0.4;
@@ -4383,7 +4383,7 @@ if (metaFx.regen > 0 && hero.hp > 0) hero.hp = Math.min(hero.maxHp, hero.hp + me
 
             if (pt.isComet && ghostFx) {
               // Comet: one giant ghost pit sized to the blast (a 256px frame, ring fills most of it)
-              const pr = pt.radius, ps = pr * 2 / 195, px = pt.x - 4 * ps, py = pt.y - 53 * ps; // ring sits low in its frame
+              const pr = pt.radius, ps = Math.min(pr * 2 / 195, 1.6), px = pt.x - 4 * ps, py = pt.y - 53 * ps; // ring sits low in its frame
               scheduleGame(0.5, () => playVFX('shadepool', px, py, { scale: ps, fps: 6, loop: true, life: 4, startFrame: 0 }));
             } else for (let f = 0; f < 3; f++) {
               const fAng = (f / 3) * Math.PI * 2 + Math.random() * 0.5;
