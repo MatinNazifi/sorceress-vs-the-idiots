@@ -5160,6 +5160,12 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
         safeStorageSet(STORAGE_KEY, JSON.stringify(memState));
       }
 
+      // gold earned so far this run (the win bonus is added only at the end); the HUD reads this every frame
+      function live(seconds, kills, fillerGold) {
+        const n = v => (Number.isFinite(v) && v > 0 ? Math.floor(v) : 0);
+        return Math.min(MAX_SAFE_INT, Math.floor(n(seconds) / META_GOLD.perSeconds) + Math.floor(n(kills) / META_GOLD.perKills) + n(fillerGold));
+      }
+
       function endRun(params) {
         if (lastEndRunResult !== null) {
           return { earned: lastEndRunResult.earned, total: lastEndRunResult.total };
@@ -5172,13 +5178,7 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
         const l = Math.max(0, Number.isFinite(p.level) ? Math.floor(p.level) : 0);
         const fg = Math.max(0, Number.isFinite(p.fillerGold) ? Math.floor(p.fillerGold) : 0);
 
-        const earned = Math.min(
-          MAX_SAFE_INT,
-          Math.floor(s / META_GOLD.perSeconds) +
-          Math.floor(k / META_GOLD.perKills) +
-          (victory ? META_GOLD.winBonus : 0) +
-          fg
-        );
+        const earned = Math.min(MAX_SAFE_INT, live(s, k, fg) + (victory ? META_GOLD.winBonus : 0));
 
         ensureLoaded();
 
@@ -5232,6 +5232,7 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
 
       return {
         get,
+        live,
         endRun,
         mountMenuBadge
       };
@@ -7162,13 +7163,18 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
       hudText(timeStr, tX + tW / 2, tY + tH * 0.54, 16);
       hudImage('ui-kill-plate', kX, kY, kW, kH);
       hudText(String(killCount), kX + kW * 0.6, kY + kH * 0.5, 16, '#ffd23f');
+      // Gold earned this run, right-aligned under the kill plate (narrow: left of the pause button, which sits under the plate)
+      const goldTxt = `Gold ${SVMeta.live(gameTime, killCount, goldScore)}`;
+      const goldRight = narrow ? screenW - 8 - PAUSE_BTN_SIZE - 8 : kX + kW - 4;
+      const goldY = narrow ? kY + kH + 4 + PAUSE_BTN_SIZE / 2 : kY + kH + 10;
+      hudText(goldTxt, goldRight - goldTxt.length * 4.2, goldY, 14, '#ffd23f');
 
       // Pause button (DOM): top-right on wide screens, under the right column on narrow ones
       const pX = screenW - 8 - PAUSE_BTN_SIZE;
       const pY = narrow ? kY + kH + 4 : 10;
       placePauseButton(pX, pY);
 
-      const hudBottom = Math.max(leftBottom, kY + kH, tY + tH, pY + PAUSE_BTN_SIZE);
+      const hudBottom = Math.max(leftBottom, kY + kH, tY + tH, pY + PAUSE_BTN_SIZE, goldY + 8);
 
       // 5. Boss Bar
       const activeBoss = enemies.find(e => e.isBoss && e.hp > 0);
