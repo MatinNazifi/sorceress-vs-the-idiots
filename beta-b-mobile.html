@@ -5371,7 +5371,7 @@ if (metaFx.regen > 0 && hero.hp > 0) hero.hp = Math.min(hero.maxHp, hero.hp + me
         const st = document.createElement('style');
         st.textContent =
             '#shop-modal{position:fixed;inset:0;z-index:150;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,.7);-webkit-tap-highlight-color:transparent}' +
-            '#shop-modal .sh-panel{width:min(92vw,440px);max-height:92vh;box-sizing:border-box;display:flex;flex-direction:column;border:26px solid transparent;border-image:url("sprites/ui/panel.png") 80 70 60 70 fill / 26px stretch;filter:drop-shadow(0 12px 20px rgba(0,0,0,.8));padding:6px 12px 8px;text-align:left}' +
+            '#shop-modal .sh-panel{width:min(92vw,440px);max-height:92vh;box-sizing:border-box;display:flex;flex-direction:column;border-style:solid;border-color:transparent;border-width:48px 32px 32px;border-image:url("sprites/ui/panel-tall.png") 62 40 40 fill / 48px 32px 32px stretch;filter:drop-shadow(0 12px 20px rgba(0,0,0,.8));padding:6px 12px 8px;text-align:left}' +
             '#shop-modal .sh-t{text-align:center;font:900 26px "Trebuchet MS",sans-serif;color:#ffd23f;text-shadow:var(--ink-outline),0 0 18px rgba(255,79,216,.55);margin:0}' +
             '#shop-modal .sh-s{text-align:center;font:700 13px "Trebuchet MS",sans-serif;color:#cbd5e1;margin:2px 0 8px}' +
             '#shop-modal .sh-bal{display:flex;align-items:center;justify-content:center;gap:6px;margin-bottom:8px;font:800 16px "Trebuchet MS",sans-serif;color:#f6d6e0;text-shadow:var(--ink-outline)}' +
@@ -7899,7 +7899,7 @@ if (metaFx.regen > 0 && hero.hp > 0) hero.hp = Math.min(hero.maxHp, hero.hp + me
       st.textContent =
         '.pn-btn{position:relative;margin-top:14px;background:none;border:2px solid #7c4dbd;border-radius:999px;padding:8px 20px;color:var(--parchment);font:800 15px "Trebuchet MS",sans-serif;letter-spacing:1px;text-shadow:var(--ink-outline);cursor:pointer;-webkit-tap-highlight-color:transparent}' +
         '.pn-btn .pn-new{position:absolute;top:-9px;right:-8px;background:#e8344f;color:#fff;border-radius:999px;padding:1px 7px;font:900 10px "Trebuchet MS",sans-serif;letter-spacing:1px;box-shadow:0 0 10px rgba(232,52,79,.8)}' +
-        '#patch-modal{z-index:150}#patch-modal .pn-panel{width:min(92vw,440px);border:26px solid transparent;border-image:url("sprites/ui/panel.png") 80 70 60 70 fill / 26px stretch;filter:drop-shadow(0 12px 20px rgba(0,0,0,.8));padding:6px 12px 8px;text-align:left}' +
+        '#patch-modal{z-index:150}#patch-modal .pn-panel{width:min(92vw,440px);border-style:solid;border-color:transparent;border-width:48px 32px 32px;border-image:url("sprites/ui/panel-tall.png") 62 40 40 fill / 48px 32px 32px stretch;filter:drop-shadow(0 12px 20px rgba(0,0,0,.8));padding:6px 12px 8px;text-align:left}' +
         '#patch-modal .pn-t{text-align:center;font:900 26px "Trebuchet MS",sans-serif;color:#ffd23f;text-shadow:var(--ink-outline),0 0 18px rgba(255,79,216,.55)}' +
         '#patch-modal .pn-s{text-align:center;font:700 13px "Trebuchet MS",sans-serif;color:#cbd5e1;margin:2px 0 10px}' +
         '#patch-modal ul,#patch-modal ul *{touch-action:pan-y}' +
