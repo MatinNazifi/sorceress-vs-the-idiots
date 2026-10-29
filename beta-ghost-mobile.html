@@ -4362,7 +4362,7 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
             const gb = SPRITES['vfx-shadeburst'], gp = SPRITES['vfx-shadepool'];
             const ghostFx = !!(gb && gb.complete && gb.naturalWidth && gp && gp.complete && gp.naturalWidth);
             if (!ghostFx) spawnCrater(pt.x, pt.y, pt.radius * 0.7);
-            playVFX(ghostFx ? 'shadeburst' : 'explosion', pt.x, pt.y, { scale: pt.isComet ? (ghostFx ? pt.radius * 2 / 220 : 3.2) : 1.5, fps: ghostFx ? 16 : 24 });
+            playVFX(ghostFx ? 'shadeburst' : 'explosion', pt.x, pt.y, { scale: pt.isComet ? (ghostFx ? pt.radius * 2 / 220 : 3.2) : 1.5, fps: ghostFx ? 9 : 24 }); // 9 fps = ~0.65 s so the exploding ghosts and wisps can be seen
             if (pt.isComet) {
               addShake(10);
               screenFlash = 0.4;
@@ -4371,7 +4371,7 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
             if (pt.isComet && ghostFx) {
               // Comet: one giant ghost pit sized to the blast (a 256px frame, ring fills most of it)
               const pr = pt.radius, ps = pr * 2 / 195, px = pt.x - 4 * ps, py = pt.y - 53 * ps; // ring sits low in its frame
-              scheduleGame(0.25, () => playVFX('shadepool', px, py, { scale: ps, fps: 6, loop: true, life: 4, startFrame: 0 }));
+              scheduleGame(0.5, () => playVFX('shadepool', px, py, { scale: ps, fps: 6, loop: true, life: 4, startFrame: 0 }));
             } else for (let f = 0; f < 3; f++) {
               const fAng = (f / 3) * Math.PI * 2 + Math.random() * 0.5;
               const fDist = 18 + Math.random() * (pt.radius * 0.35);
