@@ -1278,7 +1278,8 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
       'ui-xp-frame': 'sprites/ui/xp-frame.png',
       'ui-level-badge': 'sprites/ui/level-badge.png',
       'ui-timer-plate': 'sprites/ui/timer-plate.png',
-      'ui-kill-plate': 'sprites/ui/kill-plate.png'
+      'ui-kill-plate': 'sprites/ui/kill-plate.png',
+      'ui-ruby-plate': 'sprites/ui/ruby-plate.png'
     };
 
     const LOAD = { total: Object.keys(SPRITE_URLS).length, done: 0, shownAt: performance.now(), MIN_MS: 1400 };
@@ -4910,7 +4911,7 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
       // Everything maxed or evolved: bonus cards instead
       const fallbacks = [
         { type: 'heal', id: 'heal', name: 'Full Heal', icon: '❤️', desc: 'Restore all of your HP.', isNew: false, currentLvl: 0 },
-        { type: 'gold', id: 'gold', name: '+50 Gold', icon: '🪙', desc: '+50 gold score.', isNew: false, currentLvl: 0 }
+        { type: 'gold', id: 'gold', name: '+50 Rubies', icon: '💎', desc: '+50 cursed rubies.', isNew: false, currentLvl: 0 }
       ];
       for (let i = 0; i < fallbacks.length && picks.length < 3; i++) picks.push(fallbacks[i]);
 
@@ -5220,7 +5221,7 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
           }
           const current = get();
           if (current && current.gold > 0) {
-            el.textContent = `Gold: ${current.gold}`;
+            el.textContent = `Rubies: ${current.gold}`;
             el.style.display = 'block';
           } else {
             el.style.display = 'none';
@@ -5267,7 +5268,7 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
         <div><strong>Time Survived:</strong> ${timeStr}</div>
         <div><strong>Level Reached:</strong> ${hero.level}</div>
         <div><strong>Enemies Vanquished:</strong> ${killCount}</div>
-        ${metaGold.earned > 0 ? `<div><strong>Gold earned:</strong> +${metaGold.earned} (total ${metaGold.total})</div>` : ''}
+        ${metaGold.earned > 0 ? `<div><strong>Cursed rubies:</strong> +${metaGold.earned} (total ${metaGold.total})</div>` : ''}
       `;
 
       modal.style.display = 'flex';
@@ -7163,18 +7164,19 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
       hudText(timeStr, tX + tW / 2, tY + tH * 0.54, 16);
       hudImage('ui-kill-plate', kX, kY, kW, kH);
       hudText(String(killCount), kX + kW * 0.6, kY + kH * 0.5, 16, '#ffd23f');
-      // Gold earned this run, right-aligned under the kill plate (narrow: left of the pause button, which sits under the plate)
-      const goldTxt = `Gold ${SVMeta.live(gameTime, killCount, goldScore)}`;
-      const goldRight = narrow ? screenW - 8 - PAUSE_BTN_SIZE - 8 : kX + kW - 4;
-      const goldY = narrow ? kY + kH + 4 + PAUSE_BTN_SIZE / 2 : kY + kH + 10;
-      hudText(goldTxt, goldRight - goldTxt.length * 4.2, goldY, 14, '#ffd23f');
+      // Cursed rubies earned this run: ruby plate under the kill plate (narrow: left of the pause button, which sits under the kill plate)
+      const rW = narrow ? 84 : kW, rH = rW * 190 / 439;
+      const rX = narrow ? screenW - 8 - PAUSE_BTN_SIZE - 6 - rW : kX;
+      const rY = narrow ? kY + kH + 4 + (PAUSE_BTN_SIZE - rH) / 2 : kY + kH + 4;
+      hudImage('ui-ruby-plate', rX, rY, rW, rH);
+      hudText(String(SVMeta.live(gameTime, killCount, goldScore)), rX + rW * 0.6, rY + rH * 0.5, narrow ? 14 : 16, '#f6d6e0');
 
       // Pause button (DOM): top-right on wide screens, under the right column on narrow ones
       const pX = screenW - 8 - PAUSE_BTN_SIZE;
       const pY = narrow ? kY + kH + 4 : 10;
       placePauseButton(pX, pY);
 
-      const hudBottom = Math.max(leftBottom, kY + kH, tY + tH, pY + PAUSE_BTN_SIZE, goldY + 8);
+      const hudBottom = Math.max(leftBottom, kY + kH, tY + tH, pY + PAUSE_BTN_SIZE, rY + rH);
 
       // 5. Boss Bar
       const activeBoss = enemies.find(e => e.isBoss && e.hp > 0);
