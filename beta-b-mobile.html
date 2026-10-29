@@ -5002,20 +5002,20 @@ if (metaFx.regen > 0 && hero.hp > 0) hero.hp = Math.min(hero.maxHp, hero.hp + me
     });
 
     // Permanent shop upgrades, bought with cursed rubies. Each level adds `per` to its effect key; every % effect tops out at +25% or less.
-    // cost(level n -> n+1) = round(base * 1.6^n / 10) * 10. All numbers live here; SVMeta.buy() is the only place that spends.
+    // cost(level n -> n+1) = round(base * 1.7^n / 10) * 10. All numbers live here; SVMeta.buy() is the only place that spends.
     const META_UPGRADES = Object.freeze([
       { id: 'vit', key: 'hp', name: 'Cursed Vitality', per: 0.05, max: 5, base: 120, desc: '+5% max HP per level' },
-      { id: 'skin', key: 'armor', name: 'Stone Skin', per: 0.03, max: 5, base: 150, desc: '-3% damage taken per level' },
-      { id: 'troll', key: 'regen', name: 'Trollblood', per: 0.15, max: 5, base: 150, desc: 'Regain 0.15 HP per second per level' },
+      { id: 'skin', key: 'armor', name: 'Stone Skin', per: 0.03, max: 5, base: 200, desc: '-3% damage taken per level' },
+      { id: 'troll', key: 'regen', name: 'Trollblood', per: 0.15, max: 5, base: 200, desc: 'Regain 0.15 HP per second per level' },
       { id: 'stride', key: 'speed', name: 'Swift Stride', per: 0.03, max: 5, base: 120, desc: '+3% move speed per level' },
       { id: 'magnet', key: 'magnet', name: 'Soul Magnet', per: 0.08, max: 5, base: 120, desc: '+8% gem pickup range per level' },
       { id: 'scholar', key: 'xp', name: "Scholar's Eye", per: 0.04, max: 5, base: 120, desc: '+4% XP gained per level' },
       { id: 'staff', key: 'dmg', name: 'Sharpened Staff', per: 0.03, max: 5, base: 120, desc: '+3% damage per level' },
-      { id: 'hands', key: 'cd', name: 'Quick Hands', per: 0.025, max: 4, base: 250, desc: '-2.5% weapon cooldowns per level' },
-      { id: 'weave', key: 'area', name: 'Wide Weave', per: 0.04, max: 5, base: 150, desc: '+4% weapon area per level' },
+      { id: 'hands', key: 'cd', name: 'Quick Hands', per: 0.025, max: 4, base: 400, desc: '-2.5% weapon cooldowns per level' },
+      { id: 'weave', key: 'area', name: 'Wide Weave', per: 0.04, max: 5, base: 200, desc: '+4% weapon area per level' },
       { id: 'hunger', key: 'greed', name: 'Ruby Hunger', per: 0.10, max: 5, base: 100, desc: '+10% rubies earned per level' },
-      { id: 'chance', key: 'rerolls', name: "Fortune's Die", per: 1, max: 2, base: 250, desc: '+1 card reroll at the start of a run' },
-      { id: 'life', key: 'revive', name: 'Second Life', per: 1, max: 1, base: 1500, desc: 'Once per run, come back with half HP' }
+      { id: 'chance', key: 'rerolls', name: "Fortune's Die", per: 1, max: 2, base: 400, desc: '+1 card reroll at the start of a run' },
+      { id: 'life', key: 'revive', name: 'Second Life', per: 1, max: 1, base: 4000, desc: 'Once per run, come back with half HP' }
     ].map(u => Object.freeze(u)));
 
     const SVMeta = (() => {
@@ -5213,7 +5213,7 @@ if (metaFx.regen > 0 && hero.hp > 0) hero.hp = Math.min(hero.maxHp, hero.hp + me
 
       function costOf(id, level) {
         const u = META_UPGRADES.find(x => x.id === id);
-        return u && level < u.max ? Math.round(u.base * Math.pow(1.6, level) / 10) * 10 : null;
+        return u && level < u.max ? Math.round(u.base * Math.pow(1.7, level) / 10) * 10 : null;
       }
 
       // The only place rubies are spent: re-reads storage, checks the price against the stored balance, writes one merged save
@@ -5404,7 +5404,7 @@ if (metaFx.regen > 0 && hero.hp > 0) hero.hp = Math.min(hero.maxHp, hero.hp + me
 
         const title = document.createElement('div');
         title.className = 'sh-t';
-        title.textContent = 'RUBY SHOP';
+        title.textContent = 'UPGRADES';
 
         const subtitle = document.createElement('div');
         subtitle.className = 'sh-s';
@@ -5603,11 +5603,11 @@ if (metaFx.regen > 0 && hero.hp > 0) hero.hp = Math.min(hero.maxHp, hero.hp + me
             const menuBtn = document.createElement('button');
             menuBtn.type = 'button';
             menuBtn.id = 'menu-shop';
-            menuBtn.textContent = 'SHOP';
+            menuBtn.textContent = 'UPGRADES';
             // the Play button's painted look, smaller and without its pulse
             const btnStyle = document.createElement('style');
             btnStyle.textContent =
-                '#menu-shop{position:relative;width:min(46vw,170px);aspect-ratio:900/268;margin-top:4px;padding:0;border:none;background:url("sprites/ui/button.png") center/100% 100% no-repeat;color:var(--parchment);font:900 21px "Trebuchet MS",sans-serif;letter-spacing:3px;text-shadow:var(--ink-outline),0 0 10px rgba(255,210,63,.45);cursor:pointer;-webkit-tap-highlight-color:transparent}' +
+                '#menu-shop{position:relative;width:min(54vw,200px);aspect-ratio:900/268;margin-top:4px;padding:0;border:none;background:url("sprites/ui/button.png") center/100% 100% no-repeat;color:var(--parchment);font:900 17px "Trebuchet MS",sans-serif;letter-spacing:2px;text-shadow:var(--ink-outline),0 0 10px rgba(255,210,63,.45);cursor:pointer;-webkit-tap-highlight-color:transparent}' +
                 '#menu-shop:hover{filter:brightness(1.15)}#menu-shop:active{scale:.95}';
             document.head.appendChild(btnStyle);
             menuBtn.addEventListener('click', open);
