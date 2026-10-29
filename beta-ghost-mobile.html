@@ -5962,7 +5962,7 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
           const sig = SPRITES['sigil-spirits'];
           ctx.lineWidth = 3.5;
           if (sig && sig.complete && sig.naturalWidth) {
-            const sw = sig.naturalWidth / 6, sr = pt.radius * 1.43; // the ring fills ~70% of its cell
+            const sw = sig.naturalWidth / 6, sr = Math.min(pt.radius * 1.43, sw * 0.75); // the ring fills ~70% of its cell; capped at 1.5x native so a big Comet circle never blurs (the white ring below still shows the true area)
             ctx.save();
             ctx.globalAlpha = 0.35 + 0.5 * p; // soft at first, firm as the strike lands (12 circles stack in a max-level shower)
             ctx.translate(pt.x, pt.y);
