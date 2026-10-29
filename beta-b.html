@@ -1324,78 +1324,85 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
     }
 
     function cellOk(px, py) { const cx = (px / CS) | 0, cy = (py / CS) | 0; return cx >= 0 && cx < GW && cy >= 0 && cy < GH && grid[cy * GW + cx] === 1; }
-    const rooms = [];
-    for (let rx = 0; rx < 4; rx++) {
-      for (let ry = 0; ry < 4; ry++) {
-        const rw = Math.floor(14 + rand() * 8);
-        const rh = Math.floor(14 + rand() * 8);
-        const ox = rx * 46 + 6 + Math.floor(rand() * 6);
-        const oy = ry * 46 + 6 + Math.floor(rand() * 6);
-        rooms.push({ x: ox, y: oy, w: rw, h: rh });
-
-        for (let y = oy; y < oy + rh; y++) {
-          for (let x = ox; x < ox + rw; x++) {
-            if (x >= 0 && x < GW && y >= 0 && y < GH) grid[y * GW + x] = 1;
-          }
+    // Organic cave-crypt: wobbly chambers joined by wide winding tunnels; narrow-ish side paths end in reward alcoves.
+    // Widths: routes 7-10 cells, side paths 5 cells (never under 4).
+    const rooms = []; // chambers as bounding boxes, so centre = x + w / 2
+    function blob(cx, cy, r) {
+      const p1 = rand() * 6.283, p2 = rand() * 6.283;
+      const x0 = Math.max(3, Math.floor(cx - r * 1.4)), x1 = Math.min(GW - 4, Math.ceil(cx + r * 1.4));
+      const y0 = Math.max(3, Math.floor(cy - r * 1.4)), y1 = Math.min(GH - 4, Math.ceil(cy + r * 1.4));
+      for (let y = y0; y <= y1; y++) {
+        for (let x = x0; x <= x1; x++) {
+          const dx = x - cx, dy = y - cy;
+          const rr = r * (1 + 0.2 * Math.sin(3 * Math.atan2(dy, dx) + p1) + 0.1 * Math.sin(5 * Math.atan2(dy, dx) + p2));
+          if (dx * dx + dy * dy <= rr * rr) grid[y * GW + x] = 1;
         }
       }
     }
-
-    // Connect adjacent rooms with corridors (width = 3 cells)
-    for (let i = 0; i < rooms.length; i++) {
-      const r1 = rooms[i];
-      const r2 = rooms[(i + 1) % rooms.length];
-      const cx1 = Math.floor(r1.x + r1.w / 2), cy1 = Math.floor(r1.y + r1.h / 2);
-      const cx2 = Math.floor(r2.x + r2.w / 2), cy2 = Math.floor(r2.y + r2.h / 2);
-
-      const minX = Math.min(cx1, cx2), maxX = Math.max(cx1, cx2);
-      for (let x = minX; x <= maxX; x++) {
-        for (let w = -1; w <= 1; w++) {
-          const y = cy1 + w;
-          if (x >= 0 && x < GW && y >= 0 && y < GH) grid[y * GW + x] = 1;
-        }
-      }
-
-      const minY = Math.min(cy1, cy2), maxY = Math.max(cy1, cy2);
-      for (let y = minY; y <= maxY; y++) {
-        for (let w = -1; w <= 1; w++) {
-          const x = cx2 + w;
-          if (x >= 0 && x < GW && y >= 0 && y < GH) grid[y * GW + x] = 1;
-        }
+    function disc(cx, cy, r) {
+      const x0 = Math.max(3, Math.floor(cx - r - 1)), x1 = Math.min(GW - 4, Math.ceil(cx + r + 1));
+      const y0 = Math.max(3, Math.floor(cy - r - 1)), y1 = Math.min(GH - 4, Math.ceil(cy + r + 1));
+      for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) if ((x - cx) * (x - cx) + (y - cy) * (y - cy) <= r * r) grid[y * GW + x] = 1;
+    }
+    function tunnel(ax, ay, bx, by, r0, r1) { // a brush that wanders sideways, pinned to both ends
+      const len = Math.hypot(bx - ax, by - ay) || 1, steps = Math.ceil(len / 1.5);
+      const nx = -(by - ay) / len, ny = (bx - ax) / len;
+      const ph = rand() * 6.283, ph2 = rand() * 6.283, amp = Math.min(10, len * 0.18);
+      for (let i = 0; i <= steps; i++) {
+        const t = i / steps;
+        const wob = (Math.sin(t * 8.2 + ph) * 0.6 + Math.sin(t * 19.5 + ph2) * 0.4) * amp * Math.sin(t * Math.PI);
+        disc(ax + (bx - ax) * t + nx * wob, ay + (by - ay) * t + ny * wob, r0 + (r1 - r0) * (0.5 + 0.5 * Math.sin(t * 9 + ph)));
       }
     }
+
+    const cen = []; // chamber centres in cells, 4x4 jittered lattice
+    for (let gy = 0; gy < 4; gy++) {
+      for (let gx = 0; gx < 4; gx++) {
+        const cx = 26 + gx * 44 + (rand() - 0.5) * 12, cy = 26 + gy * 44 + (rand() - 0.5) * 12, r = 8 + rand() * 4;
+        cen.push({ cx, cy, r, gx, gy });
+        blob(cx, cy, r);
+        rooms.push({ x: cx - r, y: cy - r, w: r * 2, h: r * 2 });
+      }
+    }
+    for (let i = 0; i < cen.length; i++) { // routes: always left, and up on the first column or by chance (loops)
+      const c = cen[i];
+      if (c.gx > 0) { const o = cen[i - 1]; tunnel(o.cx, o.cy, c.cx, c.cy, 3.5, 5); }
+      if (c.gy > 0 && (c.gx === 0 || rand() < 0.45)) { const o = cen[i - 4]; tunnel(o.cx, o.cy, c.cx, c.cy, 3.5, 5); }
+    }
+    const alcoves = []; // dangerous side paths ending in a small chamber that holds a reward
+    for (let tries = 0; tries < 60 && alcoves.length < 6; tries++) {
+      const c = cen[Math.floor(rand() * cen.length)], ang = rand() * 6.283, len = 20 + rand() * 6;
+      const ex = c.cx + Math.cos(ang) * (c.r + len), ey = c.cy + Math.sin(ang) * (c.r + len);
+      if (ex < 12 || ey < 12 || ex > GW - 12 || ey > GH - 12) continue;
+      tunnel(c.cx + Math.cos(ang) * c.r * 0.6, c.cy + Math.sin(ang) * c.r * 0.6, ex, ey, 2.6, 2.6);
+      blob(ex, ey, 5);
+      alcoves.push({ cx: ex, cy: ey });
+    }
+    // one smoothing pass: drop 1-cell nubs, fill pinholes
+    const prev = grid.slice();
+    for (let y = 1; y < GH - 1; y++) {
+      for (let x = 1; x < GW - 1; x++) {
+        let n = 0;
+        for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) if ((dx || dy) && prev[(y + dy) * GW + x + dx] === 1) n++;
+        const i = y * GW + x;
+        if (prev[i] === 1 && n <= 2) grid[i] = 0; else if (prev[i] === 0 && n >= 6) grid[i] = 1;
+      }
+    }
+    // boss chamber = farthest from the start among chambers 6+, kept last
+    let far = 6, fd = -1;
+    for (let i = 6; i < rooms.length; i++) { const d = Math.hypot(cen[i].cx - cen[0].cx, cen[i].cy - cen[0].cy); if (d > fd) { fd = d; far = i; } }
+    const lastI = rooms.length - 1, tr = rooms[far]; rooms[far] = rooms[lastI]; rooms[lastI] = tr;
 
     const startX = Math.floor((rooms[0].x + rooms[0].w / 2) * CS);
     const startY = Math.floor((rooms[0].y + rooms[0].h / 2) * CS);
 
     const pois = [
-      {
-        id: 'poi_easter_runes',
-        type: 'easter',
-        x: Math.floor((rooms[1].x + rooms[1].w / 2) * CS),
-        y: Math.floor((rooms[1].y + rooms[1].h / 2) * CS),
-        r: 28,
-        data: { text: 'Carved runes hum with forgotten magic.' }
-      },
-      {
-        id: 'poi_quest_relic',
-        type: 'quest',
-        x: Math.floor((rooms[2].x + rooms[2].w / 2) * CS),
-        y: Math.floor((rooms[2].y + rooms[2].h / 2) * CS),
-        r: 32,
-        data: { questId: 'ancient_sigil', step: 1 }
-      },
-      {
-        id: 'poi_event_portal',
-        type: 'event',
-        x: Math.floor((rooms[3].x + rooms[3].w / 2) * CS),
-        y: Math.floor((rooms[3].y + rooms[3].h / 2) * CS),
-        r: 36,
-        data: { eventType: 'shadow_rift', difficulty: 2 }
-      }
+      { id: 'poi_easter_runes', type: 'easter', x: Math.floor(alcoves[0].cx * CS), y: Math.floor(alcoves[0].cy * CS), r: 28, data: { text: 'Carved runes hum with forgotten magic.' } },
+      { id: 'poi_quest_relic', type: 'quest', x: Math.floor(alcoves[1].cx * CS), y: Math.floor(alcoves[1].cy * CS), r: 32, data: { questId: 'ancient_sigil', step: 1 } },
+      { id: 'poi_event_portal', type: 'event', x: Math.floor((rooms[5].x + rooms[5].w / 2) * CS), y: Math.floor((rooms[5].y + rooms[5].h / 2) * CS), r: 36, data: { eventType: 'shadow_rift', difficulty: 2 } }
     ];
 
-    const spawnList = rooms.slice(4).map(r => ({
+    const spawnList = rooms.slice(2, -1).map(r => ({
       x: Math.floor((r.x + r.w / 2) * CS),
       y: Math.floor((r.y + r.h / 2) * CS)
     }));
@@ -1495,10 +1502,10 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
         let pick = null, nearest = null, nd = Infinity, n = 0;
         for (let i = 0; i < spawnList.length; i++) {
           const s = spawnList[i], d = Math.hypot(s.x - hero.x, s.y - hero.y);
-          if (d < nd) { nd = d; nearest = s; }
-          if (d > 500 && d < 1400 && Math.random() * ++n < 1) pick = s;
+          if (d > 450 && d < nd) { nd = d; nearest = s; }
+          if (d > 450 && d < 1500 && Math.random() * ++n < 1) pick = s;
         }
-        return pick || nearest;
+        return pick || nearest || spawnList[0];
       },
 
       bossSpawn() {
@@ -1572,8 +1579,9 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
       randomFreeSpot(hero) {
         for (let i = 0; i < 50; i++) {
           const rx = rooms[Math.floor(Math.random() * rooms.length)];
-          const x = (rx.x + 2 + Math.random() * (rx.w - 4)) * CS;
-          const y = (rx.y + 2 + Math.random() * (rx.h - 4)) * CS;
+          const x = (rx.x + rx.w * (0.25 + Math.random() * 0.5)) * CS;
+          const y = (rx.y + rx.h * (0.25 + Math.random() * 0.5)) * CS;
+          if (!this.isWalkable(x, y, 24)) continue;
           if (hero && Math.hypot(x - hero.x, y - hero.y) < 150) continue;
           return { x, y };
         }
@@ -1592,23 +1600,40 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
           for (let cx = minCX; cx <= maxCX; cx++) {
             const chunkKey = `${cx}_${cy}`;
             const cCanvas = getChunkCanvas(chunkKey, (cctx) => {
-              // Flat color chunk rasterization
-              cctx.fillStyle = '#111217';
-              cctx.fillRect(0, 0, 1024, 1024);
-              cctx.fillStyle = '#2d2f3d';
-
-              const cellStartX = cx * 32, cellStartY = cy * 32;
+              // 3/4-view placeholder: dark roofs, brick wall fronts two cells tall, stone floor with wall shadow
+              const flo = (gx, gy) => gx >= 0 && gy >= 0 && gx < GW && gy < GH && grid[gy * GW + gx] === 1;
+              const hash = (a, b) => { let h = (a * 374761393 + b * 668265263) | 0; h = (h ^ (h >>> 13)) * 1274126177 | 0; return ((h ^ (h >>> 16)) >>> 0) / 4294967296; };
               for (let ly = 0; ly < 32; ly++) {
                 for (let lx = 0; lx < 32; lx++) {
-                  const gx = cellStartX + lx, gy = cellStartY + ly;
-                  if (gx < GW && gy < GH && grid[gy * GW + gx] === 1) {
-                    cctx.fillRect(lx * CS, ly * CS, CS, CS);
+                  const gx = cx * 32 + lx, gy = cy * 32 + ly, px = lx * CS, py = ly * CS, v = hash(gx, gy);
+                  if (flo(gx, gy)) {
+                    const l = 46 + v * 12;
+                    cctx.fillStyle = `rgb(${l + 8},${l + 4},${l + 20})`;
+                    cctx.fillRect(px, py, CS, CS);
+                    cctx.fillStyle = 'rgba(0,0,0,0.20)';
+                    cctx.fillRect(px, py + CS - 2, CS, 2);
+                    cctx.fillRect(px + CS - 2, py, 2, CS);
+                    if (!flo(gx, gy - 1)) { cctx.fillStyle = 'rgba(0,0,0,0.40)'; cctx.fillRect(px, py, CS, 12); }
+                  } else if (flo(gx, gy + 1) || flo(gx, gy + 2)) {
+                    const low = flo(gx, gy + 1), l = (low ? 96 : 76) + v * 8;
+                    cctx.fillStyle = `rgb(${l + 14},${l - 4},${l - 10})`;
+                    cctx.fillRect(px, py, CS, CS);
+                    cctx.fillStyle = 'rgba(0,0,0,0.30)';
+                    cctx.fillRect(px, py + 10, CS, 1);
+                    cctx.fillRect(px, py + 21, CS, 1);
+                    const o = (gy & 1) ? 8 : 20;
+                    cctx.fillRect(px + o, py, 1, 10);
+                    cctx.fillRect(px + 32 - o, py + 11, 1, 10);
+                    cctx.fillRect(px + o, py + 22, 1, 10);
+                    if (low) { cctx.fillStyle = 'rgba(0,0,0,0.38)'; cctx.fillRect(px, py + CS - 3, CS, 3); }
+                    else if (!flo(gx, gy + 1)) { cctx.fillStyle = 'rgba(255,230,200,0.10)'; cctx.fillRect(px, py, CS, 2); }
+                  } else {
+                    const l = 16 + v * 6;
+                    cctx.fillStyle = `rgb(${l + 4},${l + 2},${l + 10})`;
+                    cctx.fillRect(px, py, CS, CS);
                   }
                 }
               }
-
-              cctx.strokeStyle = 'rgba(255,255,255,0.06)';
-              cctx.strokeRect(0, 0, 1024, 1024);
             });
 
             if (cCanvas) {
