@@ -1155,6 +1155,10 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
       'spectral-blade': 'sprites/items/spectral-blade.png', // optional: procedural fallback until the art exists
       'hextotem': 'sprites/hextotem.png',
       'meteorfall': 'sprites/vfx/meteorfall.png',
+      'meteorfall-ghost': 'sprites/vfx/meteorfall-ghost.png', // Sepid's own cast: black ghost with white hair-streaks, falls from the sky
+      'sigil-spirits': 'sprites/vfx/sigil-spirits.png', // her ground warning: a ring of black ghosts chasing each other (red stays for enemy danger)
+      'vfx-shadeburst': 'sprites/vfx/shadeburst.png', // meteor impact: black ghosts burst outward
+      'vfx-shadepool': 'sprites/vfx/shadepool.png', // what the impact leaves: a shadow pool with rising white wisps (replaces the red fire)
       'petfrog': 'sprites/petfrog.png',
       'vfx-enemyorb': 'sprites/vfx/enemyorb.png',
       'shard-blue': 'sprites/items/shard-blue.png',
@@ -1210,7 +1214,7 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
         // UI art that used to download the first time it was shown (level-up cards, pause panel, buttons, icons): fetch + decode it now, quietly, behind the loading fade
         window.__uiKeep = ['card-normal','card-evolve','card-relic','panel','button','dash-button','btn-pause','btn-play','btn-home','btn-restart','btn-settings','btn-sound-on','btn-sound-off','btn-skull']
           .map(n => 'sprites/ui/' + n + '.png')
-          .concat(['bolt','chain','frost','blades','beam','runes','frog','meteor','fire','area','damage','speed','cooldown','health','magnet','vortex','orbs','totem'].map(n => 'sprites/icons/' + n + '.png'))
+          .concat(['bolt','chain','frost','blades','beam','runes','frog','meteor','meteor-ghost','fire','area','damage','speed','cooldown','health','magnet','vortex','orbs','totem'].map(n => 'sprites/icons/' + n + '.png'))
           .map(u => { const im = new Image(); im.decoding = 'async'; im.src = u; if (im.decode) im.decode().catch(() => {}); return im; });
         setTimeout(() => {
           const ls = document.getElementById('loading-screen');
@@ -1348,7 +1352,7 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
       ctx.save();
       ctx.translate(v.x, v.y);
 
-      if ((v.name === 'fire' || v.name === 'firetrail') && v.life < 0.6) {
+      if ((v.name === 'fire' || v.name === 'firetrail' || v.name === 'shadepool') && v.life < 0.6) {
         ctx.globalAlpha = Math.max(0, v.life / 0.6);
       }
 
@@ -1928,11 +1932,11 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
         icon: '💠',
         desc: 'Protective arcane gems orbit the sorceress, bashing enemies.',
         levels: [
-          { count: 2, dmg: 18, radius: 82, speed: 2.4 },
-          { count: 3, dmg: 24, radius: 88, speed: 2.7 },
-          { count: 4, dmg: 32, radius: 95, speed: 3.0 },
-          { count: 4, dmg: 42, radius: 105, speed: 3.4 },
-          { count: 5, dmg: 56, radius: 115, speed: 3.8 }
+          { count: 2, dmg: 18, radius: 82 },
+          { count: 3, dmg: 24, radius: 88 },
+          { count: 4, dmg: 32, radius: 95 },
+          { count: 4, dmg: 42, radius: 105 },
+          { count: 5, dmg: 56, radius: 115 }
         ]
       },
       chain: {
@@ -1954,11 +1958,11 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
         icon: '❄️',
         desc: 'Expanding glacial ring slows and crushes surrounding foes.',
         levels: [
-          { radius: 170, dmg: 24, cd: 3.0, slow: 0.4 },
-          { radius: 210, dmg: 34, cd: 2.7, slow: 0.45 },
-          { radius: 260, dmg: 46, cd: 2.4, slow: 0.5 },
-          { radius: 310, dmg: 62, cd: 2.1, slow: 0.55 },
-          { radius: 370, dmg: 88, cd: 1.8, slow: 0.65 }
+          { radius: 170, dmg: 24, cd: 3.0 },
+          { radius: 210, dmg: 34, cd: 2.7 },
+          { radius: 260, dmg: 46, cd: 2.4 },
+          { radius: 310, dmg: 62, cd: 2.1 },
+          { radius: 370, dmg: 88, cd: 1.8 }
         ]
       },
       blades: {
@@ -2004,7 +2008,8 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
         id: 'meteor',
         name: 'Meteor Call',
         icon: '☄️',
-        desc: 'Calls flaming meteors down onto enemy clusters.',
+        iconSrc: 'sprites/icons/meteor-ghost.png',
+        desc: 'Calls ghost spirits down from the sky onto enemy clusters.',
         levels: [
           { count: 1, dmg: 100, rad: 100, cd: 5.5 },
           { count: 2, dmg: 135, rad: 115, cd: 5.0 },
@@ -2504,11 +2509,12 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
 
       spawnTimer += dt * spawnsPerSec;
 
-      if (Math.abs(gameTime - 240) < dt || Math.abs(gameTime - 450) < dt) {
+      if ((gameTime - dt < 240 && 240 <= gameTime) || (gameTime - dt < 450 && 450 <= gameTime)) {
         spawnEncirclement(26);
       }
 
-      if ((gameTime > 120 && Math.floor(gameTime) % 45 === 0 && Math.abs(gameTime - Math.floor(gameTime)) < dt)) {
+      const stairBoundary = Math.floor(gameTime / 45) * 45;
+      if (gameTime > 120 && stairBoundary > 120 && gameTime - dt < stairBoundary && stairBoundary <= gameTime) {
         triggerStairBurst(Math.floor(5 + minutes * 1.5));
       }
 
@@ -3231,8 +3237,10 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
         const isComet = w.evo === 'B'; // Comet: one giant meteor, x4 damage, huge explosion
         const perTarget = w.evo === 'A' ? 3 : 1; // Meteor Shower: each meteor becomes a shower of 3
         const casts = isComet ? 1 : stats.count;
+        const taken = [];
         for (let i = 0; i < casts; i++) {
-          const target = findRandomEnemyCluster();
+          const target = findRandomEnemyCluster(taken);
+          if (target) taken.push({ x: target.x, y: target.y });
           const tx = target ? target.x : hero.x + (Math.random() - 0.5) * 500;
           const ty = target ? target.y : hero.y + (Math.random() - 0.5) * 500;
           for (let k = 0; k < perTarget; k++) {
@@ -3326,9 +3334,11 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
         tipFlash(0.45);
         const sing = w.evo === 'B'; // Singularity: bigger pull, x2.5 damage
         const wells = w.evo === 'A' ? 2 : 1;
+        const taken = [];
         for (let k = 0; k < wells; k++) {
-          const target = findRandomEnemyCluster();
+          const target = findRandomEnemyCluster(taken);
           if (!target) return;
+          taken.push({ x: target.x, y: target.y });
           Sound.zap();
           spawnParticle({
             type: 'gravity_well', x: target.x, y: target.y,
@@ -3465,9 +3475,25 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
       return closest;
     }
 
-    function findRandomEnemyCluster() {
-      if (enemies.length === 0) return null;
-      return enemies[Math.floor(Math.random() * enemies.length)];
+    const CLUSTER_REACH = 650;   // px: the first pick of a volley stays within this distance of the hero
+    const CLUSTER_RADIUS = 110;  // px: enemies this close to each other count as one group
+    const CLUSTER_SPREAD = 240;  // px: min gap between the targets of one volley
+    // Densest group wins (ties: nearer to the hero). Later picks of a volley (taken) may be anywhere on the map and keep CLUSTER_SPREAD from earlier ones.
+    // Runs only when a volley fires; squared distances keep the ~170 x 170 scan well under a millisecond.
+    function findRandomEnemyCluster(taken) {
+      const alive = enemies.filter(e => e.hp > 0);
+      if (!alive.length) return null;
+      const R2 = CLUSTER_RADIUS * CLUSTER_RADIUS, S2 = CLUSTER_SPREAD * CLUSTER_SPREAD, H2 = CLUSTER_REACH * CLUSTER_REACH;
+      const hasTaken = taken && taken.length > 0;
+      let best = null, bestN = 0, bestD = 0;
+      for (const c of alive) {
+        const hd = (c.x - hero.x) ** 2 + (c.y - hero.y) ** 2;
+        if (hasTaken ? taken.some(p => (c.x - p.x) ** 2 + (c.y - p.y) ** 2 <= S2) : hd > H2) continue;
+        let n = 0;
+        for (const o of alive) if ((o.x - c.x) ** 2 + (o.y - c.y) ** 2 <= R2) n++;
+        if (n > bestN || (n === bestN && hd < bestD)) { best = c; bestN = n; bestD = hd; }
+      }
+      return best || alive[Math.floor(Math.random() * alive.length)];
     }
 
     // Chain cast gesture: staff raised (cast pose, stretch up) + crackle at the crystal
@@ -3884,6 +3910,18 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
       }
     }
 
+    // Game-time timers: follow pause, slow-mo and hit-stop (setTimeout does not). A restart reloads the page, so no clear is needed.
+    const gameTimers = [];
+    function scheduleGame(delaySec, fn) { gameTimers.push({ t: delaySec, fn }); }
+    function tickGameTimers(dt) {
+      for (let i = gameTimers.length - 1; i >= 0; i--) {
+        if (i >= gameTimers.length) continue; // a callback may have scheduled or removed entries
+        const timer = gameTimers[i];
+        timer.t -= dt;
+        if (timer.t <= 0) { gameTimers.splice(i, 1); timer.fn(); }
+      }
+    }
+
     function killEnemy(e) {
       killCount++;
       if (hero.passives.siphon && killCount % SIPHON_KILLS === 0 && hero.hp > 0) { // Soul Siphon
@@ -3957,14 +3995,14 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
 
         // Boss death: 4 staggered explosions at 2.0-3.0
         for (let b = 0; b < 4; b++) {
-          setTimeout(() => {
+          scheduleGame(b * 0.16, () => {
             const ox = (Math.random() - 0.5) * e.radius * 1.2;
             const oy = (Math.random() - 0.5) * e.radius * 1.2 - 20;
             const explScale = 2.0 + Math.random() * 1.0;
             playVFX('explosion', e.x + ox, e.y + oy, { scale: explScale, fps: 20 });
             Sound.hit(true);
             addShake(10);
-          }, b * 160);
+          });
         }
 
         chests.push({
@@ -3979,7 +4017,7 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
         });
 
         if (e.isFinalBoss) {
-          setTimeout(() => triggerGameOver(true), 800);
+          scheduleGame(0.8, () => triggerGameOver(true));
         }
       }
     }
@@ -4095,26 +4133,33 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
             addShake(18);
             kickCamera((Math.random() - 0.5) * 12, 10);
             screenFlash = 0.24;
-            spawnCrater(pt.x, pt.y, pt.radius * 0.7);
-            playVFX('explosion', pt.x, pt.y, { scale: pt.isComet ? 3.2 : 1.5, fps: 24 });
+            // Sepid's own cast: black ghost burst + shadow pools; the old explosion and red fire if the ghost art is missing
+            const gb = SPRITES['vfx-shadeburst'], gp = SPRITES['vfx-shadepool'];
+            const ghostFx = !!(gb && gb.complete && gb.naturalWidth && gp && gp.complete && gp.naturalWidth);
+            if (!ghostFx) spawnCrater(pt.x, pt.y, pt.radius * 0.7);
+            playVFX(ghostFx ? 'shadeburst' : 'explosion', pt.x, pt.y, { scale: pt.isComet ? (ghostFx ? pt.radius * 2 / 220 : 3.2) : 1.5, fps: ghostFx ? 9 : 24 }); // 9 fps = ~0.65 s so the exploding ghosts and wisps can be seen
             if (pt.isComet) {
               addShake(10);
               screenFlash = 0.4;
             }
 
-            for (let f = 0; f < 3; f++) {
+            if (pt.isComet && ghostFx) {
+              // Comet: one giant ghost pit sized to the blast (a 256px frame, ring fills most of it)
+              const pr = pt.radius, ps = pr * 2 / 195, px = pt.x - 4 * ps, py = pt.y - 53 * ps; // ring sits low in its frame
+              scheduleGame(0.5, () => playVFX('shadepool', px, py, { scale: ps, fps: 6, loop: true, life: 4, startFrame: 0 }));
+            } else for (let f = 0; f < 3; f++) {
               const fAng = (f / 3) * Math.PI * 2 + Math.random() * 0.5;
               const fDist = 18 + Math.random() * (pt.radius * 0.35);
-              playVFX('firetrail', pt.x + Math.cos(fAng) * fDist, pt.y + Math.sin(fAng) * fDist, {
-                scale: 0.5,
-                fps: 12,
+              playVFX(ghostFx ? 'shadepool' : 'firetrail', pt.x + Math.cos(fAng) * fDist - (ghostFx ? 3 : 0), pt.y + Math.sin(fAng) * fDist - (ghostFx ? 42 : 0), {
+                scale: ghostFx ? 0.8 : 0.5,
+                fps: ghostFx ? 8 : 12,
                 loop: true,
                 life: 2.5,
                 startFrame: Math.floor(Math.random() * 6)
               });
             }
 
-            setTimeout(() => {
+            if (!ghostFx) setTimeout(() => {
               playVFX('poof', pt.x, pt.y - 10, { scale: 1.0, fps: 18 });
             }, 200);
 
@@ -4275,16 +4320,20 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
         maxLife: 0.45
       });
 
-      if (hero.xp >= hero.xpNeeded) {
+      let levelsGained = 0;
+      while (hero.xp >= hero.xpNeeded && hero.xpNeeded > 0 && levelsGained < 20) {
         hero.xp -= hero.xpNeeded;
         hero.level++;
         hero.xpNeeded = Math.round(26 * Math.pow(1.16, hero.level - 1));
+        setTimeout(() => openLevelUpModal(false), 430);
+        levelsGained++;
+      }
+      if (levelsGained > 0) {
         Sound.levelUp();
         playVFX('levelup', hero.x, hero.y - 15, { scale: 1.3, fps: 14 });
         startHeroAnim('hop', 0.3, 5);
         const lTip = staffTip();
         playVFX('spark', lTip.x, lTip.y, { scale: 0.9, fps: 24, tint: 'gold' });
-        setTimeout(() => openLevelUpModal(false), 430);
       }
     }
 
@@ -4744,7 +4793,7 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
 
     // --- RENDER PIPELINE ---
     const renderables = [];
-    const GROUND_VFX = new Set(['fire', 'firetrail', 'icering']); // drawn flat under characters
+    const GROUND_VFX = new Set(['fire', 'firetrail', 'icering', 'shadepool']); // drawn flat under characters
 
     function draw() {
       ctx.save();
@@ -4787,6 +4836,7 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
 
       // 2. Ground Decals & Chests
       drawGroundObjects();
+      drawMeteorGroundMarks();
 
       // 3. Soul Gems
       drawSoulGems();
@@ -5695,6 +5745,39 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
       ctx.restore();
     }
 
+    // Meteor warning rings lie on the floor: drawn right after the ground decals, so characters and flames stand on top of them
+    function drawMeteorGroundMarks() {
+      for (let i = 0; i < particles.length; i++) {
+        const pt = particles[i];
+        if (pt.type === 'meteor_telegraph') {
+          // Ground warning that tightens as the meteor comes in: Sepid's ring of black ghosts + closing white ring; the old red disc if the art is missing
+          const p = Math.min(1, 1 - pt.timer / pt.totalTimer);
+          const sig = SPRITES['sigil-spirits'];
+          ctx.lineWidth = 3.5;
+          if (sig && sig.complete && sig.naturalWidth) {
+            const sw = sig.naturalWidth / 6, sr = Math.min(pt.radius * 1.43, sw * 0.75); // the ring fills ~70% of its cell; capped at 1.5x native so a big Comet circle never blurs (the white ring below still shows the true area)
+            ctx.save();
+            ctx.globalAlpha = 0.35 + 0.5 * p; // soft at first, firm as the strike lands (12 circles stack in a max-level shower)
+            ctx.translate(pt.x, pt.y);
+            ctx.scale(1, 0.65);
+            ctx.drawImage(sig, (Math.floor(gameTime * 8) % 6) * sw, 0, sw, sig.naturalHeight, -sr, -sr, sr * 2, sr * 2);
+            ctx.restore();
+            ctx.strokeStyle = '#f1f5f9';
+          } else {
+            ctx.fillStyle = `rgba(239, 68, 68, ${0.18 + 0.22 * p})`;
+            ctx.strokeStyle = '#ef4444';
+            ctx.beginPath();
+            ctx.ellipse(pt.x, pt.y, pt.radius, pt.radius * 0.65, 0, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.stroke();
+          }
+          ctx.beginPath();
+          ctx.ellipse(pt.x, pt.y, pt.radius * (1 - p), pt.radius * 0.65 * (1 - p), 0, 0, Math.PI * 2);
+          ctx.stroke();
+        }
+      }
+    }
+
     function drawProjectilesAndEffects() {
       // Frog Familiar
       frogStates.forEach(frogState => {
@@ -5925,26 +6008,16 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
           ctx.strokeStyle = 'rgba(180,220,255,0.7)'; ctx.lineWidth = 3;
           ctx.beginPath(); ctx.arc(pt.x2 | 0, pt.y2 | 0, (chw * (1.5 + 0.5 * ((gameTime * 6) % 1))) | 0, 0, CHAIN_TAU); ctx.stroke();
         } else if (pt.type === 'meteor_telegraph') {
-          // Red ground-warning circle that tightens as the meteor comes in
+          // Painted meteor diving from the sky (top-left) onto the circle, accelerating (the ground warning is drawn earlier, under the characters)
           const p = Math.min(1, 1 - pt.timer / pt.totalTimer);
-          ctx.fillStyle = `rgba(239, 68, 68, ${0.18 + 0.22 * p})`;
-          ctx.strokeStyle = '#ef4444';
-          ctx.lineWidth = 3.5;
-          ctx.beginPath();
-          ctx.ellipse(pt.x, pt.y, pt.radius, pt.radius * 0.65, 0, 0, Math.PI * 2);
-          ctx.fill();
-          ctx.stroke();
-          ctx.beginPath();
-          ctx.ellipse(pt.x, pt.y, pt.radius * (1 - p), pt.radius * 0.65 * (1 - p), 0, 0, Math.PI * 2);
-          ctx.stroke();
-          // Painted meteor diving from the sky (top-left) onto the circle, accelerating
-          const mImg = SPRITES['meteorfall'];
+          let mImg = SPRITES['meteorfall-ghost'], mAx = 0.79, mAy = 0.64; // the ghost's head inside its cell
+          if (!(mImg && mImg.complete && mImg.naturalWidth)) { mImg = SPRITES['meteorfall']; mAx = 0.56; mAy = 0.56; }
           if (mImg && mImg.complete && mImg.naturalWidth) {
             const fall = Math.pow(p, 1.7);
             const size = (pt.isComet ? 400 : 250) * (0.75 + 0.25 * fall);
             const hx = pt.x - 300 * (1 - fall), hy = pt.y - 620 * (1 - fall); // rock head position
             const fw = mImg.naturalWidth / 6, frame = Math.floor(gameTime * 14) % 6;
-            ctx.drawImage(mImg, frame * fw, 0, fw, mImg.naturalHeight, hx - size * 0.56, hy - size * 0.56, size, size);
+            ctx.drawImage(mImg, frame * fw, 0, fw, mImg.naturalHeight, hx - size * mAx, hy - size * mAy, size, size);
           }
         } else if (pt.type === 'chunk') {
           ctx.translate(pt.x, pt.y);
@@ -6854,6 +6927,13 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
     // --- PATCH NOTES: "What's new" button (main menu + pause) with a NEW badge until the latest notes are opened ---
     // To ship notes for a new update: add an entry at the TOP of PATCH_NOTES (newest first). Its id is what the NEW badge tracks.
     const PATCH_NOTES = [
+      { id: '2026-10-28', ver: '1.2', title: 'Smarter meteors and tidier fights', items: [
+        'Meteor now hunts the thickest crowd. Meteor Shower and the double Gravity Well send each strike to a different group, even off screen.',
+        'Meteor is now Sepid\'s own ghost cast: a ring of black ghosts warns where it lands, then the ghosts burst out. A max-level Comet leaves one giant ghost pit.',
+        'One huge XP gem can now give several level-ups in a row.',
+        'Boss death explosions follow slow-motion and pause properly.',
+        'Timed waves and bursts no longer skip or repeat after a lag spike.'
+      ] },
       { id: '2026-10-10', ver: '1.1', title: 'Gravity Well, chests and a look inside your pockets', items: [
         'Pause now shows everything you carry: weapons, upgrades, relics and blessings.',
         'Gravity Well rework: enemies it drags past you hit 75% softer for a moment. New painted void burst and a new icon.',
@@ -7381,6 +7461,7 @@ telemetryInit();
       updateHero(dt);
       updateEnemies(dt);
       updateProjectilesAndEffects(dt);
+      tickGameTimers(dt);
       if (tutOn) updateTutorial(dt);
 
       draw();
