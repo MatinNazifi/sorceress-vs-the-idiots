@@ -1259,6 +1259,7 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
     obstacles: [],
     pois: [],
     walkGrid: null,
+    tilt: 1, // ground foreshortening: 1 = straight top-down, 0.75 = Diablo-style tilt (grid maps, ?tilt=)
 
     inside(x, y) {
       return this._def ? this._def.inside(x, y) : true;
@@ -1326,6 +1327,7 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
       this.start = def.start || { x: def.w / 2, y: def.h / 2 };
       this.camEdge = def.camEdge !== undefined ? def.camEdge : 48;
       this.camZoom = def.camZoom !== undefined ? def.camZoom : 0.9;
+      this.tilt = def.tilt || 1;
       this.obstacles = def.obstacles || [];
       this.pois = def.pois || [];
       this.walkGrid = def.walkGrid || null;
@@ -1488,6 +1490,8 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
       y: Math.floor((r.y + r.h / 2) * CS)
     }));
 
+    const tp = (typeof location !== 'undefined') ? parseFloat(new URLSearchParams(location.search).get('tilt')) : NaN;
+    const TILT = tp >= 0.5 && tp <= 1 ? tp : 1; // ?tilt=0.75 turns on the Diablo-style view
     // Flow field: BFS steps out from the hero cell, limited to a window so phones stay cheap.
     const FLOW_R = 48;
     const fDist = new Uint16Array(GW * GH), fStamp = new Uint32Array(GW * GH), fQueue = new Int32Array(GW * GH);
@@ -1524,6 +1528,7 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
       start: { x: startX, y: startY },
       camEdge: 48,
       camZoom: 0.9,
+      tilt: TILT,
       obstacles: [],
       pois: pois,
       walkGrid: grid,
@@ -1671,7 +1676,7 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
 
       drawChunks(ctx, cam, sw, sh) {
         const zoom = cam.zoom || 0.9;
-        const viewW = sw / zoom, viewH = sh / zoom;
+        const viewW = sw / zoom, viewH = sh / (zoom * World.tilt);
         const minCX = Math.max(0, Math.floor((cam.x - viewW / 2) / 1024));
         const maxCX = Math.min(5, Math.floor((cam.x + viewW / 2) / 1024));
         const minCY = Math.max(0, Math.floor((cam.y - viewH / 2) / 1024));
@@ -6228,9 +6233,10 @@ if (metaFx.regen > 0 && hero.hp > 0) hero.hp = Math.min(hero.maxHp, hero.hp + me
       CAMERA.y += (hero.y - CAMERA.y) * 0.1;
 
       // zoom in just enough that the view always fits inside the map (no bars on any aspect), then clamp
-      CAMERA.zoom = Math.max(CAM_ZOOM, screenW / (World.w - 2 * CAM_EDGE), screenH / (World.h - 2 * CAM_EDGE));
+      const T = World.tilt; // ground squash; characters are counter-scaled upright below
+      CAMERA.zoom = Math.max(CAM_ZOOM, screenW / (World.w - 2 * CAM_EDGE), screenH / ((World.h - 2 * CAM_EDGE) * T));
       const halfViewW = (screenW / 2) / CAMERA.zoom;
-      const halfViewH = (screenH / 2) / CAMERA.zoom;
+      const halfViewH = (screenH / 2) / (CAMERA.zoom * T);
       CAMERA.x = Math.max(CAM_EDGE + halfViewW, Math.min(World.w - CAM_EDGE - halfViewW, CAMERA.x));
       CAMERA.y = Math.max(CAM_EDGE + halfViewH, Math.min(World.h - CAM_EDGE - halfViewH, CAMERA.y));
       CAMERA.vl = CAMERA.x - halfViewW - 220; CAMERA.vr = CAMERA.x + halfViewW + 220; // cull box (tall sprites reach up, so more room above)
@@ -6242,7 +6248,7 @@ if (metaFx.regen > 0 && hero.hp > 0) hero.hp = Math.min(hero.maxHp, hero.hp + me
       // WORLD SPACE TRANSFORM
       ctx.save();
       ctx.translate(screenW / 2 + shakeOffsetX + CAMERA.kickX, screenH / 2 + shakeOffsetY + CAMERA.kickY);
-      ctx.scale(CAMERA.zoom, CAMERA.zoom);
+      ctx.scale(CAMERA.zoom, CAMERA.zoom * T);
       ctx.translate(-CAMERA.x, -CAMERA.y);
 
       // 1. Arena (Pillar debug drawing removed)
@@ -6284,11 +6290,14 @@ if (metaFx.regen > 0 && hero.hp > 0) hero.hp = Math.min(hero.maxHp, hero.hp + me
 
       for (let i = 0; i < rLen; i++) {
         const item = renderables[i];
+        const upright = T !== 1 && !(item.name && GROUND_VFX.has(item.name));
+        if (upright) { ctx.save(); ctx.translate(item.x, item.y); ctx.scale(1, 1 / T); ctx.translate(-item.x, -item.y); }
         if (item === hero) drawHero(hero);
         else if (item.name) drawVFXInstance(item);
         else if (item.broken !== undefined) drawVase(item);
         else if (item.bobOffset !== undefined) drawPickup(item);
         else drawEnemy(item);
+        if (upright) ctx.restore();
       }
 
       // 5. Projectiles, Green Lightning & Numbers
@@ -6397,7 +6406,7 @@ if (metaFx.regen > 0 && hero.hp > 0) hero.hp = Math.min(hero.maxHp, hero.hp + me
 
       // visible world rect, in mask pixels (mask = world-map at 1/2 scale)
       const sx = mask.naturalWidth / ARENA_W, sy = mask.naturalHeight / ARENA_H;
-      const hw = screenW / 2 / CAMERA.zoom + 48, hh = screenH / 2 / CAMERA.zoom + 48;
+      const hw = screenW / 2 / CAMERA.zoom + 48, hh = screenH / 2 / (CAMERA.zoom * World.tilt) + 48;
       const mx0 = Math.max(0, Math.floor((CAMERA.x - hw) * sx));
       const my0 = Math.max(0, Math.floor((CAMERA.y - hh) * sy));
       const mx1 = Math.min(mask.naturalWidth, Math.ceil((CAMERA.x + hw) * sx));
@@ -7903,7 +7912,7 @@ if (metaFx.regen > 0 && hero.hp > 0) hero.hp = Math.min(hero.maxHp, hero.hp + me
         if (!ch) break;
 
         const sx = halfW + (ch.x - camX) * zoom;
-        const sy = halfH + (ch.y - camY) * zoom;
+        const sy = halfH + (ch.y - camY) * zoom * World.tilt;
 
         if (sx >= minX && sx <= maxX && sy >= minY && sy <= maxY) {
           // On-screen: faint ground glow ellipse
