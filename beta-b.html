@@ -4980,11 +4980,11 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
           if (!el) {
             el = document.createElement('div');
             el.id = 'meta-gold';
-            el.style.color = '#ffd23f';
+            el.style.color = '#f6d6e0'; // same ruby plate as the in-game HUD; the number sits in its dark channel
             el.style.fontFamily = "'Trebuchet MS', sans-serif";
-            el.style.fontWeight = '800';
-            el.style.fontSize = '15px';
-            el.style.cssText += ';position:absolute;left:14px;top:max(14px,env(safe-area-inset-top));z-index:5;text-shadow:0 2px 4px #000;'; // top-left, opposite the sound button
+            el.style.fontWeight = '900';
+            el.style.fontSize = '19px';
+            el.style.cssText += ';position:absolute;left:12px;top:max(10px,env(safe-area-inset-top));z-index:5;width:116px;height:50px;box-sizing:border-box;padding-left:34px;display:flex;align-items:center;justify-content:center;background:url(sprites/ui/ruby-plate.png) center/100% 100% no-repeat;text-shadow:-1px -1px 0 #140f0c,1px -1px 0 #140f0c,-1px 1px 0 #140f0c,1px 1px 0 #140f0c;'; // top-left, opposite the sound button; a later shop/level-up screen opens from here (drop pointer-events:none then)
             el.style.pointerEvents = 'none';
             const menu = document.getElementById('main-menu');
             const parent = menu; // inside the menu so it hides with it and never sits over the HUD
@@ -4996,8 +4996,8 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
           }
           const current = get();
           if (current && current.gold > 0) {
-            el.textContent = `Rubies: ${current.gold}`;
-            el.style.display = 'block';
+            el.textContent = String(current.gold);
+            el.style.display = 'flex';
           } else {
             el.style.display = 'none';
           }
@@ -5043,7 +5043,7 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
         <div><strong>Time Survived:</strong> ${timeStr}</div>
         <div><strong>Level Reached:</strong> ${hero.level}</div>
         <div><strong>Enemies Vanquished:</strong> ${killCount}</div>
-        ${metaGold.earned > 0 ? `<div><strong>Cursed rubies:</strong> +${metaGold.earned} (total ${metaGold.total})</div>` : ''}
+        ${metaGold.earned > 0 ? `<div><img src="sprites/icons/ruby.png" alt="" style="height:1.15em;vertical-align:-0.2em;margin-right:4px"><strong>Cursed rubies:</strong> +${metaGold.earned} (total ${metaGold.total})</div>` : ''}
       `;
 
       modal.style.display = 'flex';
