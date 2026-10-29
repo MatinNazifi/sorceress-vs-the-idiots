@@ -2394,7 +2394,7 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
         name: 'Arcane Lens',
         icon: '🔮',
         desc: '+15% weapon area & projectile size.',
-        apply: () => { hero.passives.area++; hero.areaMult = 1.0 + hero.passives.area * 0.15; }
+        apply: () => { hero.passives.area++; hero.areaMult = 1.0 + hero.passives.area * 0.15 + metaFx.area; }
       },
       cooldown: {
         id: 'cooldown',
@@ -2979,6 +2979,7 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
     // --- HERO & WEAPON UPDATES ---
     function updateHero(dt) {
       if (hero.iFrames > 0) hero.iFrames -= dt;
+if (metaFx.regen > 0 && hero.hp > 0) hero.hp = Math.min(hero.maxHp, hero.hp + metaFx.regen * dt); // Trollblood (shop)
       if (hero.flashTimer > 0) hero.flashTimer -= dt;
       if (hero.castTimer > 0) hero.castTimer -= dt;
       if (hero.speedBuffTimer > 0) hero.speedBuffTimer -= dt;
@@ -4065,6 +4066,7 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
       damage *= 0.9 * 1.05;
       const m = gameTime / 60;
       damage *= Math.min(1.6, 0.3 + m * 0.14);
+      damage *= 1 - metaFx.armor; // Stone Skin (shop)
       if (speedMult > 1) (window.__hits ||= []).push([gameTime | 0, Math.round(damage)]);
       hero.hp = Math.max(0, hero.hp - damage);
       hero.iFrames = 0.8;
@@ -4078,6 +4080,16 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
       playVFX('spark', hero.x, hero.y - 12, { scale: 0.6, fps: 30, rot: Math.random() * Math.PI * 2 });
 
       if (hero.hp <= 0) {
+        if (metaFx.revive > 0 && !hero.revived) { // Second Life (shop): one comeback per run
+          hero.revived = true;
+          hero.hp = hero.maxHp * 0.5;
+          hero.iFrames = 2.5;
+          screenFlash = 0.5;
+          addShake(14);
+          Sound.levelup();
+          playVFX('spark', hero.x, hero.y - 12, { scale: 1.6, fps: 20 });
+          return;
+        }
         triggerGameOver(false);
       }
     }
@@ -4701,7 +4713,7 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
     const blessCount = { might: 0, haste: 0 };
     function recalcBlessings() {
       hero.damageMult = 1.0 + hero.passives.damage * 0.15 + blessCount.might * 0.08 + metaFx.dmg;
-      hero.cooldownMult = Math.max(0.4, 1.0 - hero.passives.cooldown * 0.08 - blessCount.haste * 0.04);
+      hero.cooldownMult = Math.max(0.4, 1.0 - hero.passives.cooldown * 0.08 - blessCount.haste * 0.04 - metaFx.cd);
     }
     const BLESSINGS = [
       { name: 'Arcane Might', desc: '+8% damage (stacks forever).', icon: 'sprites/icons/damage.png', apply: () => { blessCount.might++; recalcBlessings(); } },
@@ -4993,11 +5005,17 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
     // cost(level n -> n+1) = round(base * 1.6^n / 10) * 10. All numbers live here; SVMeta.buy() is the only place that spends.
     const META_UPGRADES = Object.freeze([
       { id: 'vit', key: 'hp', name: 'Cursed Vitality', per: 0.05, max: 5, base: 120, desc: '+5% max HP per level' },
+      { id: 'skin', key: 'armor', name: 'Stone Skin', per: 0.03, max: 5, base: 150, desc: '-3% damage taken per level' },
+      { id: 'troll', key: 'regen', name: 'Trollblood', per: 0.15, max: 5, base: 150, desc: 'Regain 0.15 HP per second per level' },
       { id: 'stride', key: 'speed', name: 'Swift Stride', per: 0.03, max: 5, base: 120, desc: '+3% move speed per level' },
       { id: 'magnet', key: 'magnet', name: 'Soul Magnet', per: 0.08, max: 5, base: 120, desc: '+8% gem pickup range per level' },
       { id: 'scholar', key: 'xp', name: "Scholar's Eye", per: 0.04, max: 5, base: 120, desc: '+4% XP gained per level' },
       { id: 'staff', key: 'dmg', name: 'Sharpened Staff', per: 0.03, max: 5, base: 120, desc: '+3% damage per level' },
-      { id: 'chance', key: 'rerolls', name: 'Second Chance', per: 1, max: 2, base: 250, desc: '+1 card reroll at the start of a run' }
+      { id: 'hands', key: 'cd', name: 'Quick Hands', per: 0.025, max: 4, base: 250, desc: '-2.5% weapon cooldowns per level' },
+      { id: 'weave', key: 'area', name: 'Wide Weave', per: 0.04, max: 5, base: 150, desc: '+4% weapon area per level' },
+      { id: 'hunger', key: 'greed', name: 'Ruby Hunger', per: 0.10, max: 5, base: 100, desc: '+10% rubies earned per level' },
+      { id: 'chance', key: 'rerolls', name: "Fortune's Die", per: 1, max: 2, base: 250, desc: '+1 card reroll at the start of a run' },
+      { id: 'life', key: 'revive', name: 'Second Life', per: 1, max: 1, base: 1500, desc: 'Once per run, come back with half HP' }
     ].map(u => Object.freeze(u)));
 
     const SVMeta = (() => {
@@ -5224,15 +5242,21 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
       // bonuses from bought upgrades, as fractions (0.05 = +5%); rerolls is a whole number
       function fx() {
         const up = ensureLoaded().up || {};
-        const out = { hp: 0, speed: 0, magnet: 0, xp: 0, dmg: 0, rerolls: 0 };
+        const out = { hp: 0, armor: 0, regen: 0, speed: 0, magnet: 0, xp: 0, dmg: 0, cd: 0, area: 0, greed: 0, rerolls: 0, revive: 0 };
         META_UPGRADES.forEach(u => { out[u.key] += u.per * (up[u.id] || 0); });
         return out;
+      }
+
+      // Ruby Hunger bonus for this run (metaFx is filled before the run starts, see 27b)
+      function greed() {
+        return typeof metaFx === 'object' && metaFx && Number.isFinite(metaFx.greed) ? metaFx.greed : 0;
       }
 
       // gold earned so far this run (the win bonus is added only at the end); the HUD reads this every frame
       function live(seconds, kills, fillerGold) {
         const n = v => (Number.isFinite(v) && v > 0 ? Math.floor(v) : 0);
-        return Math.min(MAX_SAFE_INT, Math.floor(n(seconds) / META_GOLD.perSeconds) + Math.floor(n(kills) / META_GOLD.perKills) + n(fillerGold));
+        const base = Math.floor(n(seconds) / META_GOLD.perSeconds) + Math.floor(n(kills) / META_GOLD.perKills);
+        return Math.min(MAX_SAFE_INT, Math.floor(base * (1 + greed())) + n(fillerGold));
       }
 
       function endRun(params) {
@@ -5247,7 +5271,7 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
         const l = Math.max(0, Number.isFinite(p.level) ? Math.floor(p.level) : 0);
         const fg = Math.max(0, Number.isFinite(p.fillerGold) ? Math.floor(p.fillerGold) : 0);
 
-        const earned = Math.min(MAX_SAFE_INT, live(s, k, fg) + (victory ? META_GOLD.winBonus : 0));
+        const earned = Math.min(MAX_SAFE_INT, live(s, k, fg) + (victory ? Math.floor(META_GOLD.winBonus * (1 + greed())) : 0));
 
         ensureLoaded();
 
@@ -5309,7 +5333,7 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
     })();
 
     // shop bonuses for the run about to start (filled by applyMetaFx in 27b); read by damage, speed, magnet and XP code
-    let metaFx = { hp: 0, speed: 0, magnet: 0, xp: 0, dmg: 0, rerolls: 0 };
+    let metaFx = { hp: 0, armor: 0, regen: 0, speed: 0, magnet: 0, xp: 0, dmg: 0, cd: 0, area: 0, greed: 0, rerolls: 0, revive: 0 };
 
     try {
       SVMeta.mountMenuBadge();
@@ -5322,6 +5346,7 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
       hero.maxHp = Math.round(120 * (1 + metaFx.hp));
       hero.hp = hero.maxHp;
       hero.magnetRadius = 130 * (1 + metaFx.magnet);
+      hero.areaMult = 1.0 + metaFx.area;
       diceHeld = Math.round(metaFx.rerolls);
       recalcBlessings();
     }
@@ -5334,7 +5359,13 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
             magnet: 'sprites/icons/magnet.png',
             scholar: 'sprites/icons/cooldown.png',
             staff: 'sprites/icons/damage.png',
-            chance: 'sprites/icons/ruby.png'
+            chance: 'sprites/icons/ruby.png',
+            skin: 'sprites/icons/health.png',
+            troll: 'sprites/icons/health.png',
+            hands: 'sprites/icons/cooldown.png',
+            weave: 'sprites/icons/area.png',
+            hunger: 'sprites/icons/ruby.png',
+            life: 'sprites/icons/ruby.png'
         };
 
         const st = document.createElement('style');
