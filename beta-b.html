@@ -1,6 +1,6 @@
 <!doctype html>
 <html lang="en">
-<head><meta name="robots" content="noindex,nofollow"><script>window.__SV_CHANNEL='beta';window.__SV_TEL_URL='';</script>
+<head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <title>Sorceress vs the Idiots</title>
@@ -1124,7 +1124,7 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
   'use strict';
 
   // --- LRU Chunk Cache (Max 4 Canvases) ---
-  const CHUNK_CACHE_LIMIT = 9; // a desktop view can touch 3x3 chunks; phones touch at most 2x2
+  let CHUNK_CACHE_LIMIT = 9; // a desktop view can touch 3x3 chunks; phones touch at most 2x2
   const chunkCache = new Map(); // key -> { canvas, lastUsed }
   let accessCounter = 0;
 
@@ -1178,6 +1178,13 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
     obstacles: [],
     pois: [],
     walkGrid: null,
+    persp: 0, // perspective strength 0..0.8: near rows magnified, far rows small (arena default 0.25, ?persp=)
+    zoomL: 0, zoomP: 0, // arena camera zoom (0 = the usual CAM_ZOOM)
+    seedInfo: null, // arena: the seed, how many blocks and which events it picked
+    events: null, // arena: the collapses and the gate opening
+    finalBossAt: 570, // game seconds when the final boss appears (and the arena's crypt gates open)
+    runEnd: 600, // game seconds when surviving wins (arena: 13:00, so the crypt finale 10:00-13:00 can be played)
+    yaw: 0, cosY: 1, sinY: 0, // camera turned about the vertical axis, radians (arena default 35 deg, ?yaw=deg): positive shows the south and east faces
     tilt: 1, // ground foreshortening: 1 = straight top-down, 0.75 = Diablo-style tilt (grid maps, ?tilt=)
 
     inside(x, y) {
@@ -1230,6 +1237,13 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
       return this._def && this._def.steer ? this._def.steer(ex, ey, hx, hy) : null;
     },
 
+    pushWalls(list, cx, cy, hw, hh) { if (this._def && this._def.pushWalls) this._def.pushWalls(list, cx, cy, hw, hh); },
+    drawWall(ctx, w) { this._def.drawWall(ctx, w); },
+    update(dt) { if (this._def && this._def.update) this._def.update(dt); },
+    forceEvent(i) { return this._def && this._def.forceEvent ? this._def.forceEvent(i) : null; },
+    hud(c, w, h) { if (this._def && this._def.hud) this._def.hud(c, w, h); },
+    pressure() { return this._def && this._def.pressure ? this._def.pressure() : 1; }, // enemy spawn multiplier (arena: grows as the map shrinks)
+    miniBossSpawn() { return this._def && this._def.miniBossSpawn ? this._def.miniBossSpawn() : this.bossSpawn(); },
     drawChunks(ctx, cam, sw, sh) {
       if (this._def && this._def.drawChunks) {
         this._def.drawChunks(ctx, cam, sw, sh);
@@ -1247,6 +1261,13 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
       this.camEdge = def.camEdge !== undefined ? def.camEdge : 48;
       this.camZoom = def.camZoom !== undefined ? def.camZoom : 0.9;
       this.tilt = def.tilt || 1;
+      this.persp = def.persp || 0;
+      this.zoomL = def.zoomL || 0; this.zoomP = def.zoomP || 0;
+      this.seedInfo = def.seedInfo || null;
+      this.events = def.events || null;
+      this.finalBossAt = def.finalBossAt || 570;
+      this.runEnd = def.runEnd || 600;
+      this.yaw = def.yaw || 0; this.cosY = Math.cos(this.yaw); this.sinY = Math.sin(this.yaw);
       this.obstacles = def.obstacles || [];
       this.pois = def.pois || [];
       this.walkGrid = def.walkGrid || null;
@@ -1314,10 +1335,42 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
     }
   };
 
+  // --- The Collector's hall: a separate map, entered from the crypt's inner gate through a black fade ---
+  let bossFade = null; // { start, swapped, swapAt } in game seconds
+  const bossFadeAlpha = () => !bossFade ? 0 : bossFade.swapped ? Math.max(0, 1 - (gameTime - bossFade.swapAt) / 1.2) : Math.min(1, (gameTime - bossFade.start) / 1.2);
+  function swapToBoss() {
+    const def = generateBigTest('boss');
+    World.load(def);
+    enemies.length = 0; vases.length = 0; chests.length = 0;
+    soulGems.forEach(g => { g.magnetized = true; }); // the crypt's loot follows the hero
+    hero.x = def.start.x; hero.y = def.start.y; hero.iFrames = Math.max(hero.iFrames, 3);
+    if (typeof CAMERA !== 'undefined') { CAMERA.x = hero.x; CAMERA.y = hero.y; }
+  }
+  function bossFadeTick() {
+    if (!bossFade) return;
+    if (!bossFade.swapped && gameTime - bossFade.start >= 1.2) { bossFade.swapped = true; bossFade.swapAt = gameTime; swapToBoss(); }
+    else if (bossFade.swapped && gameTime - bossFade.swapAt >= 1.2) bossFade = null;
+  }
+
+  // --- Arena art (Flow kit, theme A): floors/cliff/decals are top-down textures, gates/pillars upright sprites (slice_arena.py) ---
+  const ART_NAMES = ['f-plain.jpg', 'f-inlay.jpg', 'f-crack.jpg', 'f-moss.jpg', 'f-crypt.jpg', 'f-planks-h.jpg', 'f-planks-v.jpg', 'cliff-a.jpg', 'cliff-b.jpg', 'wall-a.jpg', 'abyss.jpg', 'decal-hub.png', 'decal-shrine0.png', 'decal-shrine1.png', 'decal-vault.png', 'decal-boss.png', 'gate2-closed.png', 'gate2-vault.png', 'pillar2-0.png', 'pillar2-1.png', 'pillar2-2.png', 'lamp.png', 'brazier-0.png', 'fountain.png'];
+  const ART = {}; let artStarted = false; const pats = {};
+  function loadArt() {
+    if (artStarted || typeof Image === 'undefined') return;
+    artStarted = true;
+    ART_NAMES.forEach(f => { const im = new Image(); im.onload = () => { chunkCache.clear(); }; im.src = 'sprites/arena/' + f; ART[f.replace(/\.\w+$/, '')] = im; });
+  }
+  const artImg = n => { const im = ART[n]; return im && im.complete && im.naturalWidth > 0 ? im : null; };
+
   // --- DUNGEON_BIGTEST Procedural Generator (6x6 Grid of 1024 Chunks = 6144px) ---
-  function generateBigTest() {
-    const W = 6144, H = 6144, CS = 32, GW = 192, GH = 192;
+  function generateBigTest(arena) { // arena = structured Broken Gate map (2048x2304); else the organic test map
+    const kq = (typeof location !== 'undefined') ? parseFloat(new URLSearchParams(location.search).get('k')) : NaN;
+    const AK = arena ? (kq >= 1 && kq <= 4 ? Math.round(kq * 4) / 4 : 1.5) : 1; // arena scale in quarter steps: 1 = 64x72 cells, 1.5 = default (same on PC and phone), 2 = bigger, 3 = Nest of Thorns scale
+    if (arena) { CHUNK_CACHE_LIMIT = 16; loadArt(); } // a zoomed-out view touches many 1024 px chunks
+    const CS = 32, GW = arena ? (arena === 'boss' ? 48 : 64) * AK : 192, GH = arena ? (arena === 'boss' ? 48 : 72) * AK : 192, W = GW * CS, H = GH * CS;
     const grid = new Uint8Array(GW * GH); // 0 = wall, 1 = walkable
+    const zone = new Uint8Array(GW * GH); // arena: 1 = outdoor (floor or chasm), 0 = indoor/rock
+    const deco = new Uint8Array(GW * GH); // arena: 1 = bridge deck
 
     let seed = 1337;
     function rand() {
@@ -1326,6 +1379,7 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
     }
 
     function cellOk(px, py) { const cx = (px / CS) | 0, cy = (py / CS) | 0; return cx >= 0 && cx < GW && cy >= 0 && cy < GH && grid[cy * GW + cx] === 1; }
+    function organic() {
     // Organic cave-crypt: wobbly chambers joined by wide winding tunnels; narrow-ish side paths end in reward alcoves.
     // Widths: routes 7-10 cells, side paths 5 cells (never under 4).
     const rooms = []; // chambers as bounding boxes, so centre = x + w / 2
@@ -1409,10 +1463,653 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
       y: Math.floor((r.y + r.h / 2) * CS)
     }));
 
+      return { rooms, startX, startY, pois, spawnList };
+    }
+
+    // Structured arena (Crownfall-style, 64x72 base cells scaled by AK, mirrored): fixed AREAS (hub, W/E/S shrines, 2 upper chambers, boss vault) and LINKS, all open
+    // except the crypt (chambers, junction, vault), which three gates keep SEALED until the finale. The run: whole areas collapse over time (arenaUpdate), each
+    // collapse cuts access for good (anything left hanging falls too), the playable map shrinks and the game gets harder; at the final boss the gates open.
+    // The seed varies cover blocks, floor props, the order and timing of the collapses. Width rule: no passage under 6 base cells (9 at the default scale).
+    let arenaWide = () => true; // set by layoutArena: floor eroded by the width rule still connects the start to the crypt (gates counted as open)
+    let arenaEvents = null;     // 7 collapses + the gate opening, in time order
+    let arenaTopLocked = false, topPx = 0; // the crypt (rows above the gates) is sealed until the gates open
+    let arenaGateCells = [], arenaLowerNow = 1, arenaLower0 = 1, arenaRoots = [0, 0], arenaZones = [], arenaWhy = '';
+    // The run: 0-10:00 the lower map collapses piece by piece; 10:00 the crypt gates open and the lower map falls 20 s later (run north);
+    // then ~3 minutes of crypt fight (elite waves, floor traps); at 13:00 the inner gate opens (cutscene), the hero walks into the final room,
+    // the doors seal behind and the final boss appears. Only the final boss's death wins the run.
+    const EVENT_WARN = 10, GATE_WARN = 6, DROP_WARN = 20, VAULT_WARN = 8, GATES_AT = 600, DROP_AT = 620, VAULT_AT = 800;
+    const warnOf = e => e.kind === 'gates' ? GATE_WARN : e.kind === 'drop' ? DROP_WARN : e.kind === 'vault' ? VAULT_WARN : e.kind === 'ring' ? 6 : EVENT_WARN;
+    let arenaStage = 0; // 0 lower map, 1 gates open (run north), 2 crypt fight, 3 inner gate open, 4 final room sealed with the boss
+    let arenaVaultCells = [], arenaVaultY = 0, arenaVaultBox = { x0: 0, x1: 0 }, arenaVaultC = { x: 0, y: 0 }, arenaEntry = { x: 0, y: 0 };
+    let arenaTraps = [], arenaNextTrap = 0, arenaNextElite = 0, arenaWave = 0, arenaCutEnd = 0, arenaCutLen = 3.5, arenaCutTitle = 'THE FINAL ROOM';
+    let bossSpawned = false, bossIntroAt = 0, bossPhase = 0, bossRef = null, bossNextSlam = 0, bossNextAdds = 0, bossLastBlast = -9; // the Collector (arena === 'boss')
+    const inVault = (x, y) => x > arenaVaultBox.x0 && x < arenaVaultBox.x1 && y < arenaVaultY; // inside the final room (above its gate)
+    function layoutArena() {
+      const sp = (typeof location !== 'undefined') ? parseInt(new URLSearchParams(location.search).get('seed'), 10) : NaN;
+      seed = (sp > 0 ? sp : Math.floor(Math.random() * 4294967294) + 1) >>> 0;
+      const seedUsed = seed;
+      const sc = v => Math.round(v * AK); // neighbouring rects share the same rounded edge, so quarter-step scales leave no gaps
+      const fill = (arr, x0, y0, x1, y1, v) => { for (let y = sc(y0); y < sc(y1); y++) for (let x = sc(x0); x < sc(x1); x++) arr[y * GW + x] = v; }; // layout is written on the 64x72 base grid, scaled by AK
+      fill(zone, 0, 0, 64, 72, 1); fill(zone, 0, 0, 64, 26, 0); // lower map floats over a chasm, the top is the crypt
+      const room = (x, y, w, h, out, bridge) => { fill(grid, x, y, x + w, y + h, 1); fill(zone, x, y, x + w, y + h, out ? 1 : 0); if (bridge) fill(deco, x, y, x + w, y + h, 1); return { x: sc(x), y: sc(y), w: sc(x + w) - sc(x), h: sc(y + h) - sc(y) }; };
+
+      const mid = room(18, 26, 28, 28, 1);
+      [[24, 32], [36, 32], [24, 44], [36, 44]].forEach(h => fill(grid, h[0], h[1], h[0] + 4, h[1] + 4, 0)); // four pits: cliff edges inside the hub
+      const shrineS = room(26, 54, 12, 12, 1);
+      const wingW = room(6, 30, 12, 18, 1), wingE = room(46, 30, 12, 18, 1);
+      const lanes = [ // vase bridges: 6 base wide (9 cells), meeting the south shrine across their full width; most vases spawn here
+        room(8, 48, 6, 14, 1, 1), room(8, 59, 18, 6, 1, 1), room(50, 48, 6, 14, 1, 1), room(38, 59, 18, 6, 1, 1)];
+      room(9, 24, 8, 6, 0); room(47, 24, 8, 6, 0); // wing -> chamber links
+      const tl = room(6, 8, 18, 16, 0), tr = room(40, 8, 18, 16, 0);
+      room(24, 14, 16, 6, 0); const route = room(28, 20, 8, 6, 0); // junction and the north route from the hub
+      const vault = room(25, 2, 14, 12, 0);          // final room (its own gate, entered after the crypt fight)
+      // three gates seal the crypt: north route, west link, east link (deco 8 = gate block)
+      const GATES = [[28, 24, 8, 2], [9, 24, 8, 2], [47, 24, 8, 2]];
+      arenaGateCells = [];
+      GATES.forEach(g => { fill(grid, g[0], g[1], g[0] + g[2], g[1] + g[3], 0); fill(deco, g[0], g[1], g[0] + g[2], g[1] + g[3], 8); for (let y = sc(g[1]); y < sc(g[1] + g[3]); y++) for (let x = sc(g[0]); x < sc(g[0] + g[2]); x++) arenaGateCells.push(y * GW + x); });
+      topPx = sc(24) * CS; arenaTopLocked = true;
+      const cc = r => ({ x: Math.floor((r.x + r.w / 2) * CS), y: Math.floor((r.y + r.h / 2) * CS) });
+      const VG = [25, 12, 14, 2]; // the final room's gate across its whole entrance
+      fill(grid, VG[0], VG[1], VG[0] + VG[2], VG[1] + VG[3], 0); fill(deco, VG[0], VG[1], VG[0] + VG[2], VG[1] + VG[3], 8);
+      arenaVaultCells = []; for (let y = sc(VG[1]); y < sc(VG[1] + VG[3]); y++) for (let x = sc(VG[0]); x < sc(VG[0] + VG[2]); x++) arenaVaultCells.push(y * GW + x);
+      arenaVaultY = sc(VG[1]) * CS; arenaVaultBox = { x0: sc(25) * CS, x1: sc(39) * CS }; arenaVaultC = cc(vault); arenaEntry = cc(route);
+      arenaStage = 0; arenaTraps = []; arenaWave = 0; arenaNextTrap = arenaNextElite = arenaCutEnd = 0;
+      arenaGateSprs = GATES.concat([VG]).map((g, i) => ({ x: ((sc(g[0]) + sc(g[0] + g[2])) / 2) * CS, y: sc(g[1] + g[3]) * CS, vault: i === GATES.length })); // sprite foot = south edge of the gate
+      arenaGateHide = new Uint8Array(GW * GH); // gate cube cells under a sprite are not drawn
+      arenaGateSprs.forEach((s, i) => { const g = i < GATES.length ? GATES[i] : VG; for (let y = sc(g[1]); y < sc(g[1] + g[3]); y++) for (let x = sc(g[0]); x < sc(g[0] + g[2]); x++) if (Math.abs(x * CS + CS / 2 - s.x) < 130) arenaGateHide[y * GW + x] = 1; });
+      const elite = Math.floor(rand() * 3);
+      const pois = [wingW, wingE, shrineS].map((r, i) => Object.assign({ id: 'poi_summon_' + i, type: 'summon', r: 44, data: { pool: ['mootaur'], elite: i === elite } }, cc(r)));
+      const up = rand() < 0.5 ? [tl, tr] : [tr, tl];
+      pois.push(Object.assign({ id: 'poi_quest_relic', type: 'quest', r: 32, data: { questId: 'ancient_sigil', step: 1 } }, cc(up[0])));
+      pois.push(Object.assign({ id: 'poi_easter_runes', type: 'easter', r: 28, data: { text: 'Carved runes hum with forgotten magic.' } }, cc(up[1])));
+      const rooms = [mid, shrineS, wingW, wingE, tl, tr].concat(lanes, [vault]); // last = boss vault
+      arenaDeco = [];
+      [[mid.x + 1.5, mid.y + 1.5], [mid.x + mid.w - 1.5, mid.y + 1.5], [mid.x + 1.5, mid.y + mid.h - 1.5], [mid.x + mid.w - 1.5, mid.y + mid.h - 1.5]].forEach(q => arenaDeco.push({ k: 'lamp', x: q[0] * CS, y: q[1] * CS, w: 56, h: 150 }));
+      { const c = cc(shrineS); arenaDeco.push({ k: 'fountain', x: c.x, y: c.y + 40, w: 190, h: 125 }); }
+      arenaGateSprs.forEach(s => { arenaDeco.push({ k: 'brazier-0', x: s.x - 190, y: s.y + 10, w: 62, h: 100, gate: s }); arenaDeco.push({ k: 'brazier-0', x: s.x + 190, y: s.y + 10, w: 62, h: 100, gate: s }); });
+      arenaDecals = [{ k: 'decal-hub', s: 400, ...cc(mid) }, { k: 'decal-shrine0', s: 250, ...cc(wingW) }, { k: 'decal-shrine1', s: 250, ...cc(wingE) }, { k: 'decal-vault', s: 300, ...cc(vault) }];
+      const st = cc(mid), cellOf = p => Math.floor(p.y / CS) * GW + Math.floor(p.x / CS);
+      arenaRoots = [cellOf(st), cellOf(cc(vault))]; // what stays supported: the hub and the crypt
+
+      // width rule: floor eroded by rr (gates counted as open) must connect the start to the crypt (both chambers and the vault)
+      const rr = Math.floor((Math.round(6 * AK) - 1) / 2);
+      const goalCells = [cellOf(cc(vault)), cellOf(cc(tl)), cellOf(cc(tr))];
+      const gateMark = new Uint8Array(GW * GH); arenaGateCells.forEach(i => { gateMark[i] = 1; }); arenaVaultCells.forEach(i => { gateMark[i] = 1; });
+      arenaWide = () => {
+        const open = i => grid[i] === 1 || gateMark[i] === 1;
+        const ok = new Uint8Array(GW * GH);
+        for (let y = rr; y < GH - rr; y++) for (let x = rr; x < GW - rr; x++) {
+          let f = 1;
+          for (let dy = -rr; dy <= rr && f; dy++) for (let dx = -rr; dx <= rr; dx++) if (!open((y + dy) * GW + x + dx)) { f = 0; break; }
+          ok[y * GW + x] = f;
+        }
+        const s0 = arenaRoots[0];
+        if (!ok[s0]) return false;
+        const seen = new Uint8Array(GW * GH), q = [s0]; seen[s0] = 1;
+        while (q.length) {
+          const c = q.pop(), x = c % GW, y = (c / GW) | 0;
+          for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { const nx = x + dx, ny = y + dy; if (nx < 0 || ny < 0 || nx >= GW || ny >= GH) continue; const k = ny * GW + nx; if (ok[k] && !seen[k]) { seen[k] = 1; q.push(k); } }
+        }
+        return goalCells.every(g => seen[g]);
+      };
+
+      // cover blocks (seeded): each slot may hold a pillar or a wider/taller block; dropped one by one while they would pinch a route
+      const SLOTS = [[21, 39], [41, 39], [31, 51], [20, 30], [43, 30], [20, 50], [43, 50], // hub (the corridor to the north route stays clear: the way to the crypt must never depend on a wing)
+        [9, 34], [13, 43], [53, 34], [49, 43], [28, 61], [34, 58], // wings, south shrine
+        [10, 12], [18, 18], [8, 20], [52, 12], [44, 18], [54, 20]]; // chambers
+      const blocks = [];
+      SLOTS.forEach(s => { if (rand() < 0.55) { const sh = [[2, 2], [3, 2], [2, 3]][Math.floor(rand() * 3)]; blocks.push({ x: s[0], y: s[1], w: sh[0], h: sh[1] }); } });
+      const putBlock = (b, on) => { fill(grid, b.x, b.y, b.x + b.w, b.y + b.h, on ? 0 : 1); fill(deco, b.x, b.y, b.x + b.w, b.y + b.h, on ? 2 : 0); };
+      blocks.forEach(b => putBlock(b, true));
+      while (blocks.length && !arenaWide()) putBlock(blocks.pop(), false);
+
+      // floor props (flat decoration, seeded): 3 rubble, 4 rune circle, 5 bones
+      const nProps = Math.round(16 * AK * AK / 2.25);
+      for (let n = 0, tries = 0; n < nProps && tries < 600; tries++) {
+        const i = Math.floor(rand() * GW * GH);
+        if (grid[i] !== 1 || deco[i] !== 0) continue;
+        deco[i] = 3 + Math.floor(rand() * 3); n++;
+      }
+
+      // the collapses: 8 zones of the lower map, 7 of them fall in a seeded order from about 2:00, one every ~70 s (the hub core and the north route never fall)
+      const ZONES = [
+        ['the west bridge', [[8, 48, 6, 14], [8, 59, 18, 6]]], ['the east bridge', [[50, 48, 6, 14], [38, 59, 18, 6]]],
+        ['the south shrine', [[26, 54, 12, 12]]], ['the west wing', [[6, 30, 12, 18]]], ['the east wing', [[46, 30, 12, 18]]],
+        ['the west side of the hub', [[18, 26, 6, 28]]], ['the east side of the hub', [[40, 26, 6, 28]]], ['the south side of the hub', [[22, 48, 20, 6]]]];
+      // loose tiers so the map keeps shrinking until the finale (a wing takes its bridge down with it, so a fully random order runs out of things to drop):
+      // bridges tend to go first, then wings and the south shrine, then the sides of the hub; the seed still shuffles within and across tiers
+      const TIER = [0, 0, 1, 1, 1, 2, 2, 2];
+      const order = ZONES.map((z, i) => ({ i, k: TIER[i] + rand() * 1.3 })).sort((x, y) => x.k - y.k).map(o => o.i);
+      arenaZones = ZONES.map(z => ({ name: z[0], done: false, rects: z[1].map(r => [sc(r[0]), sc(r[1]), sc(r[0] + r[2]), sc(r[1] + r[3])]) }));
+      const events = order.slice(0, 7).map((zi, i) => ({ id: i, kind: 'collapse', zi, name: ZONES[zi][0], t: 120 + i * 70 + Math.floor(rand() * 21) - 10, state: 'wait', cells: null, rects: arenaZones[zi].rects }));
+      events.push({ id: 7, kind: 'gates', name: 'the crypt gates', t: GATES_AT, state: 'wait' }, { id: 8, kind: 'drop', name: 'the lower realm', t: DROP_AT, state: 'wait', cells: null }, { id: 9, kind: 'vault', name: 'the inner gate', t: VAULT_AT, state: 'wait' });
+      let lower = 0; for (let i = topPx / CS * GW; i < GW * GH; i++) if (grid[i] === 1) lower++;
+      arenaLower0 = arenaLowerNow = lower;
+      return { rooms, startX: st.x, startY: st.y, pois, spawnList: rooms.slice(2, -1).map(cc), lanes, events, seedInfo: { seed: seedUsed, blocks: blocks.length, events: events.map(e => e.name + ' @' + e.t + 's') } };
+    }
+
+    // The Collector's hall: a round plaza (radius 20) over the abyss with four pillars. Phase 2 drops the outer ring, phase 3 all but a small stage.
+    const BOSS_C = 24, BOSS_R = 20;
+    const bossDist = (x, y) => Math.hypot((x + 0.5) / AK - BOSS_C, (y + 0.5) / AK - BOSS_C); // base units from the centre
+    function layoutBoss() {
+      seed = 4242;
+      for (let y = 0; y < GH; y++) for (let x = 0; x < GW; x++) { const i = y * GW + x; zone[i] = 1; if (bossDist(x, y) < BOSS_R) grid[i] = 1; }
+      [[-9, -9], [9, -9], [-9, 9], [9, 9]].forEach(q => { // pillars: cover from the stamps
+        for (let y = Math.round((BOSS_C + q[1] - 1) * AK); y < Math.round((BOSS_C + q[1] + 1) * AK); y++) for (let x = Math.round((BOSS_C + q[0] - 1) * AK); x < Math.round((BOSS_C + q[0] + 1) * AK); x++) { grid[y * GW + x] = 0; deco[y * GW + x] = 2; }
+      });
+      for (let n = 0, tries = 0; n < 14 && tries < 400; tries++) { const i = Math.floor(rand() * GW * GH); if (grid[i] !== 1 || deco[i] !== 0) continue; deco[i] = 3 + Math.floor(rand() * 3); n++; }
+      const mid = GW * CS / 2;
+      arenaTopLocked = false; topPx = 0; arenaStage = 4; // stage 4 = the quiet spawn pressure; arenaFall sends a caught hero to arenaEntry
+      arenaVaultC = { x: mid, y: mid }; arenaEntry = { x: mid, y: mid + 6 * AK * CS };
+      arenaDecals = [{ k: 'decal-boss', s: 560, x: mid, y: mid }];
+      arenaDeco = [0, 1, 2, 3].map(i => ({ k: 'brazier-0', x: mid + Math.cos(i * 1.5708 + 0.785) * 13.5 * AK * CS, y: mid + Math.sin(i * 1.5708 + 0.785) * 13.5 * AK * CS, w: 70, h: 112 }));
+      arenaPillars = [[-9, -9], [9, -9], [-9, 9], [9, 9]].map(q => ({ x: (BOSS_C + q[0]) * AK * CS, y: (BOSS_C + q[1]) * AK * CS + AK * CS * 1.4 })); // sprite foot = near edge of the pillar
+      arenaRoots = [Math.floor(mid / CS) * GW + Math.floor(mid / CS)];
+      const gt = (() => { try { return gameTime; } catch (e) { return 0; } })(); // ?dungeon=boss builds before gameTime exists
+      arenaCutTitle = 'THE COLLECTOR'; arenaCutLen = 4.2; arenaCutEnd = gt + 4.2; bossIntroAt = gt + 1.8;
+      const ring = []; for (let k = 0; k < 8; k++) ring.push({ x: mid + Math.cos(k * 0.7854) * 17 * AK * CS, y: mid + Math.sin(k * 0.7854) * 17 * AK * CS });
+      return { rooms: [{ x: Math.round(4 * AK), y: Math.round(4 * AK), w: Math.round(40 * AK), h: Math.round(40 * AK) }], startX: mid, startY: mid + 16 * AK * CS, pois: [], spawnList: ring, lanes: null, events: [], seedInfo: { seed: 4242, boss: true } };
+    }
+
+    // Plan-view arena floor (one cell). Walls and cliffs are drawn as 3D faces every frame (arenaDrawWall / arenaDrawCliffs).
+    // Chasm cells stay transparent so the cliff faces behind the floor chunks show through.
+    function paintArenaCell(c, gx, gy, px, py, v, flo) {
+      if (gx >= GW || gy >= GH) return true;
+      const i = gy * GW + gx;
+      if (!flo(gx, gy) && deco[i] === 2 && zone[i] === 1 && artImg('f-plain')) { c.drawImage(artImg('f-plain'), (gx & 15) * 32, (gy & 15) * 32, 32, 32, px, py, 32, 32); return true; } // floor under a pillar / cover block
+      if (!flo(gx, gy)) { // rock roof at ground level (extruded tops are drawn on top); chasm = nothing
+        if (zone[i] === 0) { const l = 20 + v * 6; c.fillStyle = `rgb(${l + 4},${l + 2},${l + 12})`; c.fillRect(px, py, CS, CS); }
+        return true;
+      }
+      const out = zone[i] === 1, n = !flo(gx, gy - 1), e = !flo(gx + 1, gy), s = !flo(gx, gy + 1), w = !flo(gx - 1, gy);
+      if (deco[i] === 1) { // bridge deck: planks across the run, dark rails on the open sides
+        const l = 74 + v * 14, runH = flo(gx - 1, gy) && flo(gx + 1, gy) && !(flo(gx, gy - 1) && flo(gx, gy + 1));
+        { const pt = artImg(runH ? 'f-planks-h' : 'f-planks-v'); if (pt) { c.drawImage(pt, (gx & 15) * 32, (gy & 15) * 32, 32, 32, px, py, 32, 32); c.fillStyle = 'rgba(30,18,10,0.55)'; if (n) c.fillRect(px, py, CS, 4); if (s) c.fillRect(px, py + CS - 4, CS, 4); if (w) c.fillRect(px, py, 4, CS); if (e) c.fillRect(px + CS - 4, py, 4, CS); return true; } }
+        c.fillStyle = `rgb(${l + 22},${l},${l - 24})`; c.fillRect(px, py, CS, CS);
+        c.fillStyle = 'rgba(0,0,0,0.28)';
+        for (let k = 0; k < 4; k++) { if (runH) c.fillRect(px + k * 8, py, 1, CS); else c.fillRect(px, py + k * 8, CS, 1); }
+        c.fillStyle = '#3a2a1c';
+        if (n) c.fillRect(px, py, CS, 5); if (s) c.fillRect(px, py + CS - 5, CS, 5);
+        if (w) c.fillRect(px, py, 5, CS); if (e) c.fillRect(px + CS - 5, py, 5, CS);
+        return true;
+      }
+      const hb = (((gx >> 4) * 73856093) ^ ((gy >> 4) * 19349663)) >>> 0, hc = ((gx * 374761393) ^ (gy * 668265263)) >>> 0;
+      const tex = out ? artImg(((n || e || s || w) && (hc & 3) === 0) ? 'f-crack' : (hb % 11 === 0 ? 'f-moss' : (hb % 13 === 3 ? 'f-inlay' : 'f-plain'))) : artImg('f-crypt');
+      if (tex) { c.drawImage(tex, (gx & 15) * 32, (gy & 15) * 32, 32, 32, px, py, 32, 32); }
+      else {
+        const l = (out ? 92 : 48) + v * 12;
+        c.fillStyle = out ? `rgb(${l},${l - 4},${l - 14})` : `rgb(${l + 8},${l + 4},${l + 22})`;
+        c.fillRect(px, py, CS, CS);
+        c.fillStyle = 'rgba(0,0,0,0.20)'; c.fillRect(px, py + CS - 2, CS, 2); c.fillRect(px + CS - 2, py, 2, CS);
+      }
+      if (v > 0.93) { c.fillStyle = 'rgba(0,0,0,0.28)'; c.fillRect(px + 6, py + 10, 14, 1); }
+      c.fillStyle = out ? 'rgba(255,235,200,0.32)' : 'rgba(0,0,0,0.35)'; // lit lip over a drop, contact shadow by crypt walls
+      const t = out ? 3 : 6;
+      if (n) c.fillRect(px, py, CS, t); if (s) c.fillRect(px, py + CS - t, CS, t);
+      if (w) c.fillRect(px, py, t, CS); if (e) c.fillRect(px + CS - t, py, t, CS);
+      { const d = deco[i]; // flat floor props
+        if (d === 3) { c.fillStyle = 'rgba(40,34,36,0.8)'; c.fillRect(px + 6, py + 14, 10, 8); c.fillRect(px + 17, py + 8, 8, 7); c.fillRect(px + 12, py + 21, 7, 6); }
+        else if (d === 4) { c.strokeStyle = 'rgba(190,130,255,0.6)'; c.lineWidth = 2; c.beginPath(); c.arc(px + 16, py + 16, 11, 0, 6.3); c.stroke(); c.beginPath(); c.arc(px + 16, py + 16, 4, 0, 6.3); c.stroke(); }
+        else if (d === 5) { c.strokeStyle = 'rgba(232,226,206,0.8)'; c.lineWidth = 3; c.beginPath(); c.moveTo(px + 6, py + 23); c.lineTo(px + 25, py + 9); c.moveTo(px + 8, py + 9); c.lineTo(px + 24, py + 24); c.stroke(); c.fillStyle = 'rgba(232,226,206,0.85)'; c.beginPath(); c.arc(px + 16, py + 16, 4, 0, 6.3); c.fill(); }
+      }
+      return true;
+    }
+
+    // ---- turned-camera 3D: crypt walls rise from rock next to floors (and pillars); ledges drop away as cliff faces ----
+    const WALL_H = 112, CLIFF_H = 120; // world px
+    const walls = [], cliffs = [], sprs = []; // sprs: upright art (gates, pillars) depth-sorted with the walls
+    let arenaDecals = [], arenaGateSprs = [], arenaPillars = [], arenaGateHide = null, arenaDeco = [];
+    const EDGES = [[0, 0, 1, 0, 0, -1, 1], [1, 0, 1, 1, 1, 0, 2], [1, 1, 0, 1, 0, 1, 4], [0, 1, 0, 0, -1, 0, 8]]; // N,E,S,W: edge x0,y0,x1,y1 (cell units), outward normal, mask bit
+    const SHADE = [0.86, 0.66, 1, 0.8];
+    const WALL_COL = SHADE.map(s => `rgb(${(112 * s) | 0},${(92 * s) | 0},${(88 * s) | 0})`);
+    const CLIFF_COL = SHADE.map(s => `rgb(${(118 * s) | 0},${(104 * s) | 0},${(94 * s) | 0})`);
+    const TREE_COL = SHADE.map(s => `rgb(${(122 * s) | 0},${(80 * s) | 0},${(42 * s) | 0})`), RUBBLE_COL = SHADE.map(s => `rgb(${(128 * s) | 0},${(126 * s) | 0},${(136 * s) | 0})`);
+    const GATE_COL = SHADE.map(s => `rgb(${(74 * s) | 0},${(78 * s) | 0},${(104 * s) | 0})`);
+    const KIND_COL = { 6: TREE_COL, 7: RUBBLE_COL, 8: GATE_COL }, KIND_TOP = { 6: '#5a3a22', 7: '#55535e', 8: '#2f3342' }; // 8 = crypt gate; everything else is brick
+    const isBlock = d => d === 2 || d === 6 || d === 7 || d === 8; // deco values that stand up as a block
+    // ---- organic silhouette: floor edges over a drop get rounded corners and a wobble, floor paint spills one cell into the drop, and a painted rock skirt hangs below ----
+    let silPath = null, silLoops = [];
+    const silHash = (x, y) => { let h = (Math.floor(x) * 374761393 + Math.floor(y) * 668265263) | 0; h = (h ^ (h >>> 13)) * 1274126177 | 0; return ((h ^ (h >>> 16)) >>> 0) / 4294967296; };
+    const isDropCell = (x, y) => x >= 0 && y >= 0 && x < GW && y < GH && grid[y * GW + x] === 0 && zone[y * GW + x] === 1 && !isBlock(deco[y * GW + x]);
+    const isFloorCell = (x, y) => x >= 0 && y >= 0 && x < GW && y < GH && grid[y * GW + x] === 1;
+    function buildSilhouette() {
+      const SR = 14, SN = 8, V = GW + 1, starts = new Map(), all = [], loops = [];
+      for (let y = 0; y < GH; y++) for (let x = 0; x < GW; x++) {
+        if (!isFloorCell(x, y)) continue;
+        for (let f = 0; f < 4; f++) {
+          const E = EDGES[f], nx = x + E[4], ny = y + E[5];
+          if (isFloorCell(nx, ny)) continue;
+          const e = { ax: (x + E[0]) * CS, ay: (y + E[1]) * CS, bx: (x + E[2]) * CS, by: (y + E[3]) * CS, ka: (y + E[1]) * V + x + E[0], kb: (y + E[3]) * V + x + E[2], d: isDropCell(nx, ny), used: false };
+          all.push(e); const l = starts.get(e.ka); if (l) l.push(e); else starts.set(e.ka, [e]);
+        }
+      }
+      for (const e0 of all) {
+        if (e0.used) continue;
+        const loop = []; let e = e0;
+        while (e && !e.used) { e.used = true; loop.push(e); const c = starts.get(e.kb); e = c && c.find(o => !o.used); }
+        if (loop.length > 2) loops.push(loop);
+      }
+      silLoops = []; const path = new Path2D();
+      for (const loop of loops) {
+        const P = [], pt = (x, y, d) => P.push({ x, y, d }), n = loop.length;
+        loop.forEach((e, i) => {
+          const pr = loop[(i + n - 1) % n], q = loop[(i + 1) % n], dx = (e.bx - e.ax) / CS, dy = (e.by - e.ay) / CS;
+          const sm0 = e.d && pr.d && pr.kb === e.ka, sm1 = e.d && q.d && e.kb === q.ka;
+          pt(e.ax + (sm0 ? dx * SR : 0), e.ay + (sm0 ? dy * SR : 0), e.d);
+          const nz = e.d ? (silHash(e.ax + e.bx, e.ay + e.by) - 0.5) * 2 * SN : 0;
+          pt((e.ax + e.bx) / 2 + dy * nz, (e.ay + e.by) / 2 - dx * nz, e.d);
+          if (sm1) {
+            const ex = e.bx - dx * SR, ey = e.by - dy * SR, qx = (q.bx - q.ax) / CS, qy = (q.by - q.ay) / CS, tx = e.bx + qx * SR, ty = e.by + qy * SR;
+            pt(ex, ey, true);
+            for (let s = 1; s < 4; s++) { const u = s / 4, w = 1 - u; pt(w * w * ex + 2 * w * u * e.bx + u * u * tx, w * w * ey + 2 * w * u * e.by + u * u * ty, true); }
+          } else pt(e.bx, e.by, e.d);
+        });
+        silLoops.push(P);
+        path.moveTo(P[0].x, P[0].y); for (let i = 1; i < P.length; i++) path.lineTo(P[i].x, P[i].y); path.closePath();
+      }
+      silPath = path;
+    }
+    function arenaChunk(c, cx, cy, flo) { // floor + one cell of spill clipped to the smooth outline, then rock roofs / pillar floors unclipped
+      const ox = cx * 1024, oy = cy * 1024, hash = (a, b) => { let h = (a * 374761393 + b * 668265263) | 0; h = (h ^ (h >>> 13)) * 1274126177 | 0; return ((h ^ (h >>> 16)) >>> 0) / 4294967296; };
+      const near = (x, y) => isFloorCell(x - 1, y - 1) || isFloorCell(x, y - 1) || isFloorCell(x + 1, y - 1) || isFloorCell(x - 1, y) || isFloorCell(x + 1, y) || isFloorCell(x - 1, y + 1) || isFloorCell(x, y + 1) || isFloorCell(x + 1, y + 1);
+      const tile = artImg('f-plain');
+      c.save(); c.translate(-ox, -oy); c.clip(silPath); c.translate(ox, oy);
+      for (let ly = 0; ly < 32; ly++) for (let lx = 0; lx < 32; lx++) {
+        const gx = cx * 32 + lx, gy = cy * 32 + ly, px = lx * CS, py = ly * CS;
+        if (flo(gx, gy)) paintArenaCell(c, gx, gy, px, py, hash(gx, gy), flo);
+        else if (isDropCell(gx, gy) && near(gx, gy)) { if (tile) c.drawImage(tile, (gx & 15) * 32, (gy & 15) * 32, 32, 32, px, py, 32, 32); else { c.fillStyle = '#6a5d58'; c.fillRect(px, py, CS, CS); } }
+      }
+      c.restore();
+      for (let ly = 0; ly < 32; ly++) for (let lx = 0; lx < 32; lx++) {
+        const gx = cx * 32 + lx, gy = cy * 32 + ly;
+        if (!flo(gx, gy)) paintArenaCell(c, gx, gy, lx * CS, ly * CS, hash(gx, gy), flo);
+      }
+      return true;
+    }
+    function arenaDrawSkirt(c, camX, camY, hw, hh) { // rock face under every visible stretch of the outline, fading into violet mist
+      const k = CLIFF_H / World.tilt, sx = World.sinY * k, sy = World.cosY * k; // world vector pointing straight down the screen
+      c.lineJoin = 'round';
+      for (const P of silLoops) for (let i = 0; i < P.length; i++) {
+        const a = P[i], b = P[(i + 1) % P.length];
+        if (!a.d || Math.abs(a.x - camX) > hw + 200 || Math.abs(a.y - camY) > hh + 200) continue;
+        const dx = b.x - a.x, dy = b.y - a.y, fc = dy * sx - dx * sy;
+        if (fc <= 0.5) continue;
+        const sh = Math.min(1, fc / ((Math.hypot(dx, dy) || 1) * k)), pat = artPat(c, silHash(a.x / 48, a.y / 48) < 0.3 ? 'cliff-b' : 'cliff-a');
+        c.beginPath(); c.moveTo(a.x, a.y); c.lineTo(b.x, b.y); c.lineTo(b.x + sx, b.y + sy); c.lineTo(a.x + sx, a.y + sy); c.closePath();
+        c.fillStyle = pat || '#6e6258'; c.fill();
+        c.fillStyle = `rgba(12,8,28,${0.5 - 0.3 * sh})`; c.fill();
+        c.fillStyle = 'rgba(86,50,110,0.42)'; // mist toward the bottom, never black
+        c.beginPath(); c.moveTo(a.x + sx * 0.45, a.y + sy * 0.45); c.lineTo(b.x + sx * 0.45, b.y + sy * 0.45); c.lineTo(b.x + sx, b.y + sy); c.lineTo(a.x + sx, a.y + sy); c.closePath(); c.fill();
+        c.strokeStyle = 'rgba(255,235,200,0.30)'; c.lineWidth = 2; c.beginPath(); c.moveTo(a.x, a.y); c.lineTo(b.x, b.y); c.stroke();
+      }
+    }
+    function buildArena3D() {
+      const fl = (x, y) => x >= 0 && y >= 0 && x < GW && y < GH && grid[y * GW + x] === 1;
+      const dropAt = (x, y) => x >= 0 && y >= 0 && x < GW && y < GH && grid[y * GW + x] === 0 && zone[y * GW + x] === 1 && !isBlock(deco[y * GW + x]);
+      for (let y = 0; y < GH; y++) {
+        for (let x = 0; x < GW; x++) {
+          const i = y * GW + x;
+          if (grid[i] === 1) {
+            const m = (dropAt(x, y - 1) ? 1 : 0) | (dropAt(x + 1, y) ? 2 : 0) | (dropAt(x, y + 1) ? 4 : 0) | (dropAt(x - 1, y) ? 8 : 0);
+            if (m) cliffs.push({ gx: x, gy: y, m, x: x * CS + CS / 2, y: y * CS + CS / 2 });
+          } else if (isBlock(deco[i]) || (zone[i] === 0 && (fl(x - 1, y - 1) || fl(x, y - 1) || fl(x + 1, y - 1) || fl(x - 1, y) || fl(x + 1, y) || fl(x - 1, y + 1) || fl(x, y + 1) || fl(x + 1, y + 1)))) {
+            const m = (fl(x, y - 1) ? 1 : 0) | (fl(x + 1, y) ? 2 : 0) | (fl(x, y + 1) ? 4 : 0) | (fl(x - 1, y) ? 8 : 0);
+            walls.push({ wall: true, gx: x, gy: y, m, kind: deco[i], x: x * CS + CS / 2, y: y * CS + CS / 2, ry: 0 });
+          }
+        }
+      }
+    }
+    function buildArenaSprs() { // gates (while sealed), pillars and decor standing on floor that still exists
+      sprs.length = 0;
+      if (arena === 'boss') arenaPillars.forEach((p, i) => { if (deco[Math.floor((p.y - AK * CS * 1.4) / CS) * GW + Math.floor(p.x / CS)] === 2) sprs.push({ wall: true, spr: 'pillar2-' + (i % 3), x: p.x, y: p.y, w: 110, h: 250, ry: 0 }); });
+      else arenaGateSprs.forEach(s => { const sealed = s.vault ? grid[arenaVaultCells[0]] === 0 : arenaTopLocked; if (sealed) sprs.push({ wall: true, spr: s.vault ? 'gate2-vault' : 'gate2-closed', x: s.x, y: s.y, w: 300, h: 414, ry: 0 }); });
+      for (let i = 0; i < arenaDeco.length; i++) { const d = arenaDeco[i]; if (grid[cellAt(d.x, d.y - 8)] === 1) sprs.push({ wall: true, spr: d.k, x: d.x, y: d.y, w: d.w, h: d.h, ry: 0 }); }
+    }
+    function arenaDrawSpr(c, w) {
+      const im = artImg(w.spr); if (!im) return;
+      c.save(); c.translate(w.x, w.y); if (World.yaw) c.rotate(-World.yaw); c.scale(1, 1 / World.tilt);
+      c.drawImage(im, -w.w / 2, -w.h, w.w, w.h); c.restore();
+    }
+    function arenaPushWalls(list, camX, camY, hw, hh) {
+      for (let i = 0; i < sprs.length; i++) {
+        const s = sprs[i];
+        if (Math.abs(s.x - camX) > hw + 300 || Math.abs(s.y - camY) > hh + 500) continue;
+        s.ry = s.x * World.sinY + s.y * World.cosY;
+        list.push(s);
+      }
+      for (let i = 0; i < walls.length; i++) {
+        const w = walls[i];
+        if (Math.abs(w.x - camX) > hw + 260 || Math.abs(w.y - camY) > hh + 260) continue;
+        w.ry = w.x * World.sinY + w.y * World.cosY;
+        list.push(w);
+      }
+    }
+    function arenaDrawWall(c, w) { // faces whose outward normal points down the screen, then the top
+      if (w.spr) { arenaDrawSpr(c, w); return; }
+      if (w.kind === 8 && arenaGateHide && arenaGateHide[w.gy * GW + w.gx] && artImg('gate2-closed')) return; // under a gate sprite
+      if (arena === 'boss' && w.kind === 2 && artImg('pillar2-0')) return; // the pillar sprite stands there
+      const k = WALL_H / World.tilt, ux = -World.sinY * k, uy = -World.cosY * k, x0 = w.gx * CS, y0 = w.gy * CS;
+      for (let f = 0; f < 4; f++) {
+        const E = EDGES[f];
+        if (!(w.m & E[6]) || World.sinY * E[4] + World.cosY * E[5] <= 0.01) continue;
+        const ax = x0 + E[0] * CS, ay = y0 + E[1] * CS, bx = x0 + E[2] * CS, by = y0 + E[3] * CS;
+        const wp = artPat(c, w.kind === 0 ? 'wall-a' : 'cliff-a');
+        c.fillStyle = wp || (KIND_COL[w.kind] || WALL_COL)[f];
+        c.beginPath(); c.moveTo(ax, ay); c.lineTo(bx, by); c.lineTo(bx + ux, by + uy); c.lineTo(ax + ux, ay + uy); c.closePath(); c.fill();
+        if (wp) { c.fillStyle = ['rgba(8,6,20,0.40)', 'rgba(8,6,20,0.12)', 'rgba(8,6,20,0.30)', 'rgba(8,6,20,0.50)'][f]; c.fill(); }
+        else {
+          c.strokeStyle = 'rgba(0,0,0,0.28)'; c.lineWidth = 1; c.beginPath(); // brick courses
+          for (let t = 1; t < 4; t++) { c.moveTo(ax + ux * t / 4, ay + uy * t / 4); c.lineTo(bx + ux * t / 4, by + uy * t / 4); }
+          c.stroke();
+        }
+      }
+      const tp = artPat(c, w.kind === 0 ? 'f-crypt' : 'f-plain');
+      c.fillStyle = c.strokeStyle = tp || KIND_TOP[w.kind] || '#3a3347'; c.lineWidth = 1;
+      c.beginPath(); c.moveTo(x0 + ux, y0 + uy); c.lineTo(x0 + CS + ux, y0 + uy); c.lineTo(x0 + CS + ux, y0 + CS + uy); c.lineTo(x0 + ux, y0 + CS + uy); c.closePath(); c.fill();
+      if (tp) { c.fillStyle = w.kind === 0 ? 'rgba(10,6,24,0.42)' : 'rgba(30,18,40,0.10)'; c.fill(); c.strokeStyle = 'rgba(20,12,30,0.55)'; }
+      c.stroke();
+    }
+    function artPat(c, n) { return pats[n] || (artImg(n) ? (pats[n] = c.createPattern(artImg(n), 'repeat')) : null); }
+    function arenaDrawAbyss(c) { // the misty chasm behind everything: a painted backdrop with a little parallax, never black
+      const im = artImg('abyss'); if (!im || typeof screenW === 'undefined') return;
+      c.save(); const dp = typeof dpr !== 'undefined' ? dpr : 1; c.setTransform(dp, 0, 0, dp, 0, 0);
+      const s = Math.max(screenW / im.naturalWidth, screenH / im.naturalHeight) * 1.2, w = im.naturalWidth * s, h = im.naturalHeight * s;
+      const cx = typeof CAMERA !== 'undefined' ? CAMERA.x : World.w / 2, cy = typeof CAMERA !== 'undefined' ? CAMERA.y : World.h / 2;
+      const ox = Math.max(-(w - screenW) / 2, Math.min((w - screenW) / 2, -(cx - World.w / 2) * 0.03)), oy = Math.max(-(h - screenH) / 2, Math.min((h - screenH) / 2, -(cy - World.h / 2) * 0.03));
+      c.drawImage(im, (screenW - w) / 2 + ox, (screenH - h) / 2 + oy, w, h); c.restore();
+    }
+    function arenaDrawCliffs(c, camX, camY, hw, hh) { // drawn under the floor chunks
+      const k = CLIFF_H / World.tilt, dx = World.sinY * k, dy = World.cosY * k; // world vector pointing straight down the screen
+      for (let i = 0; i < cliffs.length; i++) {
+        const cl = cliffs[i];
+        if (Math.abs(cl.x - camX) > hw + 200 || Math.abs(cl.y - camY) > hh + 200) continue;
+        const x0 = cl.gx * CS, y0 = cl.gy * CS;
+        for (let f = 0; f < 4; f++) {
+          const E = EDGES[f];
+          if (!(cl.m & E[6]) || World.sinY * E[4] + World.cosY * E[5] <= 0.01) continue;
+          const ax = x0 + E[0] * CS, ay = y0 + E[1] * CS, bx = x0 + E[2] * CS, by = y0 + E[3] * CS;
+          const cliffPat = artPat(c, ((cl.gx * 7 + cl.gy * 13) & 3) === 0 ? 'cliff-b' : 'cliff-a');
+          c.fillStyle = cliffPat || CLIFF_COL[f];
+          c.beginPath(); c.moveTo(ax, ay); c.lineTo(bx, by); c.lineTo(bx + dx, by + dy); c.lineTo(ax + dx, ay + dy); c.closePath(); c.fill();
+          if (cliffPat) { c.fillStyle = f === 1 ? 'rgba(10,6,20,0.18)' : f === 3 ? 'rgba(10,6,20,0.38)' : 'rgba(10,6,20,0.28)'; c.fill(); }
+          c.fillStyle = 'rgba(8,6,20,0.45)'; // darker toward the drop
+          c.beginPath(); c.moveTo(ax + dx * 0.5, ay + dy * 0.5); c.lineTo(bx + dx * 0.5, by + dy * 0.5); c.lineTo(bx + dx, by + dy); c.lineTo(ax + dx, ay + dy); c.closePath(); c.fill();
+        }
+      }
+    }
+
+    // ---- the run: collapses cut whole areas away for good, the crypt gates open at the final boss ----
+    const roomCentre = r => ({ x: Math.floor((r.x + r.w / 2) * CS), y: Math.floor((r.y + r.h / 2) * CS) });
+    const cellAt = (x, y) => Math.floor(y / CS) * GW + Math.floor(x / CS);
+    const aliveCell = (x, y) => grid[cellAt(x, y)] === 1 && !(arenaTopLocked && y < topPx);
+    function arenaRefreshSpawns() { // enemy stair bursts / elites only come from areas that still stand and are not sealed
+      spawnList.length = 0;
+      if (arena === 'boss') { for (let k = 0; k < 8; k++) { const x = arenaVaultC.x + Math.cos(k * 0.7854) * 17 * AK * CS * 0.55, y = arenaVaultC.y + Math.sin(k * 0.7854) * 17 * AK * CS * 0.55; if (aliveCell(x, y)) spawnList.push({ x, y }); } if (!spawnList.length) spawnList.push({ x: arenaVaultC.x, y: arenaVaultC.y + 4 * AK * CS }); return; }
+      rooms.slice(2, -1).forEach(r => { const c = roomCentre(r); if (aliveCell(c.x, c.y)) spawnList.push(c); });
+      if (!spawnList.length) spawnList.push({ x: startX, y: startY });
+    }
+    function arenaInvalidate(cells) { // repaint only the 1024 px chunks that changed
+      let x0 = 1e9, y0 = 1e9, x1 = -1, y1 = -1;
+      for (const i of cells) { const x = i % GW, y = (i / GW) | 0; if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+      for (let cy = Math.max(0, Math.floor((y0 - 1) / 32)); cy <= Math.floor((y1 + 1) / 32); cy++) for (let cx = Math.max(0, Math.floor((x0 - 1) / 32)); cx <= Math.floor((x1 + 1) / 32); cx++) chunkCache.delete(cx + '_' + cy);
+    }
+    // The zone's floor drops, and so does any floor left unsupported (not connected to the hub or the crypt). Reverts unless committing.
+    function arenaCollapseApply(e, commit) {
+      const saved = new Map(), drop = i => { if (!saved.has(i)) saved.set(i, [grid[i], deco[i]]); grid[i] = 0; deco[i] = 0; };
+      for (const r of e.rects) for (let y = r[1]; y < r[3]; y++) for (let x = r[0]; x < r[2]; x++) { const i = y * GW + x; if (grid[i] === 1) drop(i); }
+      const seen = new Uint8Array(GW * GH), q = [];
+      for (const root of arenaRoots) if (grid[root] === 1 && !seen[root]) { seen[root] = 1; q.push(root); }
+      while (q.length) {
+        const c = q.pop(), x = c % GW, y = (c / GW) | 0;
+        for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { const nx = x + dx, ny = y + dy; if (nx < 0 || ny < 0 || nx >= GW || ny >= GH) continue; const k = ny * GW + nx; if (grid[k] === 1 && !seen[k]) { seen[k] = 1; q.push(k); } }
+      }
+      for (let i = 0; i < GW * GH; i++) if (grid[i] === 1 && !seen[i]) drop(i); // hanging pieces fall too
+      const nonEmpty = saved.size > 0, wide = nonEmpty && arenaWide(), ok = nonEmpty && wide;
+      arenaWhy = !nonEmpty ? 'empty' : (wide ? 'ok' : 'wide'); // why a collapse was refused (test hook)
+      const cells = Array.from(saved.keys());
+      if (!ok || !commit) saved.forEach((v, i) => { grid[i] = v[0]; deco[i] = v[1]; });
+      return ok ? cells : null;
+    }
+    function arenaRebuild(cells) { walls.length = 0; cliffs.length = 0; buildArena3D(); buildArenaSprs(); buildSilhouette(); arenaInvalidate(cells); fHeroCell = -1; arenaRefreshSpawns(); }
+    function arenaFall(cells, booms) { // everything standing on floor that just dropped
+      const set = new Set(cells);
+      for (let i = enemies.length - 1; i >= 0; i--) if (set.has(cellAt(enemies[i].x, enemies[i].y))) { if (enemies[i].isFinalBoss) { enemies[i].x = arenaVaultC.x; enemies[i].y = arenaVaultC.y; } else killEnemy(enemies[i]); } // they fall (the final boss is pulled back to the middle)
+      for (let i = vases.length - 1; i >= 0; i--) if (set.has(cellAt(vases[i].x, vases[i].y))) vases.splice(i, 1);
+      for (let i = chests.length - 1; i >= 0; i--) if (set.has(cellAt(chests[i].x, chests[i].y))) chests.splice(i, 1);
+      soulGems.forEach(g => { if (set.has(cellAt(g.x, g.y))) g.magnetized = true; }); // loot over the new drop flies to the hero
+      if (set.has(cellAt(hero.x, hero.y)) || !World.isWalkable(hero.x, hero.y, hero.radius)) { // caught in it: a hard fall, back on safe ground
+        const s = arenaStage >= 2 ? arenaEntry : World.snap(hero.x, hero.y); hero.x = s.x; hero.y = s.y; // after the great drop the only safe ground is the crypt
+        hero.hp = Math.max(1, hero.hp - hero.maxHp * 0.3); hero.iFrames = Math.max(hero.iFrames, 1.2); screenRedFlash = 0.5;
+      }
+      for (let k = 0; k < 40; k++) { // falling stone
+        const i = cells[Math.floor(Math.random() * cells.length)], x = (i % GW) * CS + CS / 2, y = ((i / GW) | 0) * CS + CS / 2;
+        spawnParticle({ type: 'chunk', x, y: y - 10, vx: (Math.random() - 0.5) * 120, vy: -40 - Math.random() * 120, groundY: y + 260 + Math.random() * 120, bounced: false, rot: Math.random() * 6.3, vrot: (Math.random() - 0.5) * 10, size: 4 + Math.random() * 5, color: ['#7c6f64', '#5b524c', '#9a8c7e'][k % 3], life: 1.3 });
+      }
+      for (let k = 0; k < booms; k++) { const i = cells[Math.floor(Math.random() * cells.length)]; playVFX('explosion', (i % GW) * CS + CS / 2, ((i / GW) | 0) * CS + CS / 2, { scale: 2.4, fps: 16 }); }
+    }
+    function arenaLandCollapse(e) {
+      const cells = arenaCollapseApply(e, true);
+      if (!cells) { e.state = 'skipped'; return false; }
+      e.state = 'done';
+      if (e.zi !== undefined) arenaZones[e.zi].done = true;
+      arenaRebuild(cells);
+      let n = 0; for (let i = topPx / CS * GW; i < GW * GH; i++) if (grid[i] === 1) n++;
+      arenaLowerNow = n;
+      arenaFall(cells, 6); addShake(26);
+      return true;
+    }
+    function arenaOpenGates(e) {
+      e.state = 'done'; arenaTopLocked = false; arenaStage = 1;
+      arenaGateCells.forEach(i => { grid[i] = 1; deco[i] = 0; });
+      arenaRebuild(arenaGateCells);
+      for (let k = 0; k < 3; k++) { const i = arenaGateCells[Math.floor(arenaGateCells.length * (k + 0.5) / 3)]; playVFX('explosion', (i % GW) * CS + CS / 2, ((i / GW) | 0) * CS + CS / 2, { scale: 2.6, fps: 16 }); }
+      addShake(22);
+    }
+    function arenaLandDrop(e) { // the whole lower map falls away: the crypt is all that is left
+      e.state = 'done'; arenaStage = 2;
+      const cells = []; for (let i = 0; i < GW * GH; i++) if (zone[i] === 1 && grid[i] === 1) { grid[i] = 0; deco[i] = 0; cells.push(i); }
+      arenaLowerNow = 0; arenaRebuild(cells);
+      if (cells.length) arenaFall(cells, 16);
+      addShake(34); arenaNextElite = gameTime; arenaNextTrap = gameTime + 2.5;
+    }
+    function arenaOpenVault(e) { // inner gate bursts open: short cutscene, the hero walks in
+      e.state = 'done'; arenaStage = 3; arenaCutEnd = gameTime + 3.5;
+      arenaVaultCells.forEach(i => { grid[i] = 1; deco[i] = 0; });
+      arenaRebuild(arenaVaultCells);
+      for (let k = 0; k < 4; k++) { const i = arenaVaultCells[Math.floor(arenaVaultCells.length * (k + 0.5) / 4)]; playVFX('explosion', (i % GW) * CS + CS / 2, ((i / GW) | 0) * CS + CS / 2, { scale: 2.8, fps: 16 }); }
+      addShake(28); screenFlash = 0.3; hero.iFrames = Math.max(hero.iFrames, 3.5);
+    }
+    function arenaEnterFinal() { // the hero crossed the inner gate: fade to black, then the Collector's hall (swapToBoss)
+      arenaStage = 4; hero.iFrames = Math.max(hero.iFrames, 3);
+      bossFade = { start: gameTime, swapped: false, swapAt: 0 };
+    }
+    function arenaLandRing(e) { // phase change: the outer hall is recalled
+      e.state = 'done';
+      for (const i of e.cells) { grid[i] = 0; deco[i] = 0; }
+      arenaRebuild(e.cells); arenaFall(e.cells, 14); addShake(30);
+    }
+    function arenaLand(e) { if (e.kind === 'ring') arenaLandRing(e); else if (e.kind === 'gates') arenaOpenGates(e); else if (e.kind === 'drop') arenaLandDrop(e); else if (e.kind === 'vault') arenaOpenVault(e); else arenaLandCollapse(e); }
+    function arenaWarn(e) { // work out what will fall NOW, so the floor marking shows exactly that
+      if (e.kind !== 'collapse') {
+        e.state = 'warn'; e.nextShake = 0;
+        if (e.kind === 'drop') { e.cells = []; for (let i = 0; i < GW * GH; i++) if (zone[i] === 1 && grid[i] === 1) e.cells.push(i); }
+        else if (e.kind === 'ring') { e.cells = []; for (let y = 0; y < GH; y++) for (let x = 0; x < GW; x++) { const i = y * GW + x; if ((grid[i] === 1 || deco[i] === 2) && bossDist(x, y) > e.rMin) e.cells.push(i); } }
+        return true;
+      }
+      let cells = arenaCollapseApply(e, false);
+      e.why = arenaWhy; // first try
+      if (!cells) { // its zone is already gone or unsafe: take another that still stands (rotated by the event id, so the seed still decides)
+        const others = arenaZones.map((z, i) => i).filter(i => i !== e.zi && !arenaZones[i].done);
+        for (let k = 0; k < others.length && !cells; k++) {
+          const zi = others[(k + e.id) % others.length], z = arenaZones[zi];
+          cells = arenaCollapseApply({ rects: z.rects }, false);
+          if (cells) { e.zi = zi; e.name = z.name; e.rects = z.rects; }
+        }
+      }
+      if (!cells) { e.state = 'skipped'; return false; }
+      e.cells = cells; e.state = 'warn'; e.nextShake = 0;
+      return true;
+    }
+    function arenaCryptSpot(minD, maxD) { // floor near the hero, never inside the sealed final room
+      for (let k = 0; k < 40; k++) {
+        const a = Math.random() * 6.2832, d = minD + Math.random() * (maxD - minD), x = hero.x + Math.cos(a) * d, y = hero.y + Math.sin(a) * d;
+        if (cellOk(x, y) && !(arenaStage < 3 && inVault(x, y))) return { x, y };
+      }
+      return null;
+    }
+    function arenaCrypt() { // the crypt fight: elite waves and red floor traps
+      if (gameTime >= arenaNextElite) {
+        arenaNextElite = gameTime + 14;
+        const alive = enemies.filter(e => e.isElite && !e.isBoss).length, n = Math.min(arenaWave === 0 ? 5 : 2, 12 - alive), kinds = ['potbelly', 'fishguy', 'grumbo'];
+        arenaWave++;
+        for (let k = 0; k < n; k++) { const s = arenaCryptSpot(380, 800); if (s) spawnEnemy(kinds[Math.floor(Math.random() * kinds.length)], s.x, s.y, true); }
+      }
+      if (gameTime >= arenaNextTrap) {
+        arenaNextTrap = gameTime + 3.2;
+        for (let k = 0; k < 2; k++) { const s = arenaCryptSpot(60, 380); if (s) arenaTraps.push({ x: s.x, y: s.y, t: gameTime + 1.4, r: 78 }); }
+      }
+    }
+    function bossAddSlam(x, y, r, delay, dmg) { arenaTraps.push({ x, y, t: gameTime + delay, d: delay, r, dmg, boom: 2.4 }); }
+    function bossUpdate() { // the Collector: stamp slams, debtor adds, and the hall shrinking at 66% and 33%
+      if (!bossSpawned) {
+        if (gameTime < bossIntroAt) return;
+        bossSpawned = true; bossRef = spawnEnemy('mootaur', arenaVaultC.x, arenaVaultC.y, true); bossRef.bossName = 'THE COLLECTOR';
+        Sound.roar(); addShake(24); screenFlash = 0.3; bossNextSlam = gameTime + 2.5; bossNextAdds = gameTime + 6; bossPhase = 1;
+        return;
+      }
+      const b = bossRef;
+      if (!b || b.hp <= 0 || enemies.indexOf(b) < 0) return;
+      const r = b.hp / b.maxHp, phase = r > 0.66 ? 1 : r > 0.33 ? 2 : 3;
+      let soon = 9; for (let k = 0; k < arenaTraps.length; k++) { const d = arenaTraps[k].t - gameTime; if (d > 0 && d < soon) soon = d; }
+      b.pose = gameTime - bossLastBlast < 0.45 ? 2 : soon < 0.75 ? 1 : phase === 3 ? 3 : 0; // idle / hammer raised before a stamp / slam / enraged
+      if (phase > bossPhase) { bossPhase = phase; arenaEvents.push({ id: arenaEvents.length, kind: 'ring', name: 'the outer hall', t: gameTime + 6, state: 'wait', cells: null, rMin: phase === 2 ? 14 : 9.5 }); }
+      if (gameTime >= bossNextSlam) {
+        if (phase === 1) { bossNextSlam = gameTime + 3.4; bossAddSlam(hero.x, hero.y, 85, 1.2, 20); }
+        else if (phase === 2) { bossNextSlam = gameTime + 2.6; bossAddSlam(hero.x, hero.y, 85, 1.2, 20); bossAddSlam(hero.x + (Math.random() - 0.5) * 360, hero.y + (Math.random() - 0.5) * 360, 85, 1.4, 20); }
+        else { // coin volley: a line of stamps through the hero
+          bossNextSlam = gameTime + 2.2; const a = Math.random() * 6.2832;
+          for (let k = -2; k <= 2; k++) bossAddSlam(hero.x + Math.cos(a) * k * 95, hero.y + Math.sin(a) * k * 95, 70, 1.1 + (k + 2) * 0.18, 22);
+        }
+        arenaTraps.forEach(tr => { if (!cellOk(tr.x, tr.y)) tr.t = 0; tr.skip = !cellOk(tr.x, tr.y); }); // a stamp over the abyss is dropped silently
+      }
+      if (gameTime >= bossNextAdds) {
+        bossNextAdds = gameTime + (phase === 1 ? 13 : phase === 2 ? 10 : 8);
+        for (let k = 0; k < 3 + phase; k++) { const s = arenaCryptSpot(350, 700); if (s) spawnEnemy(k === 0 && phase === 3 ? 'fishguy' : 'potbelly', s.x, s.y); }
+      }
+    }
+    function arenaUpdate(dt) {
+      bossFadeTick();
+      if (arena === 'boss') bossUpdate();
+      if (!arenaEvents) return;
+      for (let i = 0; i < arenaEvents.length; i++) {
+        const e = arenaEvents[i], warn = warnOf(e);
+        if (e.state === 'wait' && gameTime >= e.t - warn) arenaWarn(e);
+        if (e.state === 'warn') {
+          const p = 1 - Math.max(0, e.t - gameTime) / warn;
+          if (gameTime >= e.nextShake) { addShake(1.5 + 5 * p); e.nextShake = gameTime + 0.4; }
+          if (gameTime >= e.t) arenaLand(e);
+        }
+      }
+      if (arenaStage === 2) arenaCrypt();
+      if (arenaStage === 3 && hero.x > arenaVaultBox.x0 && hero.x < arenaVaultBox.x1 && hero.y < arenaVaultY - 2 * CS) arenaEnterFinal();
+      for (let i = arenaTraps.length - 1; i >= 0; i--) { // red traps: warning ring, then a blast
+        const tr = arenaTraps[i];
+        if (gameTime < tr.t) continue;
+        arenaTraps.splice(i, 1);
+        if (tr.skip) continue;
+        if (tr.dmg) bossLastBlast = gameTime;
+        playVFX('explosion', tr.x, tr.y, { scale: tr.boom || 1.7, fps: 18 }); addShake(tr.dmg ? 9 : 5);
+        if (Math.hypot(hero.x - tr.x, hero.y - tr.y) < tr.r + hero.radius * 0.5) hitHero(tr.dmg || 16, 'trap');
+      }
+    }
+    function arenaForce(i) { const e = arenaEvents && arenaEvents[i]; if (!e || e.state === 'done' || e.state === 'skipped') return e ? e.state : null; if (e.state === 'wait' && !arenaWarn(e)) return e.state; arenaLand(e); return e.state; } // test hook: land event i now
+    function arenaDrawDecals(c) { // painted floor seals, only where the floor still stands
+      for (let i = 0; i < arenaDecals.length; i++) {
+        const d = arenaDecals[i], im = artImg(d.k);
+        if (!im || !aliveCell(d.x, d.y)) continue;
+        c.globalAlpha = 0.92; c.drawImage(im, d.x - d.s / 2, d.y - d.s / 2, d.s, d.s); c.globalAlpha = 1;
+      }
+    }
+    function arenaDrawEvents(c) { // floor marking while a collapse / the gates are about to go, and the red traps
+      arenaDrawDecals(c);
+      if (!arenaEvents) return;
+      for (let i = 0; i < arenaEvents.length; i++) {
+        const e = arenaEvents[i];
+        if (e.state !== 'warn') continue;
+        const warn = warnOf(e), p = 1 - Math.max(0, e.t - gameTime) / warn, pulse = 0.5 + 0.5 * Math.sin(gameTime * (6 + 10 * p));
+        const purple = e.kind === 'gates' || e.kind === 'vault', col = purple ? '190,130,255' : '245,158,11';
+        c.fillStyle = `rgba(${col},${0.10 + 0.24 * pulse * (0.35 + p)})`;
+        c.beginPath();
+        if (purple) (e.kind === 'gates' ? arenaGateCells : arenaVaultCells).forEach(k => c.rect((k % GW) * CS, ((k / GW) | 0) * CS, CS, CS));
+        else for (let k = 0; k < e.cells.length; k++) { const j = e.cells[k]; c.rect((j % GW) * CS, ((j / GW) | 0) * CS, CS, CS); }
+        c.fill();
+        if (e.rects) { c.strokeStyle = `rgba(${col},0.95)`; c.lineWidth = 5; c.setLineDash([22, 14]); c.lineDashOffset = -gameTime * 50; e.rects.forEach(r => c.strokeRect(r[0] * CS, r[1] * CS, (r[2] - r[0]) * CS, (r[3] - r[1]) * CS)); c.setLineDash([]); }
+      }
+      for (let i = 0; i < arenaTraps.length; i++) { // red = enemy danger: ring shows the blast, the inner disc fills as it nears
+        const tr = arenaTraps[i], p = Math.min(1, Math.max(0, 1 - Math.max(0, tr.t - gameTime) / (tr.d || 1.4)));
+        if (tr.skip) continue;
+        c.fillStyle = `rgba(220,30,30,${0.10 + 0.10 * p})`; c.beginPath(); c.arc(tr.x, tr.y, tr.r, 0, 6.2832); c.fill();
+        c.fillStyle = `rgba(255,70,40,${0.25 + 0.3 * p})`; c.beginPath(); c.arc(tr.x, tr.y, tr.r * p, 0, 6.2832); c.fill();
+        c.strokeStyle = 'rgba(255,60,50,0.95)'; c.lineWidth = 3; c.beginPath(); c.arc(tr.x, tr.y, tr.r, 0, 6.2832); c.stroke();
+      }
+    }
+    function arenaHud(c, w, h) { // screen-space notices: the soonest warning, the crypt countdown, the cutscene bars
+      if (!arenaEvents) return;
+      let e = null;
+      for (let i = 0; i < arenaEvents.length; i++) if (arenaEvents[i].state === 'warn' && (!e || arenaEvents[i].t < e.t)) e = arenaEvents[i];
+      let title = '', sub = '', col = '#ffd23f';
+      if (e) {
+        const secs = Math.max(0, Math.ceil(e.t - gameTime));
+        if (e.kind === 'gates') { title = 'THE CRYPT GATES ARE OPENING'; sub = 'Get ready to run north'; col = '#d8b4fe'; }
+        else if (e.kind === 'drop') { title = 'THE LOWER REALM IS FALLING'; sub = 'RUN NORTH INTO THE CRYPT'; col = '#ff9a3c'; }
+        else if (e.kind === 'vault') { title = 'THE INNER GATE IS OPENING'; sub = 'The final room awaits'; col = '#d8b4fe'; }
+        else if (e.kind === 'ring') { title = 'THE HALL IS BEING RECALLED'; sub = 'RETREAT TO THE CENTRE'; col = '#ff9a3c'; }
+        else { title = 'THE GROUND IS GIVING WAY'; sub = e.name.toUpperCase() + ' WILL FALL'; }
+        title += '  ' + secs + ' s';
+      } else if (arenaStage === 2) { const s = Math.max(0, Math.ceil(VAULT_AT - gameTime)); title = 'SURVIVE THE CRYPT  ' + Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); sub = 'The inner gate is sealed'; col = '#ff9a3c'; }
+      else if (arenaStage === 3) { title = 'ENTER THE FINAL ROOM'; sub = 'Go north'; col = '#d8b4fe'; }
+      c.save(); c.textAlign = 'center'; c.lineJoin = 'round'; c.lineWidth = 6; c.strokeStyle = '#1a1a1a';
+      if (title) {
+        c.font = '900 24px Trebuchet MS'; c.fillStyle = col;
+        c.strokeText(title, w / 2, h * 0.19); c.fillText(title, w / 2, h * 0.19);
+        c.font = '800 16px Trebuchet MS'; c.fillStyle = '#ffffff'; c.strokeText(sub, w / 2, h * 0.19 + 24); c.fillText(sub, w / 2, h * 0.19 + 24);
+      }
+      if (gameTime < arenaCutEnd) { // cutscene: letterbox bars and a title card
+        const k = Math.min(1, (arenaCutEnd - gameTime) / 0.5, (gameTime - (arenaCutEnd - arenaCutLen)) / 0.4 + 0.001), bh = h * 0.13 * Math.max(0, k);
+        c.fillStyle = '#000'; c.fillRect(0, 0, w, bh); c.fillRect(0, h - bh, w, bh);
+        c.font = '900 34px Trebuchet MS'; c.fillStyle = '#e9d5ff'; c.globalAlpha = Math.max(0, k);
+        c.strokeText(arenaCutTitle, w / 2, h - bh * 0.45); c.fillText(arenaCutTitle, w / 2, h - bh * 0.45);
+      }
+      const fa = bossFadeAlpha(); if (fa > 0) { c.globalAlpha = 1; c.fillStyle = `rgba(0,0,0,${fa})`; c.fillRect(0, 0, w, h); }
+      c.restore();
+    }
+    function arenaMiniBossSpawn() { // mini bosses come from the shrines that still stand (west wing, east wing, south shrine)
+      const alive = pois.filter(p => p.type === 'summon' && aliveCell(p.x, p.y));
+      if (alive.length) { const p = alive[Math.floor(Math.random() * alive.length)]; return { x: p.x, y: p.y }; }
+      return { x: startX, y: startY };
+    }
+    function arenaPressure() { // enemy spawn multiplier: more as the playable map shrinks, more again once the crypt opens
+      if (arenaStage >= 4) return 0.35; // final room: the boss is the fight
+      if (arenaStage === 3) return 1.5;
+      if (arenaStage === 2) return 2.6; // crypt fight: dense
+      const f = Math.max(0.2, arenaLowerNow / arenaLower0);
+      return 1.4 * Math.min(3, Math.pow(1 / f, 0.7)) * (arenaTopLocked ? 1 : 1.35);
+    }
+
+    const { rooms, startX, startY, pois, spawnList, lanes, seedInfo, events } = arena === 'boss' ? layoutBoss() : arena ? layoutArena() : organic();
+    arenaEvents = events || null;
+    if (arena) { buildArena3D(); buildArenaSprs(); buildSilhouette(); }
+
     const tp = (typeof location !== 'undefined') ? parseFloat(new URLSearchParams(location.search).get('tilt')) : NaN;
-    const TILT = tp >= 0.5 && tp <= 1 ? tp : 1; // ?tilt=0.75 turns on the Diablo-style view
+    const TILT = tp >= 0.5 && tp <= 1 ? tp : (arena ? 0.75 : 1); // ?tilt=0.75 = Diablo-style view; the arena defaults to it, ?tilt=1 is flat
+    const pp = (typeof location !== 'undefined') ? parseFloat(new URLSearchParams(location.search).get('persp')) : NaN;
+    const PERSP = pp >= 0 && pp <= 0.8 ? pp : 0; // off by default: the strip warp makes walls change lean as they scroll (felt nauseating)
+    const zq = (typeof location !== 'undefined') ? parseFloat(new URLSearchParams(location.search).get('zoom')) : NaN;
+    const ZL = zq >= 0.3 && zq <= 1.5 ? zq : (arena ? 0.8 : 0), ZP = zq >= 0.3 && zq <= 1.5 ? zq : (arena ? 0.8 : 0); // arena camera zoom: landscape / portrait (hero ~5% of screen height like Nest of Thorns)
+    const yp = (typeof location !== 'undefined') ? parseFloat(new URLSearchParams(location.search).get('yaw')) : NaN;
+    const YAW = yp >= -80 && yp <= 80 ? (yp * Math.PI / 180 || (arena ? 1e-4 : 0)) : (arena ? 35 * Math.PI / 180 : 0); // ?yaw=deg turns the camera; arena default 35
     // Flow field: BFS steps out from the hero cell, limited to a window so phones stay cheap.
-    const FLOW_R = 48;
+    const FLOW_R = arena ? 56 : 48; // arena views are wider, so enemies spawn further out
     const fDist = new Uint16Array(GW * GH), fStamp = new Uint32Array(GW * GH), fQueue = new Int32Array(GW * GH);
     let fCur = 0, fHeroCell = -1, fAt = -1e9;
     const OUT = { x: 0, y: 0 };
@@ -1439,7 +2136,7 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
     }
 
     return {
-      id: 'bigtest',
+      id: arena ? 'arena' : 'bigtest',
       kind: 'grid',
       w: W,
       h: H,
@@ -1448,6 +2145,25 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
       camEdge: 48,
       camZoom: 0.9,
       tilt: TILT,
+      persp: PERSP,
+      yaw: YAW,
+      zoomL: ZL,
+      seedInfo: seedInfo || null,
+      events: arenaEvents,
+      update: arena ? arenaUpdate : null,
+      forceEvent: arena ? arenaForce : null,
+      hud: arena ? arenaHud : null,
+      pressure: arena ? arenaPressure : null,
+      miniBossSpawn: arena ? arenaMiniBossSpawn : null,
+      finalBossAt: arena ? 1e9 : 0, // the arena's final boss comes from the inner gate (arenaSealVault), not the clock
+      runEnd: arena ? 1e9 : 0, // never a timed win: only the final boss's death wins
+      stage: () => arenaStage, // test hook
+      layers: () => ({ GW, GH, CS, grid, zone, deco }), // art hook: the plan layers (tools dump them to paint the level)
+      gateCells: arenaGateCells, // test hook: the crypt gate cells
+      wideCheck: arenaWide, // test hook: the width rule
+      zoomP: ZP,
+      pushWalls: arena ? arenaPushWalls : null,
+      drawWall: arena ? arenaDrawWall : null,
       obstacles: [],
       pois: pois,
       walkGrid: grid,
@@ -1523,10 +2239,11 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
 
       spawnRing(hero, dist) {
         // Try a few angles for floor that is off-screen; fall back to the nearest floor.
+        if (arena) dist = Math.min(dist, 900); // the arena view is wide: enemies must still reach the hero quickly
         for (let i = 0; i < 24; i++) {
           const ang = Math.random() * Math.PI * 2;
           const x = hero.x + Math.cos(ang) * dist, y = hero.y + Math.sin(ang) * dist;
-          if (this.isWalkable(x, y, 28)) { OUT.x = x; OUT.y = y; return OUT; }
+          if (this.isWalkable(x, y, 28) && !(arenaTopLocked && y < topPx) && !(arenaStage < 3 && inVault(x, y))) { OUT.x = x; OUT.y = y; return OUT; }
         }
         return this.snap(hero.x + dist, hero.y);
       },
@@ -1583,24 +2300,28 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
 
       randomFreeSpot(hero) {
         for (let i = 0; i < 50; i++) {
-          const rx = rooms[Math.floor(Math.random() * rooms.length)];
+          const pool = lanes && Math.random() < 0.55 ? lanes : rooms; // arena: most vases sit on the narrow bridges
+          const rx = pool[Math.floor(Math.random() * pool.length)];
           const x = (rx.x + rx.w * (0.25 + Math.random() * 0.5)) * CS;
           const y = (rx.y + rx.h * (0.25 + Math.random() * 0.5)) * CS;
-          if (!this.isWalkable(x, y, 24)) continue;
+          if (!this.isWalkable(x, y, 24) || (arenaTopLocked && y < topPx) || (arenaStage < 3 && inVault(x, y))) continue;
           if (hero && Math.hypot(x - hero.x, y - hero.y) < 150) continue;
           return { x, y };
         }
+        if (arena && arenaStage >= 2) { const s = arenaCryptSpot(150, 600); if (s) return s; } // lower map is gone: crypt vases
         return { x: startX, y: startY };
       },
 
       drawChunks(ctx, cam, sw, sh) {
         const zoom = cam.zoom || 0.9;
-        const viewW = sw / zoom, viewH = sh / (zoom * World.tilt);
+        const va = sw / zoom, vb = sh / (zoom * World.tilt), cy_ = Math.abs(World.cosY), sy_ = Math.abs(World.sinY);
+        const viewW = cy_ * va + sy_ * vb, viewH = sy_ * va + cy_ * vb; // bounding box of the (possibly turned) view
         const minCX = Math.max(0, Math.floor((cam.x - viewW / 2) / 1024));
-        const maxCX = Math.min(5, Math.floor((cam.x + viewW / 2) / 1024));
+        const maxCX = Math.min(Math.ceil(GW / 32) - 1, Math.floor((cam.x + viewW / 2) / 1024));
         const minCY = Math.max(0, Math.floor((cam.y - viewH / 2) / 1024));
-        const maxCY = Math.min(5, Math.floor((cam.y + viewH / 2) / 1024));
+        const maxCY = Math.min(Math.ceil(GH / 32) - 1, Math.floor((cam.y + viewH / 2) / 1024));
 
+        if (arena) { arenaDrawAbyss(ctx); if (silPath) arenaDrawSkirt(ctx, cam.x, cam.y, viewW / 2, viewH / 2); else arenaDrawCliffs(ctx, cam.x, cam.y, viewW / 2, viewH / 2); }
         for (let cy = minCY; cy <= maxCY; cy++) {
           for (let cx = minCX; cx <= maxCX; cx++) {
             const chunkKey = `${cx}_${cy}`;
@@ -1608,9 +2329,11 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
               // 3/4-view placeholder: dark roofs, brick wall fronts two cells tall, stone floor with wall shadow
               const flo = (gx, gy) => gx >= 0 && gy >= 0 && gx < GW && gy < GH && grid[gy * GW + gx] === 1;
               const hash = (a, b) => { let h = (a * 374761393 + b * 668265263) | 0; h = (h ^ (h >>> 13)) * 1274126177 | 0; return ((h ^ (h >>> 16)) >>> 0) / 4294967296; };
+              if (arena && silPath && arenaChunk(cctx, cx, cy, flo)) return;
               for (let ly = 0; ly < 32; ly++) {
                 for (let lx = 0; lx < 32; lx++) {
                   const gx = cx * 32 + lx, gy = cy * 32 + ly, px = lx * CS, py = ly * CS, v = hash(gx, gy);
+                  if (arena && paintArenaCell(cctx, gx, gy, px, py, v, flo)) continue;
                   if (flo(gx, gy)) {
                     const l = 46 + v * 12;
                     cctx.fillStyle = `rgb(${l + 8},${l + 4},${l + 20})`;
@@ -1642,10 +2365,11 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
             });
 
             if (cCanvas) {
-              ctx.drawImage(cCanvas, cx * 1024, cy * 1024);
+              ctx.drawImage(cCanvas, cx * 1024 - 0.5, cy * 1024 - 0.5, 1025, 1025); // 1 px overscan hides seams under rotation
             }
           }
         }
+        if (arena) arenaDrawEvents(ctx);
       }
     };
   }
@@ -1661,13 +2385,17 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
   let requestedDungeon = 'tower';
   if (typeof location !== 'undefined' && location.search) {
     const params = new URLSearchParams(location.search);
-    if (params.get('dungeon') === 'bigtest') {
-      requestedDungeon = 'bigtest';
-    }
+    const dp = params.get('dungeon');
+    if (dp === 'bigtest' || dp === 'arena' || dp === 'boss') requestedDungeon = dp;
   }
 
   if (requestedDungeon === 'bigtest') {
     World.load(DUNGEON_BIGTEST);
+  } else if (requestedDungeon === 'boss') {
+    World.load(generateBigTest('boss')); // dev: jump straight into the Collector's hall
+  } else if (requestedDungeon === 'arena') {
+    global.DUNGEON_ARENA = generateBigTest(true);
+    World.load(global.DUNGEON_ARENA);
   } else {
     World.load(DUNGEON_TOWER);
   }
@@ -1691,6 +2419,7 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
       'mootaur-idle': 'sprites/mootaur-idle.png',
       'mootaur-charge': 'sprites/mootaur-charge.png',
       'mootaur-walk': 'sprites/mootaur-walk.png',
+      'collector': 'sprites/collector.png', // the final boss of the arena: 4 poses (idle, hammer raised, slam, enraged), Flow sheet sliced by slice_sheet.py
       // Optional enemy attack (2-frame strip: windup, strike) and hurt (1 frame) art. Missing file = procedural fallback.
       'potbelly-attack': 'sprites/potbelly-attack.png',
       'fishguy-attack': 'sprites/fishguy-attack.png',
@@ -1908,6 +2637,10 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
 
       ctx.save();
       ctx.translate(v.x, v.y);
+      if ((World.yaw || World.tilt !== 1) && GROUND_VFX.has(v.name)) { // painted flat ellipses: unturn, stretch to a world circle, the camera squashes it back
+        if (World.yaw) ctx.rotate(-World.yaw);
+        if (World.tilt !== 1) ctx.scale(1, 1 / 0.65);
+      }
 
       if ((v.name === 'fire' || v.name === 'firetrail' || v.name === 'shadepool') && v.life < 0.6) {
         ctx.globalAlpha = Math.max(0, v.life / 0.6);
@@ -2994,10 +3727,10 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
         Sound.roar();
         addShake(14);
         screenFlash = 0.2;
-        const bp = World.bossSpawn(); spawnEnemy('mootaur', bp.x, bp.y, false);
+        const bp = World.miniBossSpawn(); spawnEnemy('mootaur', bp.x, bp.y, false);
       }
 
-      if (gameTime >= 570 && !finalBossSpawned) {
+      if (gameTime >= World.finalBossAt && !finalBossSpawned) {
         finalBossSpawned = true;
         Sound.roar();
         addShake(18);
@@ -3049,7 +3782,7 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
       let spawnsPerSec = (1.0 + minutes * 0.5 + minutes * minutes * 0.015) * pressureMultiplier * bossSpawnThrottle;
       if (minutes >= 8.0 && minutes < 9.5) spawnsPerSec *= 1.2;
 
-      spawnTimer += dt * spawnsPerSec;
+      spawnTimer += dt * spawnsPerSec * World.pressure();
 
       if ((gameTime - dt < 240 && 240 <= gameTime) || (gameTime - dt < 450 && 450 <= gameTime)) {
         spawnEncirclement(26);
@@ -3165,8 +3898,9 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
       const px = Array.isArray(t.x) ? t.x[p.frame] : t.x;
       const lx = px * p.sx, ly = t.y * p.sy;
       const c = Math.cos(p.rot), s = Math.sin(p.rot);
-      tipPos.x = hero.x + p.ox + hero.facing * (lx * c - ly * s);
-      tipPos.y = hero.y + p.oy + (lx * s + ly * c);
+      const ex = p.ox + hero.facing * (lx * c - ly * s), ey = (p.oy + (lx * s + ly * c)) / World.tilt; // sprite offset (screen px) -> world: undo the camera squash and turn
+      tipPos.x = hero.x + ex * World.cosY + ey * World.sinY;
+      tipPos.y = hero.y - ex * World.sinY + ey * World.cosY;
       return tipPos;
     }
 
@@ -3359,12 +4093,13 @@ if (metaFx.regen > 0 && hero.hp > 0) hero.hp = Math.min(hero.maxHp, hero.hp + me
           moveX = joystick.dx;
           moveY = joystick.dy;
         }
+        if (World.yaw) { const c = World.cosY, s = World.sinY, mx = moveX; moveX = mx * c + moveY * s; moveY = -mx * s + moveY * c; } // screen direction -> world (turned camera)
 
         const len = Math.hypot(moveX, moveY);
         if (len > 0.05) {
           hero.vx = (moveX / (len > 1 ? len : 1)) * hero.speed;
           hero.vy = (moveY / (len > 1 ? len : 1)) * hero.speed;
-          if (!activeBeam) hero.facing = hero.vx >= 0 ? 1 : -1; // beam holds the staff toward its target
+          if (!activeBeam) hero.facing = (World.yaw ? hero.vx * World.cosY - hero.vy * World.sinY : hero.vx) >= 0 ? 1 : -1; // beam holds the staff toward its target; faces by screen side
           hero.isMoving = true;
           hero.walkTimer += dt * 11;
         } else {
@@ -3793,7 +4528,7 @@ if (metaFx.regen > 0 && hero.hp > 0) hero.hp = Math.min(hero.maxHp, hero.hp + me
             spawnParticle({
               type: 'meteor_telegraph',
               x: tx + Math.cos(oAng) * off,
-              y: ty + Math.sin(oAng) * off * 0.65,
+              y: ty + Math.sin(oAng) * off * groundEll(),
               radius: isComet ? Math.min(stats.rad * hero.areaMult * 1.5, 240) : stats.rad * hero.areaMult, // Comet: 1.5x, capped at 240 (was 1.9x, up to ~440 at max)
               dmg: stats.dmg * hero.damageMult * (isComet ? 4 : 1),
               isComet,
@@ -4584,6 +5319,7 @@ if (metaFx.regen > 0 && hero.hp > 0) hero.hp = Math.min(hero.maxHp, hero.hp + me
     // --- PROJECTILES, PARTICLES & SOUL GEMS ---
     function updateProjectilesAndEffects(dt) {
       updateVFX(dt);
+      World.update(dt); // arena timed events
 
       // Hero projectiles
       for (let i = heroProjectiles.length - 1; i >= 0; i--) {
@@ -4668,7 +5404,7 @@ if (metaFx.regen > 0 && hero.hp > 0) hero.hp = Math.min(hero.maxHp, hero.hp + me
           // Freeze each enemy once, when the ring's (isometric) edge passes it
           enemies.forEach(e => {
             if (pt.hitSet.has(e)) return;
-            const d = Math.hypot(e.x - pt.x, (e.y - pt.y) / ICE_RING_ISO_Y);
+            const d = Math.hypot(e.x - pt.x, (e.y - pt.y) / (World.tilt !== 1 ? 1 : ICE_RING_ISO_Y));
             if (d <= pt.radius + e.radius * 0.5) {
               pt.hitSet.add(e);
               e.slowTimer = 3.0;
@@ -4678,7 +5414,7 @@ if (metaFx.regen > 0 && hero.hp > 0) hero.hp = Math.min(hero.maxHp, hero.hp + me
           });
 
           vases.forEach(v => {
-            if (!v.broken && Math.hypot(v.x - pt.x, (v.y - pt.y) / ICE_RING_ISO_Y) <= pt.radius) {
+            if (!v.broken && Math.hypot(v.x - pt.x, (v.y - pt.y) / (World.tilt !== 1 ? 1 : ICE_RING_ISO_Y)) <= pt.radius) {
               breakVase(v);
             }
           });
@@ -5983,8 +6719,35 @@ if (metaFx.regen > 0 && hero.hp > 0) hero.hp = Math.min(hero.maxHp, hero.hp + me
     }
 
     // --- RENDER PIPELINE ---
+    // Turned/tilted camera helpers (all identity on the Tower): upright things, directional sprites, ground ellipse ratio
+    function uprightAt(x, y) { if (World.yaw || World.tilt !== 1) { ctx.translate(x, y); if (World.yaw) ctx.rotate(-World.yaw); ctx.scale(1, 1 / World.tilt); ctx.translate(-x, -y); } }
+    function screenAng(vx, vy) { return Math.atan2((vx * World.sinY + vy * World.cosY) * World.tilt, vx * World.cosY - vy * World.sinY); } // world velocity -> direction on screen
+    function groundEll() { return World.tilt !== 1 ? 1 : 0.65; } // the Tower fakes its tilt with 0.65; tilted maps get it from the camera
     const renderables = [];
     const GROUND_VFX = new Set(['fire', 'firetrail', 'icering', 'shadepool']); // drawn flat under characters
+
+    // Perspective spike: copy the drawn world, then lay it back in strips. Row t (0 top .. 1 bottom) is P*t wider than the top and
+    // proportionally taller, so near ground is big and far ground small; the sides crop at the bottom. Characters get it for free.
+    const perspBuf = { c: null, x: null };
+    function applyPerspective(P) {
+      const cw = canvas.width, ch = canvas.height, STEP = Math.max(4, Math.round(8 * dpr));
+      if (!perspBuf.c || perspBuf.c.width !== cw || perspBuf.c.height !== ch) {
+        perspBuf.c = document.createElement('canvas'); perspBuf.c.width = cw; perspBuf.c.height = ch; perspBuf.x = perspBuf.c.getContext('2d');
+      }
+      perspBuf.x.drawImage(canvas, 0, 0);
+      ctx.save();
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.fillStyle = '#0d0c13';
+      ctx.fillRect(0, 0, cw, ch);
+      const norm = 1 + P / 2;
+      for (let sy = 0; sy < ch; sy += STEP) {
+        const h = Math.min(STEP, ch - sy), t0 = sy / ch, t1 = (sy + h) / ch;
+        const d0 = ch * (t0 + P * t0 * t0 / 2) / norm, d1 = ch * (t1 + P * t1 * t1 / 2) / norm;
+        const s = 1 + P * (t0 + t1) / 2;
+        ctx.drawImage(perspBuf.c, 0, sy, cw, h, -cw * (s - 1) / 2, d0, cw * s, d1 - d0 + 1);
+      }
+      ctx.restore();
+    }
 
     function draw() {
       ctx.save();
@@ -6008,11 +6771,13 @@ if (metaFx.regen > 0 && hero.hp > 0) hero.hp = Math.min(hero.maxHp, hero.hp + me
 
       // zoom in just enough that the view always fits inside the map (no bars on any aspect), then clamp
       const T = World.tilt; // ground squash; characters are counter-scaled upright below
-      CAMERA.zoom = Math.max(CAM_ZOOM, screenW / (World.w - 2 * CAM_EDGE), screenH / ((World.h - 2 * CAM_EDGE) * T));
-      const halfViewW = (screenW / 2) / CAMERA.zoom;
-      const halfViewH = (screenH / 2) / (CAMERA.zoom * T);
-      CAMERA.x = Math.max(CAM_EDGE + halfViewW, Math.min(World.w - CAM_EDGE - halfViewW, CAMERA.x));
-      CAMERA.y = Math.max(CAM_EDGE + halfViewH, Math.min(World.h - CAM_EDGE - halfViewH, CAMERA.y));
+      CAMERA.zoom = Math.max(World.zoomL ? (screenW > screenH ? World.zoomL : World.zoomP) : CAM_ZOOM, World.yaw ? 0 : screenW / (World.w - 2 * CAM_EDGE), World.yaw ? 0 : screenH / ((World.h - 2 * CAM_EDGE) * T)); // a turned view may show dark void past the map edge, so no fit rule
+      const Y = World.yaw, vA = (screenW / 2) / CAMERA.zoom, vB = (screenH / 2) / (CAMERA.zoom * T);
+      const halfViewW = Y ? Math.abs(World.cosY) * vA + Math.abs(World.sinY) * vB : vA; // turned camera: bounding box of the rotated view
+      const halfViewH = Y ? Math.abs(World.sinY) * vA + Math.abs(World.cosY) * vB : vB;
+      const clampW = Y ? 0 : halfViewW, clampH = Y ? 0 : halfViewH; // a turned view may show dark void past the map edge
+      CAMERA.x = Math.max(CAM_EDGE + clampW, Math.min(World.w - CAM_EDGE - clampW, CAMERA.x));
+      CAMERA.y = Math.max(CAM_EDGE + clampH, Math.min(World.h - CAM_EDGE - clampH, CAMERA.y));
 
       ctx.fillStyle = '#0d0c13';
       ctx.fillRect(0, 0, screenW, screenH);
@@ -6021,6 +6786,7 @@ if (metaFx.regen > 0 && hero.hp > 0) hero.hp = Math.min(hero.maxHp, hero.hp + me
       ctx.save();
       ctx.translate(screenW / 2 + shakeOffsetX + CAMERA.kickX, screenH / 2 + shakeOffsetY + CAMERA.kickY);
       ctx.scale(CAMERA.zoom, CAMERA.zoom * T);
+      if (Y) ctx.rotate(World.yaw);
       ctx.translate(-CAMERA.x, -CAMERA.y);
 
       // 1. Arena (Pillar debug drawing removed)
@@ -6049,18 +6815,20 @@ if (metaFx.regen > 0 && hero.hp > 0) hero.hp = Math.min(hero.maxHp, hero.hp + me
         const v = vfxPool[i];
         if (v.active) renderables.push(v);
       }
+      if (Y) World.pushWalls(renderables, CAMERA.x, CAMERA.y, halfViewW, halfViewH);
 
       // depth key computed once per item (the comparator used to recompute it, with a Set lookup, on every comparison)
       for (let i = 0; i < renderables.length; i++) {
         const a = renderables[i];
-        a._sy = (((a === hero) ? hero.y : (a.y + (a.name ? (GROUND_VFX.has(a.name) ? -10000 : 2) : 0))) * 4) | 0; // quarter-pixel integer key: the comparator then returns small ints (no boxed number per comparison)
+        a._sy = Y ? (((a.wall ? a.ry : (a.x * World.sinY + a.y * World.cosY + (a.name ? (GROUND_VFX.has(a.name) ? -10000 : 2) : 0))) * 4) | 0) : (((a === hero) ? hero.y : (a.y + (a.name ? (GROUND_VFX.has(a.name) ? -10000 : 2) : 0))) * 4) | 0; // quarter-pixel integer key: the comparator then returns small ints (no boxed number per comparison)
       }
       renderables.sort((a, b) => a._sy - b._sy);
 
       renderables.forEach(item => {
-        const upright = T !== 1 && !(item.name && GROUND_VFX.has(item.name)); // stand on the squashed ground, not squashed themselves
-        if (upright) { ctx.save(); ctx.translate(item.x, item.y); ctx.scale(1, 1 / T); ctx.translate(-item.x, -item.y); }
-        if (item === hero) drawHero(hero);
+        const upright = (T !== 1 || Y) && !item.wall && !(item.name && GROUND_VFX.has(item.name)); // stand on the squashed, turned ground, not squashed or turned themselves
+        if (upright) { ctx.save(); ctx.translate(item.x, item.y); if (Y) ctx.rotate(-World.yaw); ctx.scale(1, 1 / T); ctx.translate(-item.x, -item.y); }
+        if (item.wall) World.drawWall(ctx, item);
+        else if (item === hero) drawHero(hero);
         else if (item.name) drawVFXInstance(item);
         else if (item.broken !== undefined) drawVase(item);
         else if (item.bobOffset !== undefined) drawPickup(item);
@@ -6072,10 +6840,12 @@ if (metaFx.regen > 0 && hero.hp > 0) hero.hp = Math.min(hero.maxHp, hero.hp + me
       drawProjectilesAndEffects();
 
       ctx.restore(); // END WORLD SPACE
+      if (World.persp) applyPerspective(World.persp);
 
       // SCREEN SPACE HUD & FULLSCREEN FLASHES
       drawHUD();
       drawChestPointers();
+      World.hud(ctx, screenW, screenH);
 
       // White impact flash
       if (screenFlash > 0) {
@@ -6257,7 +7027,7 @@ if (metaFx.regen > 0 && hero.hp > 0) hero.hp = Math.min(hero.maxHp, hero.hp + me
           ctx.globalAlpha = alpha * 0.28;
           ctx.fillStyle = '#2a1a12';
           ctx.beginPath();
-          ctx.ellipse(0, 0, d.radius * 0.7, d.radius * 0.45, 0, 0, Math.PI * 2);
+          ctx.ellipse(0, 0, d.radius * 0.7, d.radius * 0.7 * groundEll() * 0.64, 0, 0, Math.PI * 2);
           ctx.fill();
         } else if (d.type === 'crack') {
           ctx.strokeStyle = '#1a1a1a';
@@ -6275,6 +7045,7 @@ if (metaFx.regen > 0 && hero.hp > 0) hero.hp = Math.min(hero.maxHp, hero.hp + me
       // Chests with bounce
       chests.forEach(ch => {
         ctx.save();
+        uprightAt(ch.x, ch.y);
         ctx.translate(ch.x, ch.y);
         const bob = Math.sin(gameTime * 5) * 3;
         const bounceOff = ch.bounceY || 0;
@@ -6308,6 +7079,8 @@ if (metaFx.regen > 0 && hero.hp > 0) hero.hp = Math.min(hero.maxHp, hero.hp + me
       soulGems.forEach(gem => {
         ctx.save();
         ctx.translate(gem.x, gem.y);
+        if (World.yaw) ctx.rotate(-World.yaw); // stand upright on the turned, squashed ground
+        if (World.tilt !== 1) ctx.scale(1, 1 / World.tilt);
 
         const isBig = gem.type === 'medium' || gem.type === 'large';
         const pulse = isBig ? (1 + Math.sin(gameTime * 6 + gem.y) * 0.12) : 1;
@@ -6698,7 +7471,9 @@ if (metaFx.regen > 0 && hero.hp > 0) hero.hp = Math.min(hero.maxHp, hero.hp + me
         spriteKey = (e.state === 'casting') ? 'grumbo-cast' : (SPRITES['grumbo-walk'] ? 'grumbo-walk' : 'grumbo');
       } else if (e.type === 'mootaur') {
         targetHeight = e.isFinalBoss ? 294 : 210;
-        if (e.state === 'charging' || e.state === 'charge_windup') {
+        if (e.bossName === 'THE COLLECTOR' && SPRITES['collector']) {
+          targetHeight = 300; spriteKey = 'collector'; frameIdx = e.pose || 0; // pose set by the boss hall script
+        } else if (e.state === 'charging' || e.state === 'charge_windup') {
           spriteKey = 'mootaur-charge';
           frameIdx = undefined;
         } else if (e.isMovingNow && SPRITES['mootaur-walk']) {
@@ -6716,6 +7491,7 @@ if (metaFx.regen > 0 && hero.hp > 0) hero.hp = Math.min(hero.maxHp, hero.hp + me
       } else if (e.hurtT > 0 && SPRITES[e.type + '-hurt']) {
         spriteKey = e.type + '-hurt'; frameCount = 1; frameIdx = 0;
       }
+      if (spriteKey === 'collector') frameCount = 4;
       targetHeight *= SPRITE_HEIGHT_MUL[spriteKey] || 1;
 
       // Elite: 1.6x size
@@ -6913,6 +7689,7 @@ if (metaFx.regen > 0 && hero.hp > 0) hero.hp = Math.min(hero.maxHp, hero.hp + me
     function drawSpectralBlade(x, y, spin, size, alpha) {
       if (alpha <= 0) return;
       ctx.save();
+      uprightAt(x, y);
       ctx.translate(x, y);
       ctx.rotate(spin);
       ctx.globalAlpha = alpha;
@@ -6955,7 +7732,8 @@ if (metaFx.regen > 0 && hero.hp > 0) hero.hp = Math.min(hero.maxHp, hero.hp + me
             ctx.save();
             ctx.globalAlpha = 0.35 + 0.5 * p; // soft at first, firm as the strike lands (12 circles stack in a max-level shower)
             ctx.translate(pt.x, pt.y);
-            ctx.scale(1, 0.65);
+            if (World.yaw) ctx.rotate(-World.yaw);
+            ctx.scale(1, groundEll());
             ctx.drawImage(sig, (Math.floor(gameTime * 8) % 6) * sw, 0, sw, sig.naturalHeight, -sr, -sr, sr * 2, sr * 2);
             ctx.restore();
             ctx.strokeStyle = '#f1f5f9';
@@ -6963,12 +7741,12 @@ if (metaFx.regen > 0 && hero.hp > 0) hero.hp = Math.min(hero.maxHp, hero.hp + me
             ctx.fillStyle = `rgba(239, 68, 68, ${0.18 + 0.22 * p})`;
             ctx.strokeStyle = '#ef4444';
             ctx.beginPath();
-            ctx.ellipse(pt.x, pt.y, pt.radius, pt.radius * 0.65, 0, 0, Math.PI * 2);
+            ctx.ellipse(pt.x, pt.y, pt.radius, pt.radius * groundEll(), 0, 0, Math.PI * 2);
             ctx.fill();
             ctx.stroke();
           }
           ctx.beginPath();
-          ctx.ellipse(pt.x, pt.y, pt.radius * (1 - p), pt.radius * 0.65 * (1 - p), 0, 0, Math.PI * 2);
+          ctx.ellipse(pt.x, pt.y, pt.radius * (1 - p), pt.radius * groundEll() * (1 - p), 0, 0, Math.PI * 2);
           ctx.stroke();
         }
       }
@@ -6991,6 +7769,7 @@ if (metaFx.regen > 0 && hero.hp > 0) hero.hp = Math.min(hero.maxHp, hero.hp + me
           face = frogState.bonkFace || 1;
         } else return;
         ctx.save();
+        uprightAt(fx, fy);
         ctx.translate(fx, fy);
         if (frogState.mega) ctx.scale(2.2, 2.2); // Mega Frog
         if (strip && strip.complete && strip.naturalWidth) {
@@ -7064,7 +7843,8 @@ if (metaFx.regen > 0 && hero.hp > 0) hero.hp = Math.min(hero.maxHp, hero.hp + me
       // Hero Projectiles (Outlined Crystal Shard + 3-segment trail)
       heroProjectiles.forEach(p => {
         ctx.save();
-        const ang = Math.atan2(p.vy, p.vx);
+        uprightAt(p.x, p.y);
+        const ang = screenAng(p.vx, p.vy);
 
         if (!SPRITES['shard-blue']) p.trail.forEach((pos, idx) => { // painted shard has its own trail
           ctx.save();
@@ -7126,12 +7906,13 @@ if (metaFx.regen > 0 && hero.hp > 0) hero.hp = Math.min(hero.maxHp, hero.hp + me
       const orbImg = SPRITES['vfx-enemyorb'];
       enemyProjectiles.forEach(ep => {
         ctx.save();
+        uprightAt(ep.x, ep.y);
         ctx.translate(ep.x, ep.y);
         if (orbImg && orbImg.complete && orbImg.naturalWidth) {
           // Painted swamp-magic orb: 6-frame swirl loop, trail points back along its flight
           const fw = orbImg.naturalWidth / 6, size = ep.radius * 5.2;
           const frame = Math.floor(gameTime * 12 + ep.x * 0.01) % 6;
-          ctx.rotate(Math.atan2(ep.vy, ep.vx));
+          ctx.rotate(screenAng(ep.vx, ep.vy));
           ctx.drawImage(orbImg, frame * fw, 0, fw, orbImg.naturalHeight, -size * 0.62, -size / 2, size, size);
           ctx.restore();
           return;
@@ -7211,11 +7992,14 @@ if (metaFx.regen > 0 && hero.hp > 0) hero.hp = Math.min(hero.maxHp, hero.hp + me
           if (mImg && mImg.complete && mImg.naturalWidth) {
             const fall = Math.pow(p, 1.7);
             const size = (pt.isComet ? 400 : 250) * (0.75 + 0.25 * fall);
-            const hx = pt.x - 300 * (1 - fall), hy = pt.y - 620 * (1 - fall); // rock head position
+            const sdx = -300 * (1 - fall), sdy = (-620 * (1 - fall)) / World.tilt; // rock head position: comes from the sky above-left on SCREEN
+            const hx = pt.x + sdx * World.cosY + sdy * World.sinY, hy = pt.y - sdx * World.sinY + sdy * World.cosY;
+            uprightAt(hx, hy);
             const fw = mImg.naturalWidth / 6, frame = Math.floor(gameTime * 14) % 6;
             ctx.drawImage(mImg, frame * fw, 0, fw, mImg.naturalHeight, hx - size * mAx, hy - size * mAy, size, size);
           }
         } else if (pt.type === 'chunk') {
+          uprightAt(pt.x, pt.y);
           ctx.translate(pt.x, pt.y);
           ctx.rotate(pt.rot);
           ctx.fillStyle = pt.color;
@@ -7240,6 +8024,7 @@ if (metaFx.regen > 0 && hero.hp > 0) hero.hp = Math.min(hero.maxHp, hero.hp + me
           ctx.lineWidth = 2;
           ctx.stroke();
         } else if (pt.type === 'arcane_orb') {
+          uprightAt(pt.x, pt.y);
           const r = 7 * pt.size;
           const g = ctx.createRadialGradient(pt.x, pt.y, 0, pt.x, pt.y, r * 2.2);
           g.addColorStop(0, '#ffffff');
@@ -7253,7 +8038,7 @@ if (metaFx.regen > 0 && hero.hp > 0) hero.hp = Math.min(hero.maxHp, hero.hp + me
           const fade = Math.min(1, pt.life / 0.4);
           const age = pt.maxLife - pt.life;
           // hex ground area: soft magenta disc + rotating hexagon + bright rim, all projected on the floor (ellipse 0.65)
-          const hxR = pt.rad, hxY = pt.rad * 0.65, hxPulse = 0.5 + 0.5 * Math.sin(gameTime * 5);
+          const hxR = pt.rad, hxY = pt.rad * groundEll(), hxPulse = 0.5 + 0.5 * Math.sin(gameTime * 5);
           ctx.globalAlpha = fade * (0.13 + 0.07 * hxPulse);
           ctx.fillStyle = '#c026d3';
           ctx.beginPath(); ctx.ellipse(pt.x, pt.y, hxR, hxY, 0, 0, Math.PI * 2); ctx.fill();
@@ -7282,6 +8067,7 @@ if (metaFx.regen > 0 && hero.hp > 0) hero.hp = Math.min(hero.maxHp, hero.hp + me
             // Painted totem (8 frames): slam-in 1,0,2 then idle glow loop 3..7
             const SLAM = [1, 0, 2];
             const frame = age < 0.27 ? SLAM[Math.min(2, Math.floor(age / 0.09))] : 3 + Math.floor((age - 0.27) * 8) % 5;
+            uprightAt(pt.x, pt.y);
             const fw = img.naturalWidth / 8, size = 112 * (pt.zapFlash > 0 ? 1.06 : 1);
             const pop = age < 0.09 ? 1.25 - age * 2.8 : 1; // drops in big, settles
             ctx.drawImage(img, frame * fw, 0, fw, img.naturalHeight, pt.x - size * pop / 2, pt.y - size * pop * 0.86, size * pop, size * pop);
@@ -7304,7 +8090,7 @@ if (metaFx.regen > 0 && hero.hp > 0) hero.hp = Math.min(hero.maxHp, hero.hp + me
             ctx.strokeStyle = `rgba(168, 85, 247, ${0.25 + 0.5 * (1 - rr / pt.rad)})`;
             ctx.lineWidth = 4;
             ctx.beginPath();
-            ctx.ellipse(pt.x, pt.y, rr, rr * 0.65, gameTime * 3 + k, 0, Math.PI * 1.4);
+            ctx.ellipse(pt.x, pt.y, rr, rr * groundEll(), gameTime * 3 + k, 0, Math.PI * 1.4);
             ctx.stroke();
           }
           ctx.fillStyle = '#1e0b33';
@@ -7330,6 +8116,7 @@ if (metaFx.regen > 0 && hero.hp > 0) hero.hp = Math.min(hero.maxHp, hero.hp + me
           ctx.lineWidth = 6 * k + 1;
           ctx.stroke();
         } else if (pt.type === 'xp_sparkle') {
+          uprightAt(pt.x, pt.y);
           ctx.font = '900 13px Trebuchet MS';
           ctx.textAlign = 'center';
           ctx.lineWidth = 3;
@@ -7348,6 +8135,8 @@ if (metaFx.regen > 0 && hero.hp > 0) hero.hp = Math.min(hero.maxHp, hero.hp + me
         const popScale = prog < 0.2 ? (0.6 + prog * 3) : 1;
 
         ctx.translate(dn.x, dn.y);
+        if (World.yaw) ctx.rotate(-World.yaw);
+        if (World.tilt !== 1) ctx.scale(1, 1 / World.tilt); // text stays upright on the squashed, turned ground
         ctx.scale(popScale, popScale);
 
         ctx.font = dn.isCrit ? '900 24px Trebuchet MS' : '800 17px Trebuchet MS';
@@ -7697,8 +8486,9 @@ if (metaFx.regen > 0 && hero.hp > 0) hero.hp = Math.min(hero.maxHp, hero.hp + me
         const ch = _chestNear[k];
         if (!ch) break;
 
-        const sx = halfW + (ch.x - camX) * zoom;
-        const sy = halfH + (ch.y - camY) * zoom * World.tilt;
+        const cdx = ch.x - camX, cdy = ch.y - camY;
+        const sx = halfW + (cdx * World.cosY - cdy * World.sinY) * zoom;
+        const sy = halfH + (cdx * World.sinY + cdy * World.cosY) * zoom * World.tilt;
 
         if (sx >= minX && sx <= maxX && sy >= minY && sy <= maxY) {
           // On-screen: faint ground glow ellipse
@@ -8642,7 +9432,7 @@ telemetryInit();
       gameTime += dt;
       if (hero.hp > 0 && hero.hp < hero.maxHp) hero.hp = Math.min(hero.maxHp, hero.hp + 0.9 * dt);
 
-      if (gameTime >= 600 && !isGameOver) {
+      if (gameTime >= World.runEnd && !isGameOver) {
         triggerGameOver(true);
         return;
       }
@@ -8688,8 +9478,13 @@ telemetryInit();
         const d = Math.hypot(e.x - hero.x, e.y - hero.y);
         if (d < 150) near++; else if (d > 900) far++;
       }
-      return { n: enemies.length, rock, near, far, cell: [(hero.x / 32) | 0, (hero.y / 32) | 0], t: Math.round(gameTime) };
+      return { n: enemies.length, rock, near, far, cell: [(hero.x / 32) | 0, (hero.y / 32) | 0], t: Math.round(gameTime), seed: World.seedInfo };
     };
+    // ?god=1 only: arena events (list, land one now, set the clock)
+    if (isGod) { window.__events = () => (World.events || []).map(e => ({ id: e.id, kind: e.kind, name: e.name, t: e.t, state: e.state, why: e.why, zi: e.zi })); window.__event = i => World.forceEvent(i); window.__setTime = s => { gameTime = s; }; }
+    // ?god=1 only: jump the hero to a grid cell (map QA)
+    if (isGod) window.__tp = (cx, cy) => { hero.x = cx * 32 + 16; hero.y = cy * 32 + 16; };
+    if (isGod) { window.__boss = () => enemies.filter(e => e.isBoss).map(e => ({ type: e.type, final: !!e.isFinalBoss, hp: Math.round(e.hp) })); window.__killBoss = () => { const b = enemies.find(e => e.isFinalBoss); if (b) killEnemy(b); return !!b; }; window.__bossHp = f => { const b = enemies.find(e => e.isFinalBoss); if (b) b.hp = Math.max(1, b.maxHp * f); return !!b; }; window.__over = () => isGameOver; window.__stage = () => World._def && World._def.stage ? World._def.stage() : -1; }
     // ?god=1 only: staff-tip / cast-gesture probe for visual QA
     if (isGod) window.__cast = {
       tip: () => ({ ...staffTip() }),
