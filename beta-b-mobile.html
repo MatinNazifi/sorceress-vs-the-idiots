@@ -1434,7 +1434,7 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
   }
 
   // --- Arena art (Flow kit, theme A): floors/cliff/decals are top-down textures, gates/pillars upright sprites (slice_arena.py) ---
-  const ART_NAMES = ['f-plain.jpg', 'f-inlay.jpg', 'f-crack.jpg', 'f-moss.jpg', 'f-crypt.jpg', 'f-planks-h.jpg', 'f-planks-v.jpg', 'cliff-a.jpg', 'cliff-b.jpg', 'wall-a.jpg', 'abyss.jpg', 'decal-hub.png', 'decal-shrine0.png', 'decal-shrine1.png', 'decal-vault.png', 'decal-boss.png', 'gate2-closed.png', 'gate2-vault.png', 'pillar2-0.png', 'pillar2-1.png', 'pillar2-2.png', 'lamp.png', 'brazier-0.png', 'fountain.png', 'fx-telegraph.png', 'fx-burst.png', 'fx-scorch.png', 'collapse-2.png', 'pit-grate-0.png', 'pit-grate-1.png', 'pit-grate-2.png', 'mod-furnace-cross.png', 'mod-furnace-grate-0.png', 'mod-furnace-grate-1.png', 'mod-cracked-slab.png', 'mod-furnace-grate-2.png', 'mod-furnace-grate-3.png', 'mod-cliff-strip-0.png', 'mod-cliff-strip-1.png', 'mod-cliff-strip-2.png', 'mod-cliff-strip-3.png', 'mod-cliff-vert-0.png', 'mod-cliff-vert-1.png', 'mod-cliff-vert-2.png', 'mod-cliff-vert-3.png', 'mod-bionic-island-a-1.png', 'mod-bionic-island-a-2.png', 'mod-bionic-island-a-3.png', 'mod-bionic-island-a-4.png', 'mod-bionic-island-b-1.png', 'mod-bionic-island-b-2.png', 'mod-bionic-island-b-3.png', 'mod-bionic-island-b-4.png', 'mod-bionic-flow-a-1.png', 'mod-bionic-flow-a-2.png', 'mod-bionic-flow-a-3.png', 'mod-bionic-flow-a-4.png', 'mod-bionic-flow-a-5.png', 'mod-bionic-flow-a-6.png', 'mod-bionic-flow-b-1.png', 'mod-bionic-flow-b-3.png', 'mod-bionic-flow-b-4.png', 'mod-bionic-flow-b-5.png'];
+  const ART_NAMES = ['f-plain.jpg', 'f-inlay.jpg', 'f-crack.jpg', 'f-moss.jpg', 'f-crypt.jpg', 'f-planks-h.jpg', 'f-planks-v.jpg', 'cliff-a.jpg', 'cliff-b.jpg', 'wall-a.jpg', 'abyss.jpg', 'arena-plate-foreclosure.jpg', 'decal-hub.png', 'decal-shrine0.png', 'decal-shrine1.png', 'decal-vault.png', 'decal-boss.png', 'gate2-closed.png', 'gate2-vault.png', 'pillar2-0.png', 'pillar2-1.png', 'pillar2-2.png', 'lamp.png', 'brazier-0.png', 'fountain.png', 'fx-telegraph.png', 'fx-burst.png', 'fx-scorch.png', 'collapse-2.png', 'pit-grate-0.png', 'pit-grate-1.png', 'pit-grate-2.png', 'mod-furnace-cross.png', 'mod-furnace-grate-0.png', 'mod-furnace-grate-1.png', 'mod-cracked-slab.png', 'mod-furnace-grate-2.png', 'mod-furnace-grate-3.png', 'mod-cliff-strip-0.png', 'mod-cliff-strip-1.png', 'mod-cliff-strip-2.png', 'mod-cliff-strip-3.png', 'mod-cliff-vert-0.png', 'mod-cliff-vert-1.png', 'mod-cliff-vert-2.png', 'mod-cliff-vert-3.png'];
   const ART = {}; let artStarted = false; const pats = {};
   function loadArt() {
     if (artStarted || typeof Image === 'undefined') return;
@@ -1609,19 +1609,9 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
       { const c = cc(shrineS); arenaDeco.push({ k: 'fountain', x: c.x, y: c.y + 40, w: 190, h: 125 }); }
       arenaGateSprs.forEach(s => { arenaDeco.push({ k: 'brazier-0', x: s.x - 190, y: s.y + 10, w: 62, h: 100, gate: s }); arenaDeco.push({ k: 'brazier-0', x: s.x + 190, y: s.y + 10, w: 62, h: 100, gate: s }); });
       arenaDecals = [
-        { k: 'mod-bionic-flow-a-1', s: Math.round(720 * AK / 1.5), ...cc(wingW) },
-        { k: 'decal-shrine0', s: 250, ...cc(wingW) },
-        { k: 'mod-bionic-flow-a-5', s: Math.round(720 * AK / 1.5), ...cc(wingE) },
-        { k: 'decal-shrine1', s: 250, ...cc(wingE) },
-        { k: 'mod-bionic-flow-a-6', s: Math.round(750 * AK / 1.5), ...cc(shrineS) },
-        { k: 'mod-bionic-flow-a-4', s: Math.round(520 * AK / 1.5), x: sc(14) * CS, y: sc(55) * CS },
-        { k: 'mod-bionic-flow-a-3', s: Math.round(520 * AK / 1.5), x: sc(46) * CS, y: sc(55) * CS },
-        { k: 'mod-bionic-flow-b-4', s: Math.round(660 * AK / 1.5), ...cc(tl) },
-        { k: 'mod-bionic-flow-b-1', s: Math.round(660 * AK / 1.5), ...cc(tr) },
-        { k: 'mod-bionic-flow-a-2', s: Math.round(440 * AK / 1.5), x: sc(20) * CS, y: sc(40) * CS },
-        { k: 'mod-bionic-flow-b-5', s: Math.round(440 * AK / 1.5), x: sc(44) * CS, y: sc(40) * CS },
-        { k: 'mod-bionic-island-b-4', s: Math.round(920 * AK / 1.5), ...cc(mid) },
         { k: 'decal-hub', s: 400, ...cc(mid) },
+        { k: 'decal-shrine0', s: 250, ...cc(wingW) },
+        { k: 'decal-shrine1', s: 250, ...cc(wingE) },
         { k: 'decal-vault', s: 300, ...cc(vault) }
       ];
       const st = cc(mid), cellOf = p => Math.floor(p.y / CS) * GW + Math.floor(p.x / CS);
@@ -1809,11 +1799,19 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
       const ox = cx * 1024, oy = cy * 1024, hash = (a, b) => { let h = (a * 374761393 + b * 668265263) | 0; h = (h ^ (h >>> 13)) * 1274126177 | 0; return ((h ^ (h >>> 16)) >>> 0) / 4294967296; };
       const near = (x, y) => isFloorCell(x - 1, y - 1) || isFloorCell(x, y - 1) || isFloorCell(x + 1, y - 1) || isFloorCell(x - 1, y) || isFloorCell(x + 1, y) || isFloorCell(x - 1, y + 1) || isFloorCell(x, y + 1) || isFloorCell(x + 1, y + 1);
       const tile = artImg('f-plain');
-      c.save(); c.translate(-ox, -oy); c.clip(silPath); c.translate(ox, oy);
+      const plate = artImg('arena-plate-foreclosure');
+      c.save(); c.translate(-ox, -oy); c.clip(silPath);
+      if (plate) {
+        const pw = GW * CS, ph = pw * (plate.naturalHeight / plate.naturalWidth);
+        c.drawImage(plate, (GW * CS - pw) / 2, topPx, pw, ph);
+      }
+      c.translate(ox, oy);
       for (let ly = 0; ly < 32; ly++) for (let lx = 0; lx < 32; lx++) {
         const gx = cx * 32 + lx, gy = cy * 32 + ly, px = lx * CS, py = ly * CS;
-        if (flo(gx, gy)) paintArenaCell(c, gx, gy, px, py, hash(gx, gy), flo);
-        else if (isDropCell(gx, gy) && near(gx, gy)) { if (tile) c.drawImage(tile, (gx & 15) * 32, (gy & 15) * 32, 32, 32, px, py, 32, 32); else { c.fillStyle = '#6a5d58'; c.fillRect(px, py, CS, CS); } }
+        if (!plate || gy < sc(26)) {
+          if (flo(gx, gy)) paintArenaCell(c, gx, gy, px, py, hash(gx, gy), flo);
+          else if (isDropCell(gx, gy) && near(gx, gy)) { if (tile) c.drawImage(tile, (gx & 15) * 32, (gy & 15) * 32, 32, 32, px, py, 32, 32); else { c.fillStyle = '#6a5d58'; c.fillRect(px, py, CS, CS); } }
+        }
       }
       c.restore();
       for (let ly = 0; ly < 32; ly++) for (let lx = 0; lx < 32; lx++) {
