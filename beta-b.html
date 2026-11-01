@@ -1353,7 +1353,7 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
   }
 
   // --- Arena art (Flow kit, theme A): floors/cliff/decals are top-down textures, gates/pillars upright sprites (slice_arena.py) ---
-  const ART_NAMES = ['f-plain.jpg', 'f-inlay.jpg', 'f-crack.jpg', 'f-moss.jpg', 'f-crypt.jpg', 'f-planks-h.jpg', 'f-planks-v.jpg', 'cliff-a.jpg', 'cliff-b.jpg', 'wall-a.jpg', 'abyss.jpg', 'decal-hub.png', 'decal-shrine0.png', 'decal-shrine1.png', 'decal-vault.png', 'decal-boss.png', 'gate2-closed.png', 'gate2-vault.png', 'pillar2-0.png', 'pillar2-1.png', 'pillar2-2.png', 'lamp.png', 'brazier-0.png', 'fountain.png'];
+  const ART_NAMES = ['f-plain.jpg', 'f-inlay.jpg', 'f-crack.jpg', 'f-moss.jpg', 'f-crypt.jpg', 'f-planks-h.jpg', 'f-planks-v.jpg', 'cliff-a.jpg', 'cliff-b.jpg', 'wall-a.jpg', 'abyss.jpg', 'decal-hub.png', 'decal-shrine0.png', 'decal-shrine1.png', 'decal-vault.png', 'decal-boss.png', 'gate2-closed.png', 'gate2-vault.png', 'pillar2-0.png', 'pillar2-1.png', 'pillar2-2.png', 'lamp.png', 'brazier-0.png', 'fountain.png', 'fx-telegraph.png', 'fx-burst.png', 'fx-scorch.png', 'collapse-2.png', 'pit-grate-0.png', 'pit-grate-1.png', 'pit-grate-2.png'];
   const ART = {}; let artStarted = false; const pats = {};
   function loadArt() {
     if (artStarted || typeof Image === 'undefined') return;
@@ -1481,7 +1481,7 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
     const warnOf = e => e.kind === 'gates' ? GATE_WARN : e.kind === 'drop' ? DROP_WARN : e.kind === 'vault' ? VAULT_WARN : e.kind === 'ring' ? 6 : EVENT_WARN;
     let arenaStage = 0; // 0 lower map, 1 gates open (run north), 2 crypt fight, 3 inner gate open, 4 final room sealed with the boss
     let arenaVaultCells = [], arenaVaultY = 0, arenaVaultBox = { x0: 0, x1: 0 }, arenaVaultC = { x: 0, y: 0 }, arenaEntry = { x: 0, y: 0 };
-    let arenaTraps = [], arenaNextTrap = 0, arenaNextElite = 0, arenaWave = 0, arenaCutEnd = 0, arenaCutLen = 3.5, arenaCutTitle = 'THE FINAL ROOM';
+    let arenaBlasts = [], arenaTraps = [], arenaNextTrap = 0, arenaNextElite = 0, arenaWave = 0, arenaCutEnd = 0, arenaCutLen = 3.5, arenaCutTitle = 'THE FINAL ROOM';
     let bossSpawned = false, bossIntroAt = 0, bossPhase = 0, bossRef = null, bossNextSlam = 0, bossNextAdds = 0, bossLastBlast = -9; // the Collector (arena === 'boss')
     const inVault = (x, y) => x > arenaVaultBox.x0 && x < arenaVaultBox.x1 && y < arenaVaultY; // inside the final room (above its gate)
     function layoutArena() {
@@ -1513,7 +1513,7 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
       fill(grid, VG[0], VG[1], VG[0] + VG[2], VG[1] + VG[3], 0); fill(deco, VG[0], VG[1], VG[0] + VG[2], VG[1] + VG[3], 8);
       arenaVaultCells = []; for (let y = sc(VG[1]); y < sc(VG[1] + VG[3]); y++) for (let x = sc(VG[0]); x < sc(VG[0] + VG[2]); x++) arenaVaultCells.push(y * GW + x);
       arenaVaultY = sc(VG[1]) * CS; arenaVaultBox = { x0: sc(25) * CS, x1: sc(39) * CS }; arenaVaultC = cc(vault); arenaEntry = cc(route);
-      arenaStage = 0; arenaTraps = []; arenaWave = 0; arenaNextTrap = arenaNextElite = arenaCutEnd = 0;
+      arenaStage = 0; arenaTraps = []; arenaBlasts = []; arenaWave = 0; arenaNextTrap = arenaNextElite = arenaCutEnd = 0;
       arenaGateSprs = GATES.concat([VG]).map((g, i) => ({ x: ((sc(g[0]) + sc(g[0] + g[2])) / 2) * CS, y: sc(g[1] + g[3]) * CS, vault: i === GATES.length })); // sprite foot = south edge of the gate
       arenaGateHide = new Uint8Array(GW * GH); // gate cube cells under a sprite are not drawn
       arenaGateSprs.forEach((s, i) => { const g = i < GATES.length ? GATES[i] : VG; for (let y = sc(g[1]); y < sc(g[1] + g[3]); y++) for (let x = sc(g[0]); x < sc(g[0] + g[2]); x++) if (Math.abs(x * CS + CS / 2 - s.x) < 130) arenaGateHide[y * GW + x] = 1; });
@@ -2019,6 +2019,7 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
         if (tr.skip) continue;
         if (tr.dmg) bossLastBlast = gameTime;
         playVFX('explosion', tr.x, tr.y, { scale: tr.boom || 1.7, fps: 18 }); addShake(tr.dmg ? 9 : 5);
+        arenaBlasts.push({ x: tr.x, y: tr.y, r: tr.r, t: gameTime }); if (arenaBlasts.length > 24) arenaBlasts.shift();
         if (Math.hypot(hero.x - tr.x, hero.y - tr.y) < tr.r + hero.radius * 0.5) hitHero(tr.dmg || 16, 'trap');
       }
     }
@@ -2045,9 +2046,26 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
         c.fill();
         if (e.rects) { c.strokeStyle = `rgba(${col},0.95)`; c.lineWidth = 5; c.setLineDash([22, 14]); c.lineDashOffset = -gameTime * 50; e.rects.forEach(r => c.strokeRect(r[0] * CS, r[1] * CS, (r[2] - r[0]) * CS, (r[3] - r[1]) * CS)); c.setLineDash([]); }
       }
+      const warnImg = artImg('collapse-2'); // collapse warning: the glowing cracked slab stamped over the floor that is about to fall
+      if (warnImg) for (let i = 0; i < arenaEvents.length; i++) {
+        const e = arenaEvents[i]; if (e.state !== 'warn' || !e.cells || e.kind !== 'collapse') continue;
+        const p = 1 - Math.max(0, e.t - gameTime) / warnOf(e);
+        c.globalAlpha = Math.min(0.9, 0.25 + 0.7 * p);
+        for (let k = 0; k < e.cells.length; k += 5) { const j = e.cells[k], cx = (j % GW) * CS + CS / 2, cy = ((j / GW) | 0) * CS + CS / 2; if (((j * 2654435761) >>> 0) % 3) continue; c.drawImage(warnImg, cx - 56, cy - 56, 112, 112); }
+        c.globalAlpha = 1;
+      }
+      const fxScorch = artImg('fx-scorch'), fxBurst = artImg('fx-burst'); // the boss stamp: burst on impact, scorch mark that fades
+      for (let i = arenaBlasts.length - 1; i >= 0; i--) {
+        const b = arenaBlasts[i], age = gameTime - b.t, d = b.r * 2.9;
+        if (age > 7) { arenaBlasts.splice(i, 1); continue; }
+        if (fxScorch) { c.globalAlpha = Math.min(0.85, (7 - age) / 4); c.drawImage(fxScorch, b.x - d / 2, b.y - d * 0.42, d, d * 0.82); }
+        if (fxBurst && age < 0.5) { c.globalAlpha = 1 - age / 0.5; c.drawImage(fxBurst, b.x - d * 0.6, b.y - d * 0.6, d * 1.2, d * 0.97); }
+        c.globalAlpha = 1;
+      }
       for (let i = 0; i < arenaTraps.length; i++) { // red = enemy danger: ring shows the blast, the inner disc fills as it nears
         const tr = arenaTraps[i], p = Math.min(1, Math.max(0, 1 - Math.max(0, tr.t - gameTime) / (tr.d || 1.4)));
         if (tr.skip) continue;
+        const tele = artImg('fx-telegraph'); if (tele) { c.globalAlpha = 0.5 + 0.45 * p; c.drawImage(tele, tr.x - tr.r * 1.15, tr.y - tr.r * 1.15 * 0.58, tr.r * 2.3, tr.r * 2.3 * 0.58); c.globalAlpha = 1; }
         c.fillStyle = `rgba(220,30,30,${0.10 + 0.10 * p})`; c.beginPath(); c.arc(tr.x, tr.y, tr.r, 0, 6.2832); c.fill();
         c.fillStyle = `rgba(255,70,40,${0.25 + 0.3 * p})`; c.beginPath(); c.arc(tr.x, tr.y, tr.r * p, 0, 6.2832); c.fill();
         c.strokeStyle = 'rgba(255,60,50,0.95)'; c.lineWidth = 3; c.beginPath(); c.arc(tr.x, tr.y, tr.r, 0, 6.2832); c.stroke();
