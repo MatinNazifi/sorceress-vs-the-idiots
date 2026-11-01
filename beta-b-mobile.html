@@ -1808,7 +1808,7 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
       c.translate(ox, oy);
       for (let ly = 0; ly < 32; ly++) for (let lx = 0; lx < 32; lx++) {
         const gx = cx * 32 + lx, gy = cy * 32 + ly, px = lx * CS, py = ly * CS;
-        if (!plate || gy < sc(26)) {
+        if (!plate || py + oy < topPx) {
           if (flo(gx, gy)) paintArenaCell(c, gx, gy, px, py, hash(gx, gy), flo);
           else if (isDropCell(gx, gy) && near(gx, gy)) { if (tile) c.drawImage(tile, (gx & 15) * 32, (gy & 15) * 32, 32, 32, px, py, 32, 32); else { c.fillStyle = '#6a5d58'; c.fillRect(px, py, CS, CS); } }
         }
