@@ -3957,7 +3957,7 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
       }
     }
 
-    const ENEMY_CAP = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches ? 110 : 170; // was 380: fps drop late game; phones get a lower ceiling
+    const ENEMY_CAP = 170; // was 380: fps drop late game
     function spawnTrickleEnemy() {
       if (enemies.length >= ENEMY_CAP) return;
       const dist = (screenW / CAMERA.zoom) * 0.6 + 60;
