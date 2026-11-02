@@ -2327,13 +2327,13 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
     if (arena) { buildArena3D(); buildArenaSprs(); buildSilhouette(); }
 
     const tp = (typeof location !== 'undefined') ? parseFloat(new URLSearchParams(location.search).get('tilt')) : NaN;
-    const TILT = tp >= 0.5 && tp <= 1 ? tp : (arena ? (ART_ISO ? 0.5 : 0.75) : 1); // ?tilt=0.75 = Diablo-style view; the arena defaults to it, ?tilt=1 is flat
+    const TILT = tp >= 0.5 && tp <= 1 ? tp : (arena ? 0.75 : 1); // ?tilt=0.75 = Diablo-style view; the arena defaults to it, ?tilt=1 is flat
     const pp = (typeof location !== 'undefined') ? parseFloat(new URLSearchParams(location.search).get('persp')) : NaN;
     const PERSP = pp >= 0 && pp <= 0.8 ? pp : 0; // off by default: the strip warp makes walls change lean as they scroll (felt nauseating)
     const zq = (typeof location !== 'undefined') ? parseFloat(new URLSearchParams(location.search).get('zoom')) : NaN;
-    const ZL = zq >= 0.3 && zq <= 1.5 ? zq : (arena ? (ART_ISO ? 0.95 : 0.8) : 0), ZP = zq >= 0.3 && zq <= 1.5 ? zq : (arena ? (ART_ISO ? 0.95 : 0.8) : 0); // iso view squashes the screen, so a closer zoom keeps the hero's on-screen speed // arena camera zoom: landscape / portrait (hero ~5% of screen height like Nest of Thorns)
+    const ZL = zq >= 0.3 && zq <= 1.5 ? zq : (arena ? 0.8 : 0), ZP = zq >= 0.3 && zq <= 1.5 ? zq : (arena ? 0.8 : 0); // arena camera zoom: landscape / portrait (hero ~5% of screen height like Nest of Thorns)
     const yp = (typeof location !== 'undefined') ? parseFloat(new URLSearchParams(location.search).get('yaw')) : NaN;
-    const YAW = yp >= -80 && yp <= 80 ? (yp * Math.PI / 180 || (arena ? 1e-4 : 0)) : (arena ? (ART_ISO ? 45 : 35) * Math.PI / 180 : 0); // ?yaw=deg turns the camera; arena default 35
+    const YAW = yp >= -80 && yp <= 80 ? (yp * Math.PI / 180 || (arena ? 1e-4 : 0)) : (arena ? 35 * Math.PI / 180 : 0); // ?yaw=deg turns the camera; arena default 35
     // Flow field: BFS steps out from the hero cell, limited to a window so phones stay cheap.
     const FLOW_R = arena ? 56 : 48; // arena views are wider, so enemies spawn further out
     const fDist = new Uint16Array(GW * GH), fStamp = new Uint32Array(GW * GH), fQueue = new Int32Array(GW * GH);
