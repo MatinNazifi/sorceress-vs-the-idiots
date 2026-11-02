@@ -1441,11 +1441,14 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
   function loadArt() {
     if (artStarted || typeof Image === 'undefined') return;
     artStarted = true;
-    ART_NAMES.forEach(f => { const im = new Image(); im.onload = () => { chunkCache.clear(); }; im.src = 'sprites/arena/' + (ART_ISO ? 'v3/' : ART_V2 ? 'v2/' : '') + f; ART[f.replace(/\.\w+$/, '')] = im; });
+    ART_NAMES.forEach(f => { const im = new Image(); im.onload = () => { chunkCache.clear(); }; im.src = 'sprites/arena/' + (ART_BAKE ? 'v4/' : ART_ISO ? 'v3/' : ART_V2 ? 'v2/' : '') + f; ART[f.replace(/\.\w+$/, '')] = im; });
   }
+  const ART_BAKE = typeof location !== 'undefined' && /[?&]art=4\b/.test(location.search); // ?art=4 = the arena rendered in 3D by Blender at the game camera (sprites/arena/v4/ground.png + .json)
   const ART_V2 = typeof location !== 'undefined' && /[?&]art=2\b/.test(location.search); // ?art=2 = the module pack built from the Flow sheets (sprites/arena/v2)
   const ART_ISO = typeof location !== 'undefined' && /[?&]art=3\b/.test(location.search); // ?art=3 = the iso block kit (sprites/arena/v3) on the 2:1 iso camera (yaw 45, tilt 0.5)
-  const ART_ON = ART_V2 || ART_ISO || (typeof location !== 'undefined' && /[?&]art=1\b/.test(location.search)); // grey-box by default until the modular kit lands
+  const ART_ON = ART_V2 || ART_ISO || ART_BAKE || (typeof location !== 'undefined' && /[?&]art=1\b/.test(location.search)); // grey-box by default until the modular kit lands
+  const BAKE = { im: null, j: null };
+  if (ART_BAKE && typeof Image !== 'undefined') { const im = new Image(); im.onload = () => { BAKE.im = im; }; im.src = 'sprites/arena/v4/ground.png'; fetch('sprites/arena/v4/ground.json').then(r => r.json()).then(j => { BAKE.j = j; }).catch(() => {}); }
   const artImg = n => { if (!ART_ON) return null; const im = ART[n]; return im && im.complete && im.naturalWidth > 0 ? im : null; };
 
   // --- DUNGEON_BIGTEST Procedural Generator (6x6 Grid of 1024 Chunks = 6144px) ---
@@ -2380,6 +2383,7 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
       eliteChest(e) { if (!arena || arena === 'boss' || (e && e.bossName === 'GATEKEEPER') || arenaStage < 2) return true; if (arenaCryptChests < 3 && Math.random() < 0.2) { arenaCryptChests++; return true; } return false; }, // crypt fight: elites are for difficulty, at most 3 chests drop, at random
       tp: (x, y) => { hero.x = x; hero.y = y; }, // test hooks: move the hero, kill the gate mini boss
       killGate: () => { const b = enemies.find(e => e.bossName === 'GATEKEEPER'); if (b) killEnemy(b); return !!b; },
+      levelDump: arena ? () => ({ GW, GH, CS, grid: Array.from(grid), zone: Array.from(zone), deco: Array.from(deco) }) : null, // art pipeline: the level as numbers (test hook)
       arenaInfo: arena ? () => ({ stage: arenaStage, gatesAt: GATES_AT, dropAt: DROP_AT, vaultAt: VAULT_AT, reach: arenaReachCount, chests: arenaCryptChests, enemies: enemies.length, topEnemies: arenaTopLocked ? enemies.filter(e => e.y < topPx).length : 0, cutOffEnemies: enemies.filter(e => !arenaReachAt(e.x, e.y)).length, events: arenaEvents.map(e => ({ id: e.id, kind: e.kind, name: e.name, t: e.t, state: e.state, why: e.why || '' })) }) : null,
       hud: arena ? arenaHud : null,
       pressure: arena ? arenaPressure : null,
@@ -2600,6 +2604,12 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
               ctx.drawImage(cCanvas, cx * 1024 - 0.5, cy * 1024 - 0.5, 1025, 1025); // 1 px overscan hides seams under rotation
             }
           }
+        }
+        if (ART_BAKE && BAKE.im && BAKE.j && typeof screenW !== 'undefined') { // the baked 3D ground: pixel = origin + A * world, A = the game's yaw + tilt matrix (1 px per world px)
+          const dp = typeof dpr !== 'undefined' ? dpr : 1, z = cam.zoom || 0.9, ax = World.cosY * cam.x - World.sinY * cam.y, ay = World.tilt * (World.sinY * cam.x + World.cosY * cam.y);
+          ctx.save(); ctx.setTransform(dp, 0, 0, dp, 0, 0);
+          ctx.drawImage(BAKE.im, screenW / 2 - z * (ax + BAKE.j.originUnits[0]), screenH / 2 - z * (ay + BAKE.j.originUnits[1]), BAKE.j.w * z, BAKE.j.h * z);
+          ctx.restore();
         }
         if (arena) arenaDrawEvents(ctx);
       }
