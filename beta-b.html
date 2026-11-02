@@ -1360,9 +1360,10 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
   function loadArt() {
     if (artStarted || typeof Image === 'undefined') return;
     artStarted = true;
-    ART_NAMES.forEach(f => { const im = new Image(); im.onload = () => { chunkCache.clear(); }; im.src = 'sprites/arena/' + f; ART[f.replace(/\.\w+$/, '')] = im; });
+    ART_NAMES.forEach(f => { const im = new Image(); im.onload = () => { chunkCache.clear(); }; im.src = 'sprites/arena/' + (ART_V2 ? 'v2/' : '') + f; ART[f.replace(/\.\w+$/, '')] = im; });
   }
-  const ART_ON = typeof location !== 'undefined' && /[?&]art=1\b/.test(location.search); // grey-box by default until the modular kit lands
+  const ART_V2 = typeof location !== 'undefined' && /[?&]art=2\b/.test(location.search); // ?art=2 = the module pack built from the Flow sheets (sprites/arena/v2)
+  const ART_ON = ART_V2 || (typeof location !== 'undefined' && /[?&]art=1\b/.test(location.search)); // grey-box by default until the modular kit lands
   const artImg = n => { if (!ART_ON) return null; const im = ART[n]; return im && im.complete && im.naturalWidth > 0 ? im : null; };
 
   // --- DUNGEON_BIGTEST Procedural Generator (6x6 Grid of 1024 Chunks = 6144px) ---
