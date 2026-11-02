@@ -2187,6 +2187,11 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
     }
     function arenaHud(c, w, h) { // screen-space notices: the soonest warning, the crypt countdown, the cutscene bars
       if (!arenaEvents) return;
+      if (arena !== 'boss') { // beta build stamp: proves which build is running (a cached old page shows no stamp) and the collapse schedule
+        const done = arenaEvents.filter(x => x.kind === 'collapse' && x.state === 'done').length, nxt = arenaEvents.find(x => x.kind === 'collapse' && x.state !== 'done' && x.state !== 'skipped');
+        c.save(); c.font = '11px sans-serif'; c.textAlign = 'left'; c.fillStyle = 'rgba(255,255,255,0.55)';
+        c.fillText('arena b2 | collapses ' + done + '/7' + (nxt ? ' | next ' + Math.max(0, Math.ceil(nxt.t - gameTime)) + ' s' : '') + ' | gates ' + Math.floor(GATES_AT / 60) + ':' + String(GATES_AT % 60).padStart(2, '0'), 10, h - 6); c.restore();
+      }
       let e = null;
       for (let i = 0; i < arenaEvents.length; i++) if (arenaEvents[i].state === 'warn' && (!e || arenaEvents[i].t < e.t)) e = arenaEvents[i];
       let title = '', sub = '', col = '#ffd23f';
@@ -2217,7 +2222,7 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
       c.restore();
     }
     function arenaMiniBossSpawn() { // mini bosses come from the shrines that still stand (west wing, east wing, south shrine)
-      const alive = pois.filter(p => p.type === 'summon' && aliveCell(p.x, p.y));
+      const alive = pois.filter(p => p.type === 'summon' && aliveCell(p.x, p.y) && arenaReachAt(p.x, p.y));
       if (alive.length) { const p = alive[Math.floor(Math.random() * alive.length)]; return { x: p.x, y: p.y }; }
       return { x: startX, y: startY };
     }
@@ -2286,7 +2291,7 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
       update: arena ? arenaUpdate : null,
       forceEvent: arena ? arenaForce : null,
       eliteChest(e) { if (!arena || arena === 'boss' || (e && e.bossName === 'GATEKEEPER') || arenaStage < 2) return true; if (arenaCryptChests < 3 && Math.random() < 0.2) { arenaCryptChests++; return true; } return false; }, // crypt fight: elites are for difficulty, at most 3 chests drop, at random
-      arenaInfo: arena ? () => ({ stage: arenaStage, gatesAt: GATES_AT, dropAt: DROP_AT, vaultAt: VAULT_AT, reach: arenaReachCount, chests: arenaCryptChests, events: arenaEvents.map(e => ({ id: e.id, kind: e.kind, name: e.name, t: e.t, state: e.state, why: e.why || '' })) }) : null,
+      arenaInfo: arena ? () => ({ stage: arenaStage, gatesAt: GATES_AT, dropAt: DROP_AT, vaultAt: VAULT_AT, reach: arenaReachCount, chests: arenaCryptChests, enemies: enemies.length, topEnemies: arenaTopLocked ? enemies.filter(e => e.y < topPx).length : 0, cutOffEnemies: enemies.filter(e => !arenaReachAt(e.x, e.y)).length, events: arenaEvents.map(e => ({ id: e.id, kind: e.kind, name: e.name, t: e.t, state: e.state, why: e.why || '' })) }) : null,
       hud: arena ? arenaHud : null,
       pressure: arena ? arenaPressure : null,
       miniBossSpawn: arena ? arenaMiniBossSpawn : null,
