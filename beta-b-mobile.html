@@ -1666,7 +1666,7 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
       const order = ZONES.map((z, i) => ({ i, k: TIER[i] + rand() * 1.3 })).sort((x, y) => x.k - y.k).map(o => o.i);
       arenaZones = ZONES.map(z => ({ name: z[0], done: false, rects: z[1].map(r => [sc(r[0]), sc(r[1]), sc(r[0] + r[2]), sc(r[1] + r[3])]) }));
       const events = order.slice(0, 7).map((zi, i) => ({ id: i, kind: 'collapse', zi, name: ZONES[zi][0], t: 120 + i * 70 + Math.floor(rand() * 21) - 10, state: 'wait', cells: null, rects: arenaZones[zi].rects }));
-      GATES_AT = 570 + Math.floor(rand() * 31); DROP_AT = GATES_AT + 30; VAULT_AT = DROP_AT + 180; arenaCryptChests = 0; // gates open 9:30-10:00, 30 s to get inside, crypt fight 3 min
+      GATES_AT = 570 + Math.floor(rand() * 31); DROP_AT = GATES_AT + 30; VAULT_AT = 780; arenaCryptChests = 0; // gates open 9:30-10:00, 30 s to get inside, the inner door opens at 13:00
       events.push({ id: 7, kind: 'gates', name: 'the crypt gates', t: GATES_AT, state: 'wait' }, { id: 8, kind: 'drop', name: 'the lower realm', t: DROP_AT, state: 'wait', cells: null }, { id: 9, kind: 'vault', name: 'the inner gate', t: VAULT_AT, state: 'wait' });
       let lower = 0; for (let i = topPx / CS * GW; i < GW * GH; i++) if (grid[i] === 1) lower++;
       arenaLower0 = arenaLowerNow = lower;
@@ -1958,16 +1958,14 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
       return ok ? cells : null;
     }
     function arenaRebuild(cells) { walls.length = 0; cliffs.length = 0; buildArena3D(); buildArenaSprs(); buildSilhouette(); arenaInvalidate(cells); fHeroCell = -1; arenaRefreshSpawns(); }
-    function arenaFall(cells, booms, lethal) { // everything standing on floor that just dropped
+    function arenaFall(cells, booms) { // everything standing on floor that just dropped
       const set = new Set(cells);
       for (let i = enemies.length - 1; i >= 0; i--) if (set.has(cellAt(enemies[i].x, enemies[i].y))) { if (enemies[i].isFinalBoss) { enemies[i].x = arenaVaultC.x; enemies[i].y = arenaVaultC.y; } else killEnemy(enemies[i]); } // they fall (the final boss is pulled back to the middle)
       for (let i = vases.length - 1; i >= 0; i--) if (set.has(cellAt(vases[i].x, vases[i].y))) vases.splice(i, 1);
       for (let i = chests.length - 1; i >= 0; i--) if (set.has(cellAt(chests[i].x, chests[i].y))) chests.splice(i, 1);
-      soulGems.forEach(g => { if (set.has(cellAt(g.x, g.y))) g.magnetized = true; }); // loot over the new drop flies to the hero
-      if (lethal && (set.has(cellAt(hero.x, hero.y)) || !World.isWalkable(hero.x, hero.y, hero.radius))) { // missed the 30 s window: the lower realm takes the hero with it
-        hero.iFrames = 0; screenRedFlash = 0.8; hitHero(hero.maxHp * 100, 'fall');
-        if (hero.hp > 0) { hero.x = arenaEntry.x; hero.y = arenaEntry.y; hero.iFrames = 2; } // a revive (Second Life) lands in the crypt
-      } else if (set.has(cellAt(hero.x, hero.y)) || !World.isWalkable(hero.x, hero.y, hero.radius)) { // caught in it: a hard fall, back on safe ground
+      for (let i = soulGems.length - 1; i >= 0; i--) if (set.has(cellAt(soulGems[i].x, soulGems[i].y))) soulGems.splice(i, 1); // gems and pickups over the drop fall with it
+      for (let i = pickups.length - 1; i >= 0; i--) if (set.has(cellAt(pickups[i].x, pickups[i].y))) pickups.splice(i, 1);
+      if (set.has(cellAt(hero.x, hero.y)) || !World.isWalkable(hero.x, hero.y, hero.radius)) { // caught in it: a hard fall, back on safe ground
         const s = arenaStage >= 2 ? arenaEntry : World.snap(hero.x, hero.y); hero.x = s.x; hero.y = s.y; // after the great drop the only safe ground is the crypt
         hero.hp = Math.max(1, hero.hp - hero.maxHp * 0.3); hero.iFrames = Math.max(hero.iFrames, 1.2); screenRedFlash = 0.5;
       }
@@ -1993,7 +1991,11 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
       arenaGateCells.forEach(i => { grid[i] = 1; deco[i] = 0; });
       arenaRebuild(arenaGateCells);
       let gx = 0, gy = 0; arenaGateCells.forEach(i => { gx += (i % GW + 0.5) * CS; gy += (((i / GW) | 0) + 0.5) * CS; });
-      if (arenaGateCells.length) { const b = spawnEnemy('mootaur', gx / arenaGateCells.length, gy / arenaGateCells.length, true); if (b) b.bossName = 'GATEKEEPER'; } // mini boss at the door; not isBoss, so it never ends the run
+      if (arenaGateCells.length) { // mini boss at the door: spawned NON-elite (an elite mootaur is flagged isFinalBoss and its death wins the run); the boss tier counters are put back so the Collector keeps its HP
+        const keepN = bossCount, keepHp = lastBossHp, b = spawnEnemy('mootaur', gx / arenaGateCells.length, gy / arenaGateCells.length, false);
+        if (b) { b.bossName = 'GATEKEEPER'; b.isFinalBoss = false; b.hp = b.maxHp = keepHp * 1.6; }
+        bossCount = keepN; lastBossHp = keepHp;
+      }
       for (let k = 0; k < 3; k++) { const i = arenaGateCells[Math.floor(arenaGateCells.length * (k + 0.5) / 3)]; playVFX('explosion', (i % GW) * CS + CS / 2, ((i / GW) | 0) * CS + CS / 2, { scale: 2.6, fps: 16 }); }
       addShake(22);
     }
@@ -2001,7 +2003,7 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
       e.state = 'done'; arenaStage = 2;
       const cells = []; for (let i = 0; i < GW * GH; i++) if (zone[i] === 1 && grid[i] === 1) { grid[i] = 0; deco[i] = 0; cells.push(i); }
       arenaLowerNow = 0; arenaRebuild(cells);
-      if (cells.length) arenaFall(cells, 16, true);
+      if (cells.length) arenaFall(cells, 16);
       addShake(34); arenaNextElite = gameTime; arenaNextTrap = gameTime + 2.5;
     }
     function arenaOpenVault(e) { // inner gate bursts open: short cutscene, the hero walks in
@@ -2061,6 +2063,14 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
         }
       }
       arenaReachCount = q.length;
+    }
+    function arenaReachSpot(minD, maxD) { // a random floor point the hero can walk to, between minD and maxD px away
+      arenaUpdateReach();
+      for (let k = 0; k < 80; k++) {
+        const a = Math.random() * 6.2832, d = minD + Math.random() * (maxD - minD), x = hero.x + Math.cos(a) * d, y = hero.y + Math.sin(a) * d;
+        if (cellOk(x, y) && arenaReachAt(x, y) && !(arenaTopLocked && y < topPx) && !(arenaStage < 3 && inVault(x, y))) return { x, y };
+      }
+      return null;
     }
     function arenaCryptSpot(minD, maxD) { // floor near the hero, never inside the sealed final room
       arenaUpdateReach();
@@ -2291,6 +2301,8 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
       update: arena ? arenaUpdate : null,
       forceEvent: arena ? arenaForce : null,
       eliteChest(e) { if (!arena || arena === 'boss' || (e && e.bossName === 'GATEKEEPER') || arenaStage < 2) return true; if (arenaCryptChests < 3 && Math.random() < 0.2) { arenaCryptChests++; return true; } return false; }, // crypt fight: elites are for difficulty, at most 3 chests drop, at random
+      tp: (x, y) => { hero.x = x; hero.y = y; }, // test hooks: move the hero, kill the gate mini boss
+      killGate: () => { const b = enemies.find(e => e.bossName === 'GATEKEEPER'); if (b) killEnemy(b); return !!b; },
       arenaInfo: arena ? () => ({ stage: arenaStage, gatesAt: GATES_AT, dropAt: DROP_AT, vaultAt: VAULT_AT, reach: arenaReachCount, chests: arenaCryptChests, enemies: enemies.length, topEnemies: arenaTopLocked ? enemies.filter(e => e.y < topPx).length : 0, cutOffEnemies: enemies.filter(e => !arenaReachAt(e.x, e.y)).length, events: arenaEvents.map(e => ({ id: e.id, kind: e.kind, name: e.name, t: e.t, state: e.state, why: e.why || '' })) }) : null,
       hud: arena ? arenaHud : null,
       pressure: arena ? arenaPressure : null,
@@ -2367,6 +2379,7 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
           if (d > 450 && d < nd) { nd = d; nearest = s; }
           if (d > 450 && d < 1500 && Math.random() * ++n < 1) pick = s;
         }
+        if (!pick && !nearest && arena) return arenaReachSpot(300, 1400) || spawnList[0]; // nothing listed is reachable: any floor the hero can walk to
         return pick || nearest || spawnList[0];
       },
 
@@ -2386,6 +2399,7 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
           const x = hero.x + Math.cos(ang) * dist, y = hero.y + Math.sin(ang) * dist;
           if (this.isWalkable(x, y, 28) && arenaReachAt(x, y) && !(arenaTopLocked && y < topPx) && !(arenaStage < 3 && inVault(x, y))) { OUT.x = x; OUT.y = y; return OUT; }
         }
+        if (arena) { const s = arenaReachSpot(260, dist) || arenaReachSpot(120, 260); if (s) { OUT.x = s.x; OUT.y = s.y; return OUT; } } // the shrunken map has no floor on the ring: still only floor the hero can walk to, never snap into the sealed crypt or a cut-off island
         return this.snap(hero.x + dist, hero.y);
       },
 
