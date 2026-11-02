@@ -1360,10 +1360,11 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
   function loadArt() {
     if (artStarted || typeof Image === 'undefined') return;
     artStarted = true;
-    ART_NAMES.forEach(f => { const im = new Image(); im.onload = () => { chunkCache.clear(); }; im.src = 'sprites/arena/' + (ART_V2 ? 'v2/' : '') + f; ART[f.replace(/\.\w+$/, '')] = im; });
+    ART_NAMES.forEach(f => { const im = new Image(); im.onload = () => { chunkCache.clear(); }; im.src = 'sprites/arena/' + (ART_ISO ? 'v3/' : ART_V2 ? 'v2/' : '') + f; ART[f.replace(/\.\w+$/, '')] = im; });
   }
   const ART_V2 = typeof location !== 'undefined' && /[?&]art=2\b/.test(location.search); // ?art=2 = the module pack built from the Flow sheets (sprites/arena/v2)
-  const ART_ON = ART_V2 || (typeof location !== 'undefined' && /[?&]art=1\b/.test(location.search)); // grey-box by default until the modular kit lands
+  const ART_ISO = typeof location !== 'undefined' && /[?&]art=3\b/.test(location.search); // ?art=3 = the iso block kit (sprites/arena/v3) on the 2:1 iso camera (yaw 45, tilt 0.5)
+  const ART_ON = ART_V2 || ART_ISO || (typeof location !== 'undefined' && /[?&]art=1\b/.test(location.search)); // grey-box by default until the modular kit lands
   const artImg = n => { if (!ART_ON) return null; const im = ART[n]; return im && im.complete && im.naturalWidth > 0 ? im : null; };
 
   // --- DUNGEON_BIGTEST Procedural Generator (6x6 Grid of 1024 Chunks = 6144px) ---
@@ -1773,7 +1774,8 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
     function arenaDrawSpr(c, w) {
       const im = artImg(w.spr); if (!im) return;
       c.save(); c.translate(w.x, w.y); if (World.yaw) c.rotate(-World.yaw); c.scale(1, 1 / World.tilt);
-      c.drawImage(im, -w.w / 2, -w.h, w.w, w.h); c.restore();
+      const dw = ART_ISO ? w.h * im.naturalWidth / im.naturalHeight : w.w; // iso pieces keep their own proportions
+      c.drawImage(im, -dw / 2, -w.h, dw, w.h); c.restore();
     }
     function arenaPushWalls(list, camX, camY, hw, hh) {
       for (let i = 0; i < sprs.length; i++) {
@@ -2169,13 +2171,13 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
     if (arena) { buildArena3D(); buildArenaSprs(); buildSilhouette(); }
 
     const tp = (typeof location !== 'undefined') ? parseFloat(new URLSearchParams(location.search).get('tilt')) : NaN;
-    const TILT = tp >= 0.5 && tp <= 1 ? tp : (arena ? 0.75 : 1); // ?tilt=0.75 = Diablo-style view; the arena defaults to it, ?tilt=1 is flat
+    const TILT = tp >= 0.5 && tp <= 1 ? tp : (arena ? (ART_ISO ? 0.5 : 0.75) : 1); // ?tilt=0.75 = Diablo-style view; the arena defaults to it, ?tilt=1 is flat
     const pp = (typeof location !== 'undefined') ? parseFloat(new URLSearchParams(location.search).get('persp')) : NaN;
     const PERSP = pp >= 0 && pp <= 0.8 ? pp : 0; // off by default: the strip warp makes walls change lean as they scroll (felt nauseating)
     const zq = (typeof location !== 'undefined') ? parseFloat(new URLSearchParams(location.search).get('zoom')) : NaN;
     const ZL = zq >= 0.3 && zq <= 1.5 ? zq : (arena ? 0.8 : 0), ZP = zq >= 0.3 && zq <= 1.5 ? zq : (arena ? 0.8 : 0); // arena camera zoom: landscape / portrait (hero ~5% of screen height like Nest of Thorns)
     const yp = (typeof location !== 'undefined') ? parseFloat(new URLSearchParams(location.search).get('yaw')) : NaN;
-    const YAW = yp >= -80 && yp <= 80 ? (yp * Math.PI / 180 || (arena ? 1e-4 : 0)) : (arena ? 35 * Math.PI / 180 : 0); // ?yaw=deg turns the camera; arena default 35
+    const YAW = yp >= -80 && yp <= 80 ? (yp * Math.PI / 180 || (arena ? 1e-4 : 0)) : (arena ? (ART_ISO ? 45 : 35) * Math.PI / 180 : 0); // ?yaw=deg turns the camera; arena default 35
     // Flow field: BFS steps out from the hero cell, limited to a window so phones stay cheap.
     const FLOW_R = arena ? 56 : 48; // arena views are wider, so enemies spawn further out
     const fDist = new Uint16Array(GW * GH), fStamp = new Uint32Array(GW * GH), fQueue = new Int32Array(GW * GH);
