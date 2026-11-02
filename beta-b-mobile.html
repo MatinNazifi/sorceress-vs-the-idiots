@@ -2145,6 +2145,7 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
       }
       return null;
     }
+    const ARENA_CRYPT_TRAPS = false;
     function arenaCrypt() { // the crypt fight: elite waves and red floor traps
       if (gameTime >= arenaNextElite) {
         arenaNextElite = gameTime + 14;
@@ -2152,7 +2153,7 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
         arenaWave++;
         for (let k = 0; k < n; k++) { const s = arenaCryptSpot(380, 800); if (s) spawnEnemy(kinds[Math.floor(Math.random() * kinds.length)], s.x, s.y, true); }
       }
-      if (gameTime >= arenaNextTrap) {
+      if (ARENA_CRYPT_TRAPS && gameTime >= arenaNextTrap) { // off for now (Matin 2026-11-03: random red circles with no visible trap)
         arenaNextTrap = gameTime + 3.2;
         for (let k = 0; k < 2; k++) { const s = arenaCryptSpot(60, 380); if (s) arenaTraps.push({ x: s.x, y: s.y, t: gameTime + 1.4, r: 78 }); }
       }
@@ -4180,8 +4181,7 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
       }
     }
 
-    const ENEMY_CAP = budMobile ? 120 : 170; // was 380: fps drop late game
-
+    const ENEMY_CAP = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches ? 110 : 170; // was 380: fps drop late game; phones get a lower ceiling
     function spawnTrickleEnemy() {
       if (enemies.length >= ENEMY_CAP) return;
       const dist = (screenW / CAMERA.zoom) * 0.6 + 60;
@@ -5535,6 +5535,12 @@ if (metaFx.regen > 0 && hero.hp > 0) hero.hp = Math.min(hero.maxHp, hero.hp + me
       }
       amount *= DMG_TUNE;
       if (hero.passives.focus && Math.random() < 0.06 * hero.passives.focus) { amount *= 1.75; isCrit = true; } // Arcane Focus
+      if (e.bossName === 'THE COLLECTOR') { // a farmed build can't melt the final fight: at most maxHp/60 per second goes in, so no build kills it in under a minute
+        if (gameTime - (e.dmgWinT || 0) >= 1) { e.dmgWinT = gameTime; e.dmgWinSum = 0; }
+        const cap = e.maxHp / 60, room = Math.max(0, cap - e.dmgWinSum);
+        amount = amount <= room ? amount : room;
+        e.dmgWinSum += amount;
+      }
       e.hp -= amount;
       e.flashTimer = 0.1; // 0.1 s white flash
       if (e.hp > 0 && !e.isBoss && !(e.hurtT > 0)) { // flinch plays out, a beam's per-frame ticks don't freeze it
@@ -9983,7 +9989,7 @@ telemetryInit();
     if (isGod) { window.__events = () => (World.events || []).map(e => ({ id: e.id, kind: e.kind, name: e.name, t: e.t, state: e.state, why: e.why, zi: e.zi })); window.__event = i => World.forceEvent(i); window.__setTime = s => { gameTime = s; }; }
     // ?god=1 only: jump the hero to a grid cell (map QA)
     if (isGod) window.__tp = (cx, cy) => { hero.x = cx * 32 + 16; hero.y = cy * 32 + 16; };
-    if (isGod) { window.__boss = () => enemies.filter(e => e.isBoss).map(e => ({ type: e.type, final: !!e.isFinalBoss, hp: Math.round(e.hp) })); window.__killBoss = () => { const b = enemies.find(e => e.isFinalBoss); if (b) killEnemy(b); return !!b; }; window.__bossHp = f => { const b = enemies.find(e => e.isFinalBoss); if (b) b.hp = Math.max(1, b.maxHp * f); return !!b; }; window.__over = () => isGameOver; window.__stage = () => World._def && World._def.stage ? World._def.stage() : -1; }
+    if (isGod) { window.__boss = () => enemies.filter(e => e.isBoss).map(e => ({ type: e.type, final: !!e.isFinalBoss, hp: Math.round(e.hp) })); window.__killBoss = () => { const b = enemies.find(e => e.isFinalBoss); if (b) killEnemy(b); return !!b; }; window.__bossHp = f => { const b = enemies.find(e => e.isFinalBoss); if (b) b.hp = Math.max(1, b.maxHp * f); return !!b; }; window.__hitBoss = n => { const b = enemies.find(e => e.isFinalBoss); if (b) damageEnemy(b, n / DMG_TUNE, 1, false, true); return b ? Math.round(b.hp) + '/' + Math.round(b.maxHp) : null; }; window.__over = () => isGameOver; window.__stage = () => World._def && World._def.stage ? World._def.stage() : -1; }
     // ?god=1 only: staff-tip / cast-gesture probe for visual QA
     if (isGod) window.__cast = {
       tip: () => ({ ...staffTip() }),
