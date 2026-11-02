@@ -1241,6 +1241,8 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
     drawWall(ctx, w) { this._def.drawWall(ctx, w); },
     update(dt) { if (this._def && this._def.update) this._def.update(dt); },
     forceEvent(i) { return this._def && this._def.forceEvent ? this._def.forceEvent(i) : null; },
+    eliteChest(e) { return this._def && this._def.eliteChest ? this._def.eliteChest(e) : true; },
+    arenaInfo() { return this._def && this._def.arenaInfo ? this._def.arenaInfo() : null; },
     hud(c, w, h) { if (this._def && this._def.hud) this._def.hud(c, w, h); },
     pressure() { return this._def && this._def.pressure ? this._def.pressure() : 1; }, // enemy spawn multiplier (arena: grows as the map shrinks)
     miniBossSpawn() { return this._def && this._def.miniBossSpawn ? this._def.miniBossSpawn() : this.bossSpawn(); },
@@ -1478,7 +1480,7 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
     // The run: 0-10:00 the lower map collapses piece by piece; 10:00 the crypt gates open and the lower map falls 20 s later (run north);
     // then ~3 minutes of crypt fight (elite waves, floor traps); at 13:00 the inner gate opens (cutscene), the hero walks into the final room,
     // the doors seal behind and the final boss appears. Only the final boss's death wins the run.
-    const EVENT_WARN = 10, GATE_WARN = 6, DROP_WARN = 20, VAULT_WARN = 8, GATES_AT = 600, DROP_AT = 620, VAULT_AT = 800;
+    const EVENT_WARN = 10, GATE_WARN = 6, DROP_WARN = 20, VAULT_WARN = 8; let GATES_AT = 600, DROP_AT = 630, VAULT_AT = 810, arenaReach = null, arenaReachTime = -1, arenaReachCount = 0, arenaCryptChests = 0;
     const warnOf = e => e.kind === 'gates' ? GATE_WARN : e.kind === 'drop' ? DROP_WARN : e.kind === 'vault' ? VAULT_WARN : e.kind === 'ring' ? 6 : EVENT_WARN;
     let arenaStage = 0; // 0 lower map, 1 gates open (run north), 2 crypt fight, 3 inner gate open, 4 final room sealed with the boss
     let arenaVaultCells = [], arenaVaultY = 0, arenaVaultBox = { x0: 0, x1: 0 }, arenaVaultC = { x: 0, y: 0 }, arenaEntry = { x: 0, y: 0 };
@@ -1583,6 +1585,7 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
       const order = ZONES.map((z, i) => ({ i, k: TIER[i] + rand() * 1.3 })).sort((x, y) => x.k - y.k).map(o => o.i);
       arenaZones = ZONES.map(z => ({ name: z[0], done: false, rects: z[1].map(r => [sc(r[0]), sc(r[1]), sc(r[0] + r[2]), sc(r[1] + r[3])]) }));
       const events = order.slice(0, 7).map((zi, i) => ({ id: i, kind: 'collapse', zi, name: ZONES[zi][0], t: 120 + i * 70 + Math.floor(rand() * 21) - 10, state: 'wait', cells: null, rects: arenaZones[zi].rects }));
+      GATES_AT = 570 + Math.floor(rand() * 31); DROP_AT = GATES_AT + 30; VAULT_AT = DROP_AT + 180; arenaCryptChests = 0; // gates open 9:30-10:00, 30 s to get inside, crypt fight 3 min
       events.push({ id: 7, kind: 'gates', name: 'the crypt gates', t: GATES_AT, state: 'wait' }, { id: 8, kind: 'drop', name: 'the lower realm', t: DROP_AT, state: 'wait', cells: null }, { id: 9, kind: 'vault', name: 'the inner gate', t: VAULT_AT, state: 'wait' });
       let lower = 0; for (let i = topPx / CS * GW; i < GW * GH; i++) if (grid[i] === 1) lower++;
       arenaLower0 = arenaLowerNow = lower;
@@ -1846,7 +1849,8 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
     function arenaRefreshSpawns() { // enemy stair bursts / elites only come from areas that still stand and are not sealed
       spawnList.length = 0;
       if (arena === 'boss') { for (let k = 0; k < 8; k++) { const x = arenaVaultC.x + Math.cos(k * 0.7854) * 17 * AK * CS * 0.55, y = arenaVaultC.y + Math.sin(k * 0.7854) * 17 * AK * CS * 0.55; if (aliveCell(x, y)) spawnList.push({ x, y }); } if (!spawnList.length) spawnList.push({ x: arenaVaultC.x, y: arenaVaultC.y + 4 * AK * CS }); return; }
-      rooms.slice(2, -1).forEach(r => { const c = roomCentre(r); if (aliveCell(c.x, c.y)) spawnList.push(c); });
+      arenaUpdateReach(true);
+      rooms.slice(2, -1).forEach(r => { const c = roomCentre(r); if (aliveCell(c.x, c.y) && arenaReachAt(c.x, c.y)) spawnList.push(c); });
       if (!spawnList.length) spawnList.push({ x: startX, y: startY });
     }
     function arenaInvalidate(cells) { // repaint only the 1024 px chunks that changed
@@ -1860,6 +1864,7 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
       for (const r of e.rects) for (let y = r[1]; y < r[3]; y++) for (let x = r[0]; x < r[2]; x++) { const i = y * GW + x; if (grid[i] === 1) drop(i); }
       const seen = new Uint8Array(GW * GH), q = [];
       for (const root of arenaRoots) if (grid[root] === 1 && !seen[root]) { seen[root] = 1; q.push(root); }
+      if (arenaTopLocked) for (let i = 0; i < (topPx / CS) * GW; i++) if (grid[i] === 1 && !seen[i]) { seen[i] = 1; q.push(i); } // the sealed crypt stands on its own until the gates open (its gate cells are still empty, so the flood cannot reach it from the hub)
       while (q.length) {
         const c = q.pop(), x = c % GW, y = (c / GW) | 0;
         for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { const nx = x + dx, ny = y + dy; if (nx < 0 || ny < 0 || nx >= GW || ny >= GH) continue; const k = ny * GW + nx; if (grid[k] === 1 && !seen[k]) { seen[k] = 1; q.push(k); } }
@@ -1872,13 +1877,16 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
       return ok ? cells : null;
     }
     function arenaRebuild(cells) { walls.length = 0; cliffs.length = 0; buildArena3D(); buildArenaSprs(); buildSilhouette(); arenaInvalidate(cells); fHeroCell = -1; arenaRefreshSpawns(); }
-    function arenaFall(cells, booms) { // everything standing on floor that just dropped
+    function arenaFall(cells, booms, lethal) { // everything standing on floor that just dropped
       const set = new Set(cells);
       for (let i = enemies.length - 1; i >= 0; i--) if (set.has(cellAt(enemies[i].x, enemies[i].y))) { if (enemies[i].isFinalBoss) { enemies[i].x = arenaVaultC.x; enemies[i].y = arenaVaultC.y; } else killEnemy(enemies[i]); } // they fall (the final boss is pulled back to the middle)
       for (let i = vases.length - 1; i >= 0; i--) if (set.has(cellAt(vases[i].x, vases[i].y))) vases.splice(i, 1);
       for (let i = chests.length - 1; i >= 0; i--) if (set.has(cellAt(chests[i].x, chests[i].y))) chests.splice(i, 1);
       soulGems.forEach(g => { if (set.has(cellAt(g.x, g.y))) g.magnetized = true; }); // loot over the new drop flies to the hero
-      if (set.has(cellAt(hero.x, hero.y)) || !World.isWalkable(hero.x, hero.y, hero.radius)) { // caught in it: a hard fall, back on safe ground
+      if (lethal && (set.has(cellAt(hero.x, hero.y)) || !World.isWalkable(hero.x, hero.y, hero.radius))) { // missed the 30 s window: the lower realm takes the hero with it
+        hero.iFrames = 0; screenRedFlash = 0.8; hitHero(hero.maxHp * 100, 'fall');
+        if (hero.hp > 0) { hero.x = arenaEntry.x; hero.y = arenaEntry.y; hero.iFrames = 2; } // a revive (Second Life) lands in the crypt
+      } else if (set.has(cellAt(hero.x, hero.y)) || !World.isWalkable(hero.x, hero.y, hero.radius)) { // caught in it: a hard fall, back on safe ground
         const s = arenaStage >= 2 ? arenaEntry : World.snap(hero.x, hero.y); hero.x = s.x; hero.y = s.y; // after the great drop the only safe ground is the crypt
         hero.hp = Math.max(1, hero.hp - hero.maxHp * 0.3); hero.iFrames = Math.max(hero.iFrames, 1.2); screenRedFlash = 0.5;
       }
@@ -1903,6 +1911,8 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
       e.state = 'done'; arenaTopLocked = false; arenaStage = 1;
       arenaGateCells.forEach(i => { grid[i] = 1; deco[i] = 0; });
       arenaRebuild(arenaGateCells);
+      let gx = 0, gy = 0; arenaGateCells.forEach(i => { gx += (i % GW + 0.5) * CS; gy += (((i / GW) | 0) + 0.5) * CS; });
+      if (arenaGateCells.length) { const b = spawnEnemy('mootaur', gx / arenaGateCells.length, gy / arenaGateCells.length, true); if (b) b.bossName = 'GATEKEEPER'; } // mini boss at the door; not isBoss, so it never ends the run
       for (let k = 0; k < 3; k++) { const i = arenaGateCells[Math.floor(arenaGateCells.length * (k + 0.5) / 3)]; playVFX('explosion', (i % GW) * CS + CS / 2, ((i / GW) | 0) * CS + CS / 2, { scale: 2.6, fps: 16 }); }
       addShake(22);
     }
@@ -1910,7 +1920,7 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
       e.state = 'done'; arenaStage = 2;
       const cells = []; for (let i = 0; i < GW * GH; i++) if (zone[i] === 1 && grid[i] === 1) { grid[i] = 0; deco[i] = 0; cells.push(i); }
       arenaLowerNow = 0; arenaRebuild(cells);
-      if (cells.length) arenaFall(cells, 16);
+      if (cells.length) arenaFall(cells, 16, true);
       addShake(34); arenaNextElite = gameTime; arenaNextTrap = gameTime + 2.5;
     }
     function arenaOpenVault(e) { // inner gate bursts open: short cutscene, the hero walks in
@@ -1951,10 +1961,31 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
       e.cells = cells; e.state = 'warn'; e.nextShake = 0;
       return true;
     }
+    function arenaReachAt(x, y) { if (!arenaReach) return 1; const i = cellAt(x, y); return i >= 0 && i < arenaReach.length ? arenaReach[i] : 0; }
+    function arenaUpdateReach(force) { // floor the hero can walk to from where they stand: nothing spawns on cut-off islands or behind the sealed gate
+      if (!force && arenaReach && gameTime - arenaReachTime < 0.5) return;
+      arenaReachTime = gameTime;
+      if (!arenaReach || arenaReach.length !== GW * GH) arenaReach = new Uint8Array(GW * GH); else arenaReach.fill(0);
+      const h = cellAt(hero.x, hero.y); if (!(h >= 0 && h < GW * GH) || grid[h] !== 1) { arenaReachCount = 0; return; }
+      const q = [h]; arenaReach[h] = 1;
+      for (let head = 0; head < q.length; head++) {
+        const c = q[head], cx = c % GW, cy = (c / GW) | 0;
+        for (let k = 0; k < 4; k++) {
+          const nx = cx + (k === 0) - (k === 1), ny = cy + (k === 2) - (k === 3);
+          if (nx < 0 || ny < 0 || nx >= GW || ny >= GH) continue;
+          const n = ny * GW + nx; if (arenaReach[n] || grid[n] !== 1) continue;
+          if (arenaTopLocked && ny * CS < topPx) continue;
+          if (arenaStage < 3 && inVault((nx + 0.5) * CS, (ny + 0.5) * CS)) continue;
+          arenaReach[n] = 1; q.push(n);
+        }
+      }
+      arenaReachCount = q.length;
+    }
     function arenaCryptSpot(minD, maxD) { // floor near the hero, never inside the sealed final room
+      arenaUpdateReach();
       for (let k = 0; k < 40; k++) {
         const a = Math.random() * 6.2832, d = minD + Math.random() * (maxD - minD), x = hero.x + Math.cos(a) * d, y = hero.y + Math.sin(a) * d;
-        if (cellOk(x, y) && !(arenaStage < 3 && inVault(x, y))) return { x, y };
+        if (cellOk(x, y) && arenaReachAt(x, y) && !(arenaStage < 3 && inVault(x, y))) return { x, y };
       }
       return null;
     }
@@ -2002,6 +2033,7 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
       bossFadeTick();
       if (arena === 'boss') bossUpdate();
       if (!arenaEvents) return;
+      arenaUpdateReach();
       for (let i = 0; i < arenaEvents.length; i++) {
         const e = arenaEvents[i], warn = warnOf(e);
         if (e.state === 'wait' && gameTime >= e.t - warn) arenaWarn(e);
@@ -2085,6 +2117,7 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
         else if (e.kind === 'ring') { title = 'THE HALL IS BEING RECALLED'; sub = 'RETREAT TO THE CENTRE'; col = '#ff9a3c'; }
         else { title = 'THE GROUND IS GIVING WAY'; sub = e.name.toUpperCase() + ' WILL FALL'; }
         title += '  ' + secs + ' s';
+      } else if (arenaStage === 1) { title = 'GET INSIDE  ' + Math.max(0, Math.ceil(DROP_AT - gameTime)) + ' s'; sub = 'The lower realm falls when the timer ends'; col = '#ff9a3c';
       } else if (arenaStage === 2) { const s = Math.max(0, Math.ceil(VAULT_AT - gameTime)); title = 'SURVIVE THE CRYPT  ' + Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); sub = 'The inner gate is sealed'; col = '#ff9a3c'; }
       else if (arenaStage === 3) { title = 'ENTER THE FINAL ROOM'; sub = 'Go north'; col = '#d8b4fe'; }
       c.save(); c.textAlign = 'center'; c.lineJoin = 'round'; c.lineWidth = 6; c.strokeStyle = '#1a1a1a';
@@ -2171,6 +2204,8 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
       events: arenaEvents,
       update: arena ? arenaUpdate : null,
       forceEvent: arena ? arenaForce : null,
+      eliteChest(e) { if (!arena || arena === 'boss' || (e && e.bossName === 'GATEKEEPER') || arenaStage < 2) return true; if (arenaCryptChests < 3 && Math.random() < 0.2) { arenaCryptChests++; return true; } return false; }, // crypt fight: elites are for difficulty, at most 3 chests drop, at random
+      arenaInfo: arena ? () => ({ stage: arenaStage, gatesAt: GATES_AT, dropAt: DROP_AT, vaultAt: VAULT_AT, reach: arenaReachCount, chests: arenaCryptChests, events: arenaEvents.map(e => ({ id: e.id, kind: e.kind, name: e.name, t: e.t, state: e.state, why: e.why || '' })) }) : null,
       hud: arena ? arenaHud : null,
       pressure: arena ? arenaPressure : null,
       miniBossSpawn: arena ? arenaMiniBossSpawn : null,
@@ -2242,6 +2277,7 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
         let pick = null, nearest = null, nd = Infinity, n = 0;
         for (let i = 0; i < spawnList.length; i++) {
           const s = spawnList[i], d = Math.hypot(s.x - hero.x, s.y - hero.y);
+          if (!arenaReachAt(s.x, s.y)) continue;
           if (d > 450 && d < nd) { nd = d; nearest = s; }
           if (d > 450 && d < 1500 && Math.random() * ++n < 1) pick = s;
         }
@@ -2262,7 +2298,7 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
         for (let i = 0; i < 24; i++) {
           const ang = Math.random() * Math.PI * 2;
           const x = hero.x + Math.cos(ang) * dist, y = hero.y + Math.sin(ang) * dist;
-          if (this.isWalkable(x, y, 28) && !(arenaTopLocked && y < topPx) && !(arenaStage < 3 && inVault(x, y))) { OUT.x = x; OUT.y = y; return OUT; }
+          if (this.isWalkable(x, y, 28) && arenaReachAt(x, y) && !(arenaTopLocked && y < topPx) && !(arenaStage < 3 && inVault(x, y))) { OUT.x = x; OUT.y = y; return OUT; }
         }
         return this.snap(hero.x + dist, hero.y);
       },
@@ -2323,7 +2359,7 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
           const rx = pool[Math.floor(Math.random() * pool.length)];
           const x = (rx.x + rx.w * (0.25 + Math.random() * 0.5)) * CS;
           const y = (rx.y + rx.h * (0.25 + Math.random() * 0.5)) * CS;
-          if (!this.isWalkable(x, y, 24) || (arenaTopLocked && y < topPx) || (arenaStage < 3 && inVault(x, y))) continue;
+          if (!this.isWalkable(x, y, 24) || !arenaReachAt(x, y) || (arenaTopLocked && y < topPx) || (arenaStage < 3 && inVault(x, y))) continue;
           if (hero && Math.hypot(x - hero.x, y - hero.y) < 150) continue;
           return { x, y };
         }
@@ -5286,7 +5322,7 @@ if (metaFx.regen > 0 && hero.hp > 0) hero.hp = Math.min(hero.maxHp, hero.hp + me
         playVFX('explosion', e.x, e.y - 20, { scale: 0.9, fps: 24 });
         addShake(8);
         spawnSoulGem(e.x, e.y, 'large');
-        chests.push({
+        if (!World.eliteChest || World.eliteChest(e)) chests.push({
           x: e.x,
           y: e.y,
           radius: 26,
