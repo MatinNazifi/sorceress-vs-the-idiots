@@ -2250,7 +2250,7 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
     const pp = (typeof location !== 'undefined') ? parseFloat(new URLSearchParams(location.search).get('persp')) : NaN;
     const PERSP = pp >= 0 && pp <= 0.8 ? pp : 0; // off by default: the strip warp makes walls change lean as they scroll (felt nauseating)
     const zq = (typeof location !== 'undefined') ? parseFloat(new URLSearchParams(location.search).get('zoom')) : NaN;
-    const ZL = zq >= 0.3 && zq <= 1.5 ? zq : (arena ? 0.8 : 0), ZP = zq >= 0.3 && zq <= 1.5 ? zq : (arena ? 0.8 : 0); // arena camera zoom: landscape / portrait (hero ~5% of screen height like Nest of Thorns)
+    const ZL = zq >= 0.3 && zq <= 1.5 ? zq : (arena ? (ART_ISO ? 0.95 : 0.8) : 0), ZP = zq >= 0.3 && zq <= 1.5 ? zq : (arena ? (ART_ISO ? 0.95 : 0.8) : 0); // iso view squashes the screen, so a closer zoom keeps the hero's on-screen speed // arena camera zoom: landscape / portrait (hero ~5% of screen height like Nest of Thorns)
     const yp = (typeof location !== 'undefined') ? parseFloat(new URLSearchParams(location.search).get('yaw')) : NaN;
     const YAW = yp >= -80 && yp <= 80 ? (yp * Math.PI / 180 || (arena ? 1e-4 : 0)) : (arena ? (ART_ISO ? 45 : 35) * Math.PI / 180 : 0); // ?yaw=deg turns the camera; arena default 35
     // Flow field: BFS steps out from the hero cell, limited to a window so phones stay cheap.
