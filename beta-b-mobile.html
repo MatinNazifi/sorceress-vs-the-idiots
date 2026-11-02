@@ -1436,7 +1436,7 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
   }
 
   // --- Arena art (Flow kit, theme A): floors/cliff/decals are top-down textures, gates/pillars upright sprites (slice_arena.py) ---
-  const ART_NAMES = ['f-plain.jpg', 'f-inlay.jpg', 'f-crack.jpg', 'f-moss.jpg', 'f-crypt.jpg', 'f-planks-h.jpg', 'f-planks-v.jpg', 'cliff-a.jpg', 'cliff-b.jpg', 'wall-a.jpg', 'abyss.jpg', 'decal-hub.png', 'decal-shrine0.png', 'decal-shrine1.png', 'decal-vault.png', 'decal-boss.png', 'gate2-closed.png', 'gate2-vault.png', 'pillar2-0.png', 'pillar2-1.png', 'pillar2-2.png', 'lamp.png', 'brazier-0.png', 'fountain.png', 'fx-telegraph.png', 'fx-burst.png', 'fx-scorch.png', 'collapse-2.png', 'pit-grate-0.png', 'pit-grate-1.png', 'pit-grate-2.png', 'env-mist.png', 'env-ruin-a.png', 'env-ruin-b.png', 'env-chain.png', 'env-debris.png'];
+  const ART_NAMES = ['ledger.png', 'coins.png', 'rubble.png', 'post.png', 'rock-a.png', 'rock-b.png', 'rock-c.png', 'f-plain.jpg', 'f-inlay.jpg', 'f-crack.jpg', 'f-moss.jpg', 'f-crypt.jpg', 'f-planks-h.jpg', 'f-planks-v.jpg', 'cliff-a.jpg', 'cliff-b.jpg', 'wall-a.jpg', 'abyss.jpg', 'decal-hub.png', 'decal-shrine0.png', 'decal-shrine1.png', 'decal-vault.png', 'decal-boss.png', 'gate2-closed.png', 'gate2-vault.png', 'pillar2-0.png', 'pillar2-1.png', 'pillar2-2.png', 'lamp.png', 'brazier-0.png', 'fountain.png', 'fx-telegraph.png', 'fx-burst.png', 'fx-scorch.png', 'collapse-2.png', 'pit-grate-0.png', 'pit-grate-1.png', 'pit-grate-2.png', 'env-mist.png', 'env-ruin-a.png', 'env-ruin-b.png', 'env-chain.png', 'env-debris.png'];
   const ART = {}; let artStarted = false; const pats = {};
   function loadArt() {
     if (artStarted || typeof Image === 'undefined') return;
@@ -1869,6 +1869,20 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
         c.beginPath(); c.moveTo(a.x + sx * 0.45, a.y + sy * 0.45); c.lineTo(b.x + sx * 0.45, b.y + sy * 0.45); c.lineTo(b.x + sx, b.y + sy); c.lineTo(a.x + sx, a.y + sy); c.closePath(); c.fill();
         c.strokeStyle = 'rgba(255,235,200,0.30)'; c.lineWidth = 2; c.beginPath(); c.moveTo(a.x, a.y); c.lineTo(b.x, b.y); c.stroke();
       }
+      if (ART_BAKE) { // Flow rock chunks hang from the lip every ~150 px of outline, upright, so the island reads as a rock mass and not a slab
+        const names = ['rock-a', 'rock-b', 'rock-c'];
+        for (const P of silLoops) {
+          let acc = 0;
+          for (let i = 0; i < P.length; i++) {
+            const a = P[i], b = P[(i + 1) % P.length]; if (!a.d) continue;
+            const dx = b.x - a.x, dy = b.y - a.y; acc += Math.hypot(dx, dy);
+            if (dy * sx - dx * sy <= 0.5 || acc < 150) continue;
+            acc = 0; const im = artImg(names[Math.floor(silHash(a.x / 31, a.y / 31) * 3)]); if (!im) continue;
+            const hgt = 200 + silHash(a.y, a.x) * 120, wid = hgt * im.naturalWidth / im.naturalHeight;
+            c.save(); c.translate(a.x, a.y); if (World.yaw) c.rotate(-World.yaw); c.scale(1, 1 / World.tilt); c.drawImage(im, -wid / 2, -hgt * 0.12, wid, hgt); c.restore();
+          }
+        }
+      }
     }
     function buildArena3D() {
       const fl = (x, y) => x >= 0 && y >= 0 && x < GW && y < GH && grid[y * GW + x] === 1;
@@ -1904,11 +1918,20 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
       if (arena === 'boss') arenaPillars.forEach((p, i) => { if (deco[Math.floor((p.y - AK * CS * 1.4) / CS) * GW + Math.floor(p.x / CS)] === 2) sprs.push({ wall: true, spr: 'pillar2-' + (i % 3), x: p.x, y: p.y, w: 110, h: 250, ry: 0 }); });
       else arenaGateSprs.forEach(s => { const sealed = s.vault ? grid[arenaVaultCells[0]] === 0 : arenaTopLocked; if (sealed) sprs.push({ wall: true, spr: s.vault ? 'gate2-vault' : 'gate2-closed', x: s.x, y: s.y, w: 300, h: 414, ry: 0 }); });
       for (let i = 0; i < arenaDeco.length; i++) { const d = arenaDeco[i]; if (grid[cellAt(d.x, d.y - 8)] === 1) sprs.push({ wall: true, spr: d.k, x: d.x, y: d.y, w: d.w, h: d.h, ry: 0 }); }
+      if (ART_BAKE) for (let y = 2; y < GH - 2; y++) for (let x = 2; x < GW - 2; x++) { // set dressing standing on the floor that exists: bridge posts along the deck edges, ledgers, coin piles, rubble on the hub
+        const i = y * GW + x; if (grid[i] !== 1) continue;
+        const px = (x + 0.5) * CS, py = (y + 0.5) * CS, h = silHash(x * 1.7, y * 2.3);
+        if (deco[i] === 1) { if ((grid[i - 1] === 0 || grid[i + 1] === 0 || grid[i - GW] === 0 || grid[i + GW] === 0) && (x * 3 + y * 5) % 5 === 0) sprs.push({ wall: true, spr: 'post', x: px, y: py + 10, w: 40, h: 120, ry: 0 }); continue; }
+        if (deco[i] !== 0 || y < 40) continue;
+        let free = true; for (let dy = -1; dy <= 1 && free; dy++) for (let dx = -1; dx <= 1; dx++) if (grid[i + dy * GW + dx] !== 1 || deco[i + dy * GW + dx] !== 0) { free = false; break; }
+        if (!free) continue;
+        if (h < 0.004) sprs.push({ wall: true, spr: 'ledger', x: px, y: py, w: 60, h: 40, ry: 0 }); else if (h < 0.0075) sprs.push({ wall: true, spr: 'coins', x: px, y: py, w: 56, h: 36, ry: 0 }); else if (h < 0.0095) sprs.push({ wall: true, spr: 'rubble', x: px, y: py, w: 50, h: 40, ry: 0 });
+      }
     }
     function arenaDrawSpr(c, w) {
       const im = artImg(w.spr); if (!im) return;
       c.save(); c.translate(w.x, w.y); if (World.yaw) c.rotate(-World.yaw); c.scale(1, 1 / World.tilt);
-      const dw = ART_ISO ? w.h * im.naturalWidth / im.naturalHeight : w.w; // iso pieces keep their own proportions
+      const dw = ART_ISO || ART_BAKE ? w.h * im.naturalWidth / im.naturalHeight : w.w; // iso pieces keep their own proportions
       c.drawImage(im, -dw / 2, -w.h, dw, w.h); c.restore();
     }
     function arenaPushWalls(list, camX, camY, hw, hh) {
