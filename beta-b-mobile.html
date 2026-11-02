@@ -1813,16 +1813,15 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
       }
       return true;
     }
-    let skirtBake = null; // the iso rock body is painted once into a half-res bitmap (rebuilt when the outline changes), then only blitted
-    function arenaDrawSkirtIso(c, camX, camY, hw, hh) {
-      if (!artImg('cliff-a') || !artImg('cliff-b')) return;
-      const BK = 0.5, k = 340 / World.tilt, sx = World.sinY * k, sy = World.cosY * k, key = World.sinY + '_' + World.tilt;
+    let skirtBake = null; // the rock body under the island is painted once into a half-res bitmap (rebuilt when the outline, camera or art changes), then only blitted: it was ~45% of a phone frame
+    function arenaDrawSkirt(c, camX, camY, hw, hh) {
+      const BK = 0.5, k = (ART_ISO ? 340 : CLIFF_H) / World.tilt, sx = World.sinY * k, sy = World.cosY * k, key = World.sinY + '_' + World.tilt + '_' + (artImg('cliff-a') && artImg('cliff-b') ? 1 : 0);
       if (!skirtBake || skirtBake.key !== key) {
         let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9;
         for (const P of silLoops) for (const p of P) { x0 = Math.min(x0, p.x, p.x + sx); y0 = Math.min(y0, p.y, p.y + sy); x1 = Math.max(x1, p.x, p.x + sx); y1 = Math.max(y1, p.y, p.y + sy); }
         x0 -= 40; y0 -= 40; x1 += 40; y1 += 40;
         const cv = document.createElement('canvas'); cv.width = Math.ceil((x1 - x0) * BK); cv.height = Math.ceil((y1 - y0) * BK);
-        const g = cv.getContext('2d'); g.scale(BK, BK); g.translate(-x0, -y0); arenaPaintSkirtIso(g, 0, 0, 1e9, 1e9);
+        const g = cv.getContext('2d'); g.scale(BK, BK); g.translate(-x0, -y0); (ART_ISO ? arenaPaintSkirtIso : arenaPaintSkirt)(g, 0, 0, 1e9, 1e9);
         skirtBake = { cv, x0, y0, key };
       }
       const b = skirtBake, vx0 = Math.max(b.x0, camX - hw), vy0 = Math.max(b.y0, camY - hh), vx1 = Math.min(b.x0 + b.cv.width / BK, camX + hw), vy1 = Math.min(b.y0 + b.cv.height / BK, camY + hh);
@@ -1851,8 +1850,7 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
         }
       }
     }
-    function arenaDrawSkirt(c, camX, camY, hw, hh) { // rock face under every visible stretch of the outline, fading into violet mist
-      if (ART_ISO) { arenaDrawSkirtIso(c, camX, camY, hw, hh); return; }
+    function arenaPaintSkirt(c, camX, camY, hw, hh) { // rock face under every stretch of the outline, fading into violet mist
       const k = CLIFF_H / World.tilt, sx = World.sinY * k, sy = World.cosY * k; // world vector pointing straight down the screen
       c.lineJoin = 'round';
       for (const P of silLoops) for (let i = 0; i < P.length; i++) {
