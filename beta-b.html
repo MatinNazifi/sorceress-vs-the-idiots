@@ -2319,7 +2319,7 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
 
       randomFreeSpot(hero) {
         for (let i = 0; i < 50; i++) {
-          const pool = lanes && Math.random() < 0.55 ? lanes : rooms; // arena: most vases sit on the narrow bridges
+          const pool = lanes ? rooms.concat(lanes) : rooms; // arena: vases anywhere on standing floor, bridges are just one more rect
           const rx = pool[Math.floor(Math.random() * pool.length)];
           const x = (rx.x + rx.w * (0.25 + Math.random() * 0.5)) * CS;
           const y = (rx.y + rx.h * (0.25 + Math.random() * 0.5)) * CS;
