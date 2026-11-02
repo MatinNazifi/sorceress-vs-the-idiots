@@ -1794,7 +1794,7 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
         silLoops.push(P);
         path.moveTo(P[0].x, P[0].y); for (let i = 1; i < P.length; i++) path.lineTo(P[i].x, P[i].y); path.closePath();
       }
-      silPath = path;
+      silPath = path; skirtBake = null;
     }
     function arenaChunk(c, cx, cy, flo) { // floor + one cell of spill clipped to the smooth outline, then rock roofs / pillar floors unclipped
       const ox = cx * 1024, oy = cy * 1024, hash = (a, b) => { let h = (a * 374761393 + b * 668265263) | 0; h = (h ^ (h >>> 13)) * 1274126177 | 0; return ((h ^ (h >>> 16)) >>> 0) / 4294967296; };
@@ -1813,7 +1813,22 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
       }
       return true;
     }
-    function arenaDrawSkirtIso(c, camX, camY, hw, hh) { // iso kit: a tall rock body that tapers as it hangs, mossy lip, hanging chains, fading into violet mist
+    let skirtBake = null; // the iso rock body is painted once into a half-res bitmap (rebuilt when the outline changes), then only blitted
+    function arenaDrawSkirtIso(c, camX, camY, hw, hh) {
+      if (!artImg('cliff-a') || !artImg('cliff-b')) return;
+      const BK = 0.5, k = 340 / World.tilt, sx = World.sinY * k, sy = World.cosY * k, key = World.sinY + '_' + World.tilt;
+      if (!skirtBake || skirtBake.key !== key) {
+        let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9;
+        for (const P of silLoops) for (const p of P) { x0 = Math.min(x0, p.x, p.x + sx); y0 = Math.min(y0, p.y, p.y + sy); x1 = Math.max(x1, p.x, p.x + sx); y1 = Math.max(y1, p.y, p.y + sy); }
+        x0 -= 40; y0 -= 40; x1 += 40; y1 += 40;
+        const cv = document.createElement('canvas'); cv.width = Math.ceil((x1 - x0) * BK); cv.height = Math.ceil((y1 - y0) * BK);
+        const g = cv.getContext('2d'); g.scale(BK, BK); g.translate(-x0, -y0); arenaPaintSkirtIso(g, 0, 0, 1e9, 1e9);
+        skirtBake = { cv, x0, y0, key };
+      }
+      const b = skirtBake, vx0 = Math.max(b.x0, camX - hw), vy0 = Math.max(b.y0, camY - hh), vx1 = Math.min(b.x0 + b.cv.width / BK, camX + hw), vy1 = Math.min(b.y0 + b.cv.height / BK, camY + hh);
+      if (vx1 > vx0 && vy1 > vy0) c.drawImage(b.cv, (vx0 - b.x0) * BK, (vy0 - b.y0) * BK, (vx1 - vx0) * BK, (vy1 - vy0) * BK, vx0, vy0, vx1 - vx0, vy1 - vy0);
+    }
+    function arenaPaintSkirtIso(c, camX, camY, hw, hh) { // iso kit: a tall rock body that tapers as it hangs, mossy lip, hanging chains, fading into violet mist
       const H = 340, T = 0.42, k = H / World.tilt, sx = World.sinY * k, sy = World.cosY * k;
       c.lineJoin = 'round';
       for (const P of silLoops) {
@@ -2200,7 +2215,9 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
     function arenaForce(i) { const e = arenaEvents && arenaEvents[i]; if (!e || e.state === 'done' || e.state === 'skipped') return e ? e.state : null; if (e.state === 'wait' && !arenaWarn(e)) return e.state; arenaLand(e); return e.state; } // test hook: land event i now
     function arenaDrawGlows(c) { // additive light pools on the floor (pits, lanterns)
       c.save(); c.globalCompositeOperation = 'lighter';
+      const cam = typeof CAMERA !== 'undefined' ? CAMERA : null, R = 1500; // only pools near the camera (a turned, tilted view spans up to ~1400 world units from the centre)
       for (const g of arenaGlows) {
+        if (cam && (Math.abs(g.x - cam.x) > R + g.r || Math.abs(g.y - cam.y) > R + g.r)) continue;
         if (!aliveCell(g.x, g.y) && g.col === '255,190,90') continue;
         const gr = c.createRadialGradient(g.x, g.y, 0, g.x, g.y, g.r); gr.addColorStop(0, `rgba(${g.col},${g.a})`); gr.addColorStop(1, `rgba(${g.col},0)`);
         c.fillStyle = gr; c.fillRect(g.x - g.r, g.y - g.r, g.r * 2, g.r * 2);
