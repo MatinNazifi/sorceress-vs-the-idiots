@@ -1434,7 +1434,7 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
   }
 
   // --- Arena art (Flow kit, theme A): floors/cliff/decals are top-down textures, gates/pillars upright sprites (slice_arena.py) ---
-  const ART_NAMES = ['f-plain.jpg', 'f-inlay.jpg', 'f-crack.jpg', 'f-moss.jpg', 'f-crypt.jpg', 'f-planks-h.jpg', 'f-planks-v.jpg', 'cliff-a.jpg', 'cliff-b.jpg', 'wall-a.jpg', 'abyss.jpg', 'decal-hub.png', 'decal-shrine0.png', 'decal-shrine1.png', 'decal-vault.png', 'decal-boss.png', 'gate2-closed.png', 'gate2-vault.png', 'pillar2-0.png', 'pillar2-1.png', 'pillar2-2.png', 'lamp.png', 'brazier-0.png', 'fountain.png', 'fx-telegraph.png', 'fx-burst.png', 'fx-scorch.png', 'collapse-2.png', 'pit-grate-0.png', 'pit-grate-1.png', 'pit-grate-2.png', 'mod-furnace-cross.png', 'mod-furnace-grate-0.png', 'mod-furnace-grate-1.png', 'mod-cracked-slab.png', 'mod-furnace-grate-2.png', 'mod-furnace-grate-3.png', 'mod-cliff-strip-0.png', 'mod-cliff-strip-1.png', 'mod-cliff-strip-2.png', 'mod-cliff-strip-3.png', 'mod-cliff-vert-0.png', 'mod-cliff-vert-1.png', 'mod-cliff-vert-2.png', 'mod-cliff-vert-3.png'];
+  const ART_NAMES = ['f-plain.jpg', 'f-inlay.jpg', 'f-crack.jpg', 'f-moss.jpg', 'f-crypt.jpg', 'f-planks-h.jpg', 'f-planks-v.jpg', 'cliff-a.jpg', 'cliff-b.jpg', 'wall-a.jpg', 'abyss.jpg', 'decal-hub.png', 'decal-shrine0.png', 'decal-shrine1.png', 'decal-vault.png', 'decal-boss.png', 'gate2-closed.png', 'gate2-vault.png', 'pillar2-0.png', 'pillar2-1.png', 'pillar2-2.png', 'lamp.png', 'brazier-0.png', 'fountain.png', 'fx-telegraph.png', 'fx-burst.png', 'fx-scorch.png', 'collapse-2.png', 'pit-grate-0.png', 'pit-grate-1.png', 'pit-grate-2.png'];
   const ART = {}; let artStarted = false; const pats = {};
   function loadArt() {
     if (artStarted || typeof Image === 'undefined') return;
@@ -1822,18 +1822,6 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
         c.fillStyle = 'rgba(86,50,110,0.42)'; // mist toward the bottom, never black
         c.beginPath(); c.moveTo(a.x + sx * 0.45, a.y + sy * 0.45); c.lineTo(b.x + sx * 0.45, b.y + sy * 0.45); c.lineTo(b.x + sx, b.y + sy); c.lineTo(a.x + sx, a.y + sy); c.closePath(); c.fill();
         c.strokeStyle = 'rgba(255,235,200,0.30)'; c.lineWidth = 2; c.beginPath(); c.moveTo(a.x, a.y); c.lineTo(b.x, b.y); c.stroke();
-        const len = Math.hypot(dx, dy);
-        if (len >= 64) {
-          const h = silHash(a.x, a.y);
-          const stName = h < 0.45 ? 'mod-cliff-strip-1' : (h < 0.8 ? 'mod-cliff-strip-0' : 'mod-cliff-strip-2');
-          const stImg = artImg(stName);
-          if (stImg) {
-            c.save(); c.translate(a.x, a.y); c.rotate(Math.atan2(dy, dx));
-            const stripH = Math.min(k * 0.85, len * (stImg.naturalHeight / stImg.naturalWidth) * 1.5);
-            c.drawImage(stImg, 0, 0, len, stripH);
-            c.restore();
-          }
-        }
       }
     }
     function buildArena3D() {
@@ -1906,14 +1894,10 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
     function arenaDrawAbyss(c) { // the misty chasm behind everything: a painted backdrop with a little parallax, never black
       const im = artImg('abyss'); if (!im || typeof screenW === 'undefined') return;
       c.save(); const dp = typeof dpr !== 'undefined' ? dpr : 1; c.setTransform(dp, 0, 0, dp, 0, 0);
-      const s = Math.max(screenW / im.naturalWidth, screenH / im.naturalHeight) * 1.25, w = im.naturalWidth * s, h = im.naturalHeight * s;
+      const s = Math.max(screenW / im.naturalWidth, screenH / im.naturalHeight) * 1.2, w = im.naturalWidth * s, h = im.naturalHeight * s;
       const cx = typeof CAMERA !== 'undefined' ? CAMERA.x : World.w / 2, cy = typeof CAMERA !== 'undefined' ? CAMERA.y : World.h / 2;
-      const ox = Math.max(-(w - screenW) / 2, Math.min((w - screenW) / 2, -(cx - World.w / 2) * 0.05)), oy = Math.max(-(h - screenH) / 2, Math.min((h - screenH) / 2, -(cy - World.h / 2) * 0.05));
-      c.drawImage(im, (screenW - w) / 2 + ox, (screenH - h) / 2 + oy, w, h);
-      const vg = c.createLinearGradient(0, screenH * 0.45, 0, screenH);
-      vg.addColorStop(0, 'rgba(38,18,52,0)'); vg.addColorStop(0.65, 'rgba(42,20,58,0.35)'); vg.addColorStop(1, 'rgba(26,12,38,0.70)');
-      c.fillStyle = vg; c.fillRect(0, screenH * 0.45, screenW, screenH * 0.55);
-      c.restore();
+      const ox = Math.max(-(w - screenW) / 2, Math.min((w - screenW) / 2, -(cx - World.w / 2) * 0.03)), oy = Math.max(-(h - screenH) / 2, Math.min((h - screenH) / 2, -(cy - World.h / 2) * 0.03));
+      c.drawImage(im, (screenW - w) / 2 + ox, (screenH - h) / 2 + oy, w, h); c.restore();
     }
     function arenaDrawCliffs(c, camX, camY, hw, hh) { // drawn under the floor chunks
       const k = CLIFF_H / World.tilt, dx = World.sinY * k, dy = World.cosY * k; // world vector pointing straight down the screen
@@ -2122,20 +2106,9 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
     }
     function arenaForce(i) { const e = arenaEvents && arenaEvents[i]; if (!e || e.state === 'done' || e.state === 'skipped') return e ? e.state : null; if (e.state === 'wait' && !arenaWarn(e)) return e.state; arenaLand(e); return e.state; } // test hook: land event i now
     function arenaDrawDecals(c) { // painted floor seals, only where the floor still stands
-      const cCross = artImg('mod-furnace-cross');
       for (let i = 0; i < arenaDecals.length; i++) {
-        const d = arenaDecals[i];
-        if (!aliveCell(d.x, d.y)) continue;
-        if (d.k === 'decal-hub' && cCross) {
-          const sw = 760 * (typeof AK !== 'undefined' ? AK / 1.5 : 1), sh = sw * (cCross.naturalHeight / cCross.naturalWidth);
-          const rg = c.createRadialGradient(d.x, d.y, 40, d.x, d.y, sw * 0.45);
-          rg.addColorStop(0, 'rgba(255,140,25,0.32)'); rg.addColorStop(0.7, 'rgba(220,90,10,0.10)'); rg.addColorStop(1, 'rgba(0,0,0,0)');
-          c.fillStyle = rg; c.beginPath(); c.arc(d.x, d.y, sw * 0.45, 0, Math.PI * 2); c.fill();
-          c.drawImage(cCross, d.x - sw / 2, d.y - sh / 2, sw, sh);
-          continue;
-        }
-        const im = artImg(d.k);
-        if (!im) continue;
+        const d = arenaDecals[i], im = artImg(d.k);
+        if (!im || !aliveCell(d.x, d.y)) continue;
         c.globalAlpha = 0.92; c.drawImage(im, d.x - d.s / 2, d.y - d.s / 2, d.s, d.s); c.globalAlpha = 1;
       }
     }
