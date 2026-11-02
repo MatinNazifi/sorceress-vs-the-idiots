@@ -1355,7 +1355,7 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
   }
 
   // --- Arena art (Flow kit, theme A): floors/cliff/decals are top-down textures, gates/pillars upright sprites (slice_arena.py) ---
-  const ART_NAMES = ['f-plain.jpg', 'f-inlay.jpg', 'f-crack.jpg', 'f-moss.jpg', 'f-crypt.jpg', 'f-planks-h.jpg', 'f-planks-v.jpg', 'cliff-a.jpg', 'cliff-b.jpg', 'wall-a.jpg', 'abyss.jpg', 'decal-hub.png', 'decal-shrine0.png', 'decal-shrine1.png', 'decal-vault.png', 'decal-boss.png', 'gate2-closed.png', 'gate2-vault.png', 'pillar2-0.png', 'pillar2-1.png', 'pillar2-2.png', 'lamp.png', 'brazier-0.png', 'fountain.png', 'fx-telegraph.png', 'fx-burst.png', 'fx-scorch.png', 'collapse-2.png', 'pit-grate-0.png', 'pit-grate-1.png', 'pit-grate-2.png'];
+  const ART_NAMES = ['f-plain.jpg', 'f-inlay.jpg', 'f-crack.jpg', 'f-moss.jpg', 'f-crypt.jpg', 'f-planks-h.jpg', 'f-planks-v.jpg', 'cliff-a.jpg', 'cliff-b.jpg', 'wall-a.jpg', 'abyss.jpg', 'decal-hub.png', 'decal-shrine0.png', 'decal-shrine1.png', 'decal-vault.png', 'decal-boss.png', 'gate2-closed.png', 'gate2-vault.png', 'pillar2-0.png', 'pillar2-1.png', 'pillar2-2.png', 'lamp.png', 'brazier-0.png', 'fountain.png', 'fx-telegraph.png', 'fx-burst.png', 'fx-scorch.png', 'collapse-2.png', 'pit-grate-0.png', 'pit-grate-1.png', 'pit-grate-2.png', 'env-mist.png', 'env-ruin-a.png', 'env-ruin-b.png', 'env-chain.png', 'env-debris.png'];
   const ART = {}; let artStarted = false; const pats = {};
   function loadArt() {
     if (artStarted || typeof Image === 'undefined') return;
@@ -1679,7 +1679,7 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
     const isDropCell = (x, y) => x >= 0 && y >= 0 && x < GW && y < GH && grid[y * GW + x] === 0 && zone[y * GW + x] === 1 && !isBlock(deco[y * GW + x]);
     const isFloorCell = (x, y) => x >= 0 && y >= 0 && x < GW && y < GH && grid[y * GW + x] === 1;
     function buildSilhouette() {
-      const SR = 14, SN = 8, V = GW + 1, starts = new Map(), all = [], loops = [];
+      const SR = 14, SN = ART_ISO ? 20 : 8, V = GW + 1, starts = new Map(), all = [], loops = [];
       for (let y = 0; y < GH; y++) for (let x = 0; x < GW; x++) {
         if (!isFloorCell(x, y)) continue;
         for (let f = 0; f < 4; f++) {
@@ -1732,7 +1732,31 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
       }
       return true;
     }
+    function arenaDrawSkirtIso(c, camX, camY, hw, hh) { // iso kit: a tall rock body that tapers as it hangs, mossy lip, hanging chains, fading into violet mist
+      const H = 340, T = 0.42, k = H / World.tilt, sx = World.sinY * k, sy = World.cosY * k;
+      c.lineJoin = 'round';
+      for (const P of silLoops) {
+        if (P.cx === undefined) { let x = 0, y = 0; for (const p of P) { x += p.x; y += p.y; } P.cx = x / P.length; P.cy = y / P.length; }
+        for (let i = 0; i < P.length; i++) {
+          const a = P[i], b = P[(i + 1) % P.length];
+          if (!a.d || Math.abs(a.x - camX) > hw + 300 || Math.abs(a.y - camY) > hh + 300) continue;
+          const dx = b.x - a.x, dy = b.y - a.y, fc = dy * sx - dx * sy;
+          if (fc <= 0.5) continue;
+          const la = Math.hypot(P.cx - a.x, P.cy - a.y) || 1, lb = Math.hypot(P.cx - b.x, P.cy - b.y) || 1, IN = 70; // taper: the bottom pulls a fixed 70 px in plan toward the island centre
+          const ax = a.x + sx + (P.cx - a.x) / la * IN, ay = a.y + sy + (P.cy - a.y) / la * IN, bx = b.x + sx + (P.cx - b.x) / lb * IN, by = b.y + sy + (P.cy - b.y) / lb * IN;
+          const hs = silHash(a.x / 48, a.y / 48), pat = artPat(c, hs < 0.3 ? 'cliff-b' : 'cliff-a');
+          c.beginPath(); c.moveTo(a.x, a.y); c.lineTo(b.x, b.y); c.lineTo(bx, by); c.lineTo(ax, ay); c.closePath();
+          c.fillStyle = pat || '#6e6258'; c.fill();
+          const g = c.createLinearGradient(a.x, a.y, a.x + sx, a.y + sy); g.addColorStop(0, 'rgba(20,10,30,0)'); g.addColorStop(0.5, 'rgba(40,20,70,0.22)'); g.addColorStop(1, 'rgba(110,70,150,0.88)');
+          c.fillStyle = g; c.fill();
+          c.setLineDash([7, 5]); c.strokeStyle = 'rgba(120,160,60,0.75)'; c.lineWidth = 8; c.beginPath(); c.moveTo(a.x, a.y + 4); c.lineTo(b.x, b.y + 4); c.stroke(); c.setLineDash([]); // moss on the lip
+          c.strokeStyle = 'rgba(255,225,170,0.45)'; c.lineWidth = 2; c.beginPath(); c.moveTo(a.x, a.y); c.lineTo(b.x, b.y); c.stroke();
+          if (hs > 0.78) { const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2, L = 0.5 + 0.5 * silHash(mx, my); c.setLineDash([6, 3]); c.strokeStyle = '#4b4650'; c.lineWidth = 4; c.beginPath(); c.moveTo(mx, my); c.lineTo(mx + sx * L * 0.9, my + sy * L * 0.9); c.stroke(); c.setLineDash([]); } // hanging chain
+        }
+      }
+    }
     function arenaDrawSkirt(c, camX, camY, hw, hh) { // rock face under every visible stretch of the outline, fading into violet mist
+      if (ART_ISO) { arenaDrawSkirtIso(c, camX, camY, hw, hh); return; }
       const k = CLIFF_H / World.tilt, sx = World.sinY * k, sy = World.cosY * k; // world vector pointing straight down the screen
       c.lineJoin = 'round';
       for (const P of silLoops) for (let i = 0; i < P.length; i++) {
@@ -1765,8 +1789,21 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
         }
       }
     }
+    let arenaGlows = [];
+    function buildArenaGlows() { // iso kit light pools: one per pit (furnace glow) and one per lantern
+      arenaGlows = [];
+      const seen = new Uint8Array(GW * GH);
+      for (let i0 = 0; i0 < GW * GH; i0++) {
+        const x0 = i0 % GW, y0 = (i0 / GW) | 0;
+        if (seen[i0] || !isDropCell(x0, y0)) continue;
+        const q = [i0]; seen[i0] = 1; let sx = 0, sy = 0;
+        for (let h = 0; h < q.length; h++) { const c = q[h], x = c % GW, y = (c / GW) | 0; sx += x; sy += y; for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { const nx = x + dx, ny = y + dy; if (nx < 0 || ny < 0 || nx >= GW || ny >= GH) continue; const n = ny * GW + nx; if (!seen[n] && isDropCell(nx, ny)) { seen[n] = 1; q.push(n); } } }
+        if (q.length <= 60) arenaGlows.push({ x: (sx / q.length + 0.5) * CS, y: (sy / q.length + 0.5) * CS, r: 60 + Math.sqrt(q.length) * 16, col: '255,120,40', a: 0.55 });
+      }
+      arenaDeco.forEach(d => { if (d.k === 'lamp') arenaGlows.push({ x: d.x, y: d.y, r: 150, col: '255,190,90', a: 0.42 }); });
+    }
     function buildArenaSprs() { // gates (while sealed), pillars and decor standing on floor that still exists
-      sprs.length = 0;
+      sprs.length = 0; if (ART_ISO) buildArenaGlows();
       if (arena === 'boss') arenaPillars.forEach((p, i) => { if (deco[Math.floor((p.y - AK * CS * 1.4) / CS) * GW + Math.floor(p.x / CS)] === 2) sprs.push({ wall: true, spr: 'pillar2-' + (i % 3), x: p.x, y: p.y, w: 110, h: 250, ry: 0 }); });
       else arenaGateSprs.forEach(s => { const sealed = s.vault ? grid[arenaVaultCells[0]] === 0 : arenaTopLocked; if (sealed) sprs.push({ wall: true, spr: s.vault ? 'gate2-vault' : 'gate2-closed', x: s.x, y: s.y, w: 300, h: 414, ry: 0 }); });
       for (let i = 0; i < arenaDeco.length; i++) { const d = arenaDeco[i]; if (grid[cellAt(d.x, d.y - 8)] === 1) sprs.push({ wall: true, spr: d.k, x: d.x, y: d.y, w: d.w, h: d.h, ry: 0 }); }
@@ -1823,7 +1860,17 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
       const s = Math.max(screenW / im.naturalWidth, screenH / im.naturalHeight) * 1.2, w = im.naturalWidth * s, h = im.naturalHeight * s;
       const cx = typeof CAMERA !== 'undefined' ? CAMERA.x : World.w / 2, cy = typeof CAMERA !== 'undefined' ? CAMERA.y : World.h / 2;
       const ox = Math.max(-(w - screenW) / 2, Math.min((w - screenW) / 2, -(cx - World.w / 2) * 0.03)), oy = Math.max(-(h - screenH) / 2, Math.min((h - screenH) / 2, -(cy - World.h / 2) * 0.03));
-      c.drawImage(im, (screenW - w) / 2 + ox, (screenH - h) / 2 + oy, w, h); c.restore();
+      c.drawImage(im, (screenW - w) / 2 + ox, (screenH - h) / 2 + oy, w, h);
+      if (ART_ISO) { // depth layers: far ruins, mist banks, debris and a hanging chain, each drifting at its own parallax
+        const L = [['env-mist', 0.18, 0.80, 1.5, 0.040, 0.55], ['env-ruin-a', 0.10, 0.30, 0.55, 0.060, 0.85], ['env-ruin-b', 0.90, 0.42, 0.50, 0.080, 0.85], ['env-mist', 0.78, 0.90, 1.2, 0.090, 0.45], ['env-debris', 0.84, 0.16, 0.42, 0.110, 0.9], ['env-chain', 0.04, 0.12, 0.5, 0.130, 0.9], ['env-ruin-b', 0.22, 0.88, 0.62, 0.120, 0.8], ['env-debris', 0.12, 0.62, 0.34, 0.140, 0.85]];
+        for (const [k, fx, fy, sc2, par, al] of L) {
+          const s2 = artImg(k); if (!s2) continue;
+          const dw = s2.naturalWidth * sc2 * (screenH / 800), dh = s2.naturalHeight * sc2 * (screenH / 800);
+          c.globalAlpha = al; c.drawImage(s2, fx * screenW - dw / 2 - (cx - World.w / 2) * par, fy * screenH - dh / 2 - (cy - World.h / 2) * par, dw, dh);
+        }
+        c.globalAlpha = 1;
+      }
+      c.restore();
     }
     function arenaDrawCliffs(c, camX, camY, hw, hh) { // drawn under the floor chunks
       const k = CLIFF_H / World.tilt, dx = World.sinY * k, dy = World.cosY * k; // world vector pointing straight down the screen
@@ -2070,7 +2117,17 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
       }
     }
     function arenaForce(i) { const e = arenaEvents && arenaEvents[i]; if (!e || e.state === 'done' || e.state === 'skipped') return e ? e.state : null; if (e.state === 'wait' && !arenaWarn(e)) return e.state; arenaLand(e); return e.state; } // test hook: land event i now
+    function arenaDrawGlows(c) { // additive light pools on the floor (pits, lanterns)
+      c.save(); c.globalCompositeOperation = 'lighter';
+      for (const g of arenaGlows) {
+        if (!aliveCell(g.x, g.y) && g.col === '255,190,90') continue;
+        const gr = c.createRadialGradient(g.x, g.y, 0, g.x, g.y, g.r); gr.addColorStop(0, `rgba(${g.col},${g.a})`); gr.addColorStop(1, `rgba(${g.col},0)`);
+        c.fillStyle = gr; c.fillRect(g.x - g.r, g.y - g.r, g.r * 2, g.r * 2);
+      }
+      c.restore();
+    }
     function arenaDrawDecals(c) { // painted floor seals, only where the floor still stands
+      if (ART_ISO) arenaDrawGlows(c);
       for (let i = 0; i < arenaDecals.length; i++) {
         const d = arenaDecals[i], im = artImg(d.k);
         if (!im || !aliveCell(d.x, d.y)) continue;
@@ -2118,6 +2175,7 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
       }
     }
     function arenaHud(c, w, h) { // screen-space notices: the soonest warning, the crypt countdown, the cutscene bars
+      if (ART_ISO) { const vg = c.createRadialGradient(w / 2, h / 2, h * 0.42, w / 2, h / 2, h * 0.98); vg.addColorStop(0, 'rgba(24,8,44,0)'); vg.addColorStop(1, 'rgba(24,8,44,0.55)'); c.fillStyle = vg; c.fillRect(0, 0, w, h); } // warm-violet vignette
       if (!arenaEvents) return;
       if (arena !== 'boss') { // beta build stamp: proves which build is running (a cached old page shows no stamp) and the collapse schedule
         const done = arenaEvents.filter(x => x.kind === 'collapse' && x.state === 'done').length, nxt = arenaEvents.find(x => x.kind === 'collapse' && x.state !== 'done' && x.state !== 'skipped');
