@@ -1439,11 +1439,13 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
   const ART_NAMES = ['ledger.png', 'coins.png', 'rubble.png', 'post.png', 'rock-a.png', 'rock-b.png', 'rock-c.png', 'f-plain.jpg', 'f-inlay.jpg', 'f-crack.jpg', 'f-moss.jpg', 'f-crypt.jpg', 'f-planks-h.jpg', 'f-planks-v.jpg', 'cliff-a.jpg', 'cliff-b.jpg', 'wall-a.jpg', 'abyss.jpg', 'decal-hub.png', 'decal-shrine0.png', 'decal-shrine1.png', 'decal-vault.png', 'decal-boss.png', 'gate2-closed.png', 'gate2-vault.png', 'pillar2-0.png', 'pillar2-1.png', 'pillar2-2.png', 'lamp.png', 'brazier-0.png', 'fountain.png', 'fx-telegraph.png', 'fx-burst.png', 'fx-scorch.png', 'collapse-2.png', 'pit-grate-0.png', 'pit-grate-1.png', 'pit-grate-2.png', 'env-mist.png', 'env-ruin-a.png', 'env-ruin-b.png', 'env-chain.png', 'env-debris.png'];
   const ART = {}; let artStarted = false; const pats = {};
   function loadArt() {
-    if (artStarted || typeof Image === 'undefined') return;
+    if (artStarted || ART_5 || !ART_ON || typeof Image === 'undefined') return; // art=5 has its own loader (ArenaArt5); the grey-box default needs no sprites
     artStarted = true;
     ART_NAMES.forEach(f => { const im = new Image(); im.onload = () => { chunkCache.clear(); }; im.src = 'sprites/arena/' + (ART_BAKE ? 'v4/' : ART_ISO ? 'v3/' : ART_V2 ? 'v2/' : '') + f; ART[f.replace(/\.\w+$/, '')] = im; });
   }
   const ART_BAKE = typeof location !== 'undefined' && /[?&]art=4\b/.test(location.search); // ?art=4 = the arena rendered in 3D by Blender at the game camera (sprites/arena/v4/ground.png + .json)
+  const ART_5 = typeof location !== 'undefined' && /[?&]art=5\b/.test(location.search); // ?art=5 = the painted Witch Swamp cut into layers (sprites/arena/v5), drawn by ArenaArt5 (05c-arena-art5.js)
+  let art5Started = false;
   const ART_V2 = typeof location !== 'undefined' && /[?&]art=2\b/.test(location.search); // ?art=2 = the module pack built from the Flow sheets (sprites/arena/v2)
   const ART_ISO = typeof location !== 'undefined' && /[?&]art=3\b/.test(location.search); // ?art=3 = the iso block kit (sprites/arena/v3) on the 2:1 iso camera (yaw 45, tilt 0.5)
   const ART_ON = ART_V2 || ART_ISO || ART_BAKE || (typeof location !== 'undefined' && /[?&]art=1\b/.test(location.search)); // grey-box by default until the modular kit lands
@@ -1603,6 +1605,7 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
       arenaVaultCells = []; for (let y = sc(VG[1]); y < sc(VG[1] + VG[3]); y++) for (let x = sc(VG[0]); x < sc(VG[0] + VG[2]); x++) arenaVaultCells.push(y * GW + x);
       arenaVaultY = sc(VG[1]) * CS; arenaVaultBox = { x0: sc(25) * CS, x1: sc(39) * CS }; arenaVaultC = cc(vault); arenaEntry = cc(route);
       arenaStage = 0; arenaTraps = []; arenaBlasts = []; arenaWave = 0; arenaNextTrap = arenaNextElite = arenaCutEnd = 0;
+      if (typeof ArenaArt5 !== 'undefined' && ArenaArt5.ready()) { ArenaArt5.reset(); ['gate_1', 'gate_2', 'gate_3', 'gatehouse'].forEach(n => ArenaArt5.setHidden(n, false)); } // a new run: every painted cell stands again
       arenaGateSprs = GATES.concat([VG]).map((g, i) => ({ x: ((sc(g[0]) + sc(g[0] + g[2])) / 2) * CS, y: sc(g[1] + g[3]) * CS, vault: i === GATES.length })); // sprite foot = south edge of the gate
       arenaGateHide = new Uint8Array(GW * GH); // gate cube cells under a sprite are not drawn
       arenaGateSprs.forEach((s, i) => { const g = i < GATES.length ? GATES[i] : VG; for (let y = sc(g[1]); y < sc(g[1] + g[3]); y++) for (let x = sc(g[0]); x < sc(g[0] + g[2]); x++) if (Math.abs(x * CS + CS / 2 - s.x) < 130) arenaGateHide[y * GW + x] = 1; });
@@ -1647,7 +1650,8 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
         [9, 34], [13, 43], [53, 34], [49, 43], [28, 61], [34, 58], // wings, south shrine
         [10, 12], [18, 18], [8, 20], [52, 12], [44, 18], [54, 20]]; // chambers
       const blocks = [];
-      SLOTS.forEach(s => { if (rand() < 0.55) { const sh = [[2, 2], [3, 2], [2, 3]][Math.floor(rand() * 3)]; blocks.push({ x: s[0], y: s[1], w: sh[0], h: sh[1] }); } });
+      if (ART_5) [[21, 39, 2, 3], [43, 30, 2, 2], [53, 34, 2, 3], [49, 43, 3, 2], [28, 61, 2, 3], [8, 20, 2, 3], [18, 18, 2, 2], [44, 18, 3, 2], [54, 20, 2, 3]].forEach(b => blocks.push({ x: b[0], y: b[1], w: b[2], h: b[3] })); // the painted level has its nine blocks in fixed slots
+      else SLOTS.forEach(s => { if (rand() < 0.55) { const sh = [[2, 2], [3, 2], [2, 3]][Math.floor(rand() * 3)]; blocks.push({ x: s[0], y: s[1], w: sh[0], h: sh[1] }); } });
       const putBlock = (b, on) => { fill(grid, b.x, b.y, b.x + b.w, b.y + b.h, on ? 0 : 1); fill(deco, b.x, b.y, b.x + b.w, b.y + b.h, on ? 2 : 0); };
       blocks.forEach(b => putBlock(b, true));
       while (blocks.length && !arenaWide()) putBlock(blocks.pop(), false);
@@ -1934,7 +1938,22 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
       const dw = ART_ISO || ART_BAKE ? w.h * im.naturalWidth / im.naturalHeight : w.w; // iso pieces keep their own proportions
       c.drawImage(im, -dw / 2, -w.h, dw, w.h); c.restore();
     }
+    // ?art=5: the painted level. ArenaArt5 draws it in screen space; these helpers hand it the game camera and the depth order.
+    const art5Front = { wall: true, art5Front: true, x: 0, y: 0, ry: 2e8 }; // foreground trees: sorted after everything
+    function art5Ready() {
+      if (!ART_5 || arena !== true || typeof ArenaArt5 === 'undefined') return false;
+      if (!art5Started) { art5Started = true; ArenaArt5.load('sprites/arena/v5/'); }
+      return ArenaArt5.ready();
+    }
+    function art5View(cam) { return { W: screenW, H: screenH, z: cam.zoom || 0.9, cx: cam.x, cy: cam.y, yaw: World.yaw, tilt: World.tilt }; }
+    function art5DrawItem(c, w) { const dp = typeof dpr !== 'undefined' ? dpr : 1; c.save(); c.setTransform(dp, 0, 0, dp, 0, 0); if (w.art5Front) ArenaArt5.drawFront(c, art5View(CAMERA)); else w.art5.draw(c, art5View(CAMERA)); c.restore(); }
     function arenaPushWalls(list, camX, camY, hw, hh) {
+      if (art5Ready()) { // the painted blocks, gates and lamps sort with the hero; the grey boxes are not used
+        const its = ArenaArt5.spritesForSort();
+        for (let i = 0; i < its.length; i++) { const it = its[i], w = it._w || (it._w = { wall: true, art5: it, x: it.wx, y: it.wy, ry: 0 }); w.ry = it.wx * World.sinY + it.wy * World.cosY; list.push(w); }
+        list.push(art5Front);
+        return;
+      }
       for (let i = 0; i < sprs.length; i++) {
         const s = sprs[i];
         if (Math.abs(s.x - camX) > hw + 300 || Math.abs(s.y - camY) > hh + 500) continue;
@@ -1949,6 +1968,7 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
       }
     }
     function arenaDrawWall(c, w) { // faces whose outward normal points down the screen, then the top
+      if (w.art5 || w.art5Front) { art5DrawItem(c, w); return; }
       if (w.spr) { arenaDrawSpr(c, w); return; }
       if (w.kind === 8 && arenaGateHide && arenaGateHide[w.gy * GW + w.gx] && artImg('gate2-closed')) return; // under a gate sprite
       if (arena === 'boss' && w.kind === 2 && artImg('pillar2-0')) return; // the pillar sprite stands there
@@ -2069,7 +2089,7 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
       if (!cells) { e.state = 'skipped'; return false; }
       e.state = 'done';
       if (e.zi !== undefined) arenaZones[e.zi].done = true;
-      arenaRebuild(cells);
+      arenaRebuild(cells); if (art5Ready()) ArenaArt5.drop(cells); // the painted floor under those cells goes with them
       let n = 0; for (let i = topPx / CS * GW; i < GW * GH; i++) if (grid[i] === 1) n++;
       arenaLowerNow = n;
       arenaFall(cells, 6); addShake(26);
@@ -2078,7 +2098,7 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
     function arenaOpenGates(e) {
       e.state = 'done'; arenaTopLocked = false; arenaStage = 1;
       arenaGateCells.forEach(i => { grid[i] = 1; deco[i] = 0; });
-      arenaRebuild(arenaGateCells);
+      arenaRebuild(arenaGateCells); if (art5Ready()) ['gate_1', 'gate_2', 'gate_3'].forEach(n => ArenaArt5.setHidden(n, true)); // the painted seals open
       let gx = 0, gy = 0; arenaGateCells.forEach(i => { gx += (i % GW + 0.5) * CS; gy += (((i / GW) | 0) + 0.5) * CS; });
       if (arenaGateCells.length) { // mini boss at the door: spawned NON-elite (an elite mootaur is flagged isFinalBoss and its death wins the run); the boss tier counters are put back so the Collector keeps its HP
         const keepN = bossCount, keepHp = lastBossHp, b = spawnEnemy('mootaur', gx / arenaGateCells.length, gy / arenaGateCells.length, false);
@@ -2091,14 +2111,14 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
     function arenaLandDrop(e) { // the whole lower map falls away: the crypt is all that is left
       e.state = 'done'; arenaStage = 2;
       const cells = []; for (let i = 0; i < GW * GH; i++) if (zone[i] === 1 && grid[i] === 1) { grid[i] = 0; deco[i] = 0; cells.push(i); }
-      arenaLowerNow = 0; arenaRebuild(cells);
+      arenaLowerNow = 0; arenaRebuild(cells); if (art5Ready()) ArenaArt5.drop(cells);
       if (cells.length) arenaFall(cells, 16);
       addShake(34); arenaNextElite = gameTime; arenaNextTrap = gameTime + 2.5;
     }
     function arenaOpenVault(e) { // inner gate bursts open: short cutscene, the hero walks in
       e.state = 'done'; arenaStage = 3; arenaCutEnd = gameTime + 3.5;
       arenaVaultCells.forEach(i => { grid[i] = 1; deco[i] = 0; });
-      arenaRebuild(arenaVaultCells);
+      arenaRebuild(arenaVaultCells); if (art5Ready()) ArenaArt5.setHidden('gatehouse', true);
       for (let k = 0; k < 4; k++) { const i = arenaVaultCells[Math.floor(arenaVaultCells.length * (k + 0.5) / 4)]; playVFX('explosion', (i % GW) * CS + CS / 2, ((i / GW) | 0) * CS + CS / 2, { scale: 2.8, fps: 16 }); }
       addShake(28); screenFlash = 0.3; hero.iFrames = Math.max(hero.iFrames, 3.5);
     }
@@ -2580,6 +2600,11 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
         const minCY = Math.max(0, Math.floor((cam.y - viewH / 2) / 1024));
         const maxCY = Math.min(Math.ceil(GH / 32) - 1, Math.floor((cam.y + viewH / 2) / 1024));
 
+        if (art5Ready()) { // the painted level replaces the grey-box ground, the rock skirt and the abyss backdrop
+          const dp = typeof dpr !== 'undefined' ? dpr : 1, v = art5View(cam); ctx.save(); ctx.setTransform(dp, 0, 0, dp, 0, 0);
+          ArenaArt5.tick(); ArenaArt5.drawSwamp(ctx, v); ArenaArt5.drawBack(ctx, v); ArenaArt5.drawIsland(ctx, v); ArenaArt5.drawGround(ctx, v); ArenaArt5.drawBridge(ctx, v);
+          ctx.restore(); arenaDrawEvents(ctx); return;
+        }
         if (arena) { arenaDrawAbyss(ctx); if (silPath) arenaDrawSkirt(ctx, cam.x, cam.y, viewW / 2, viewH / 2); else arenaDrawCliffs(ctx, cam.x, cam.y, viewW / 2, viewH / 2); }
         for (let cy = minCY; cy <= maxCY; cy++) {
           for (let cx = minCX; cx <= maxCX; cx++) {
@@ -2666,6 +2691,428 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
   }
 
 })(typeof window !== 'undefined' ? window : globalThis);
+/* game/src/05c-arena-art5.js - Canvas 2D layered painted-map renderer */
+window.ArenaArt5 = (function () {
+  'use strict';
+
+  var readyFlag = false;
+  var base = '';
+  var data = null;
+  var tileFrame = 256;
+  var ownerW = 0;
+  var ownerH = 0;
+  var ownerData = null;
+
+  var swampTiles = [];
+  var islandTiles = [];
+  var bridgeSprites = [];
+  var sortSprites = [];
+  var groups = { back: [], ground: [], bridge: [], sprite: [], front: [] };
+
+  var deadCells = new Set();
+  var deadArr = new Uint8Array(65536); // same data as deadCells, for the per-pixel loops
+  var rebuildQueue = [];
+  var sortList = [];
+
+  // Helper to project and render a single sprite with camera maths
+  function drawSprite(ctx, v, spr) {
+    if (spr.empty || spr.hidden) return;
+    if (spr.cell !== -1 && deadCells.has(spr.cell) && spr.group !== 'bridge') return;
+
+    var fit = data.fit;
+    var cosY = Math.cos(v.yaw);
+    var sinY = Math.sin(v.yaw);
+    var ax = cosY * v.cx - sinY * v.cy;
+    var ay = v.tilt * (sinY * v.cx + cosY * v.cy);
+
+    var X = v.W * 0.5 + v.z * ((spr.x - fit.tx) / fit.s - ax);
+    var Y = v.H * 0.5 + v.z * ((spr.y - fit.ty) / fit.s - ay);
+    var sw = v.z * spr.w / fit.s;
+    var sh = v.z * spr.h / fit.s;
+
+    // Cull off-screen sprites
+    if (X + sw < 0 || X > v.W || Y + sh < 0 || Y > v.H) return;
+
+    if (spr.group === 'bridge' && spr.canvas) {
+      ctx.drawImage(spr.canvas, X, Y, sw, sh);
+      return;
+    }
+    if (!spr.img) {
+      spr.img = new Image();
+      spr.img.src = spr.src;
+    }
+    if (spr.img.complete && spr.img.naturalWidth) {
+      ctx.drawImage(spr.img, X, Y, sw, sh);
+    }
+  }
+
+  function makeDrawSingle(spr) {
+    return function (ctx, v) {
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = 'high';
+      drawSprite(ctx, v, spr);
+    };
+  }
+
+  // Pre-index cell occupancy from frame-resolution owner map
+  function initData() {
+    swampTiles = [];
+    var sr = data.swamp.rows, sc = data.swamp.cols;
+    for (var r = 0; r < sr; r++) {
+      for (var c = 0; c < sc; c++) {
+        swampTiles.push({
+          c: c, r: r,
+          fx: c * tileFrame, fy: r * tileFrame,
+          img: null, lastSeen: 0
+        });
+      }
+    }
+
+    islandTiles = [];
+    var it = data.island.tiles;
+    for (var i = 0; i < it.length; i++) {
+      var ic = it[i][0], ir = it[i][1];
+      var ifx = ic * tileFrame, ify = ir * tileFrame;
+      var cells = new Set();
+      var x0 = Math.max(0, ifx), x1 = Math.min(ownerW, ifx + tileFrame);
+      var y0 = Math.max(0, ify), y1 = Math.min(ownerH, ify + tileFrame);
+      for (var y = y0; y < y1; y++) {
+        var row = y * ownerW;
+        for (var x = x0; x < x1; x++) {
+          var p = (row + x) * 4;
+          var val = ownerData[p] + (ownerData[p + 1] << 8);
+          if (val > 0) cells.add(val - 1);
+        }
+      }
+      islandTiles.push({
+        c: ic, r: ir, fx: ifx, fy: ify,
+        cells: cells, img: null,
+        src: base + data.island.pattern.replace('{c}', ic).replace('{r}', ir),
+        canvas: null, cctx: null, empty: false, queued: false
+      });
+    }
+
+    groups = { back: [], ground: [], bridge: [], sprite: [], front: [] };
+    bridgeSprites = [];
+    sortSprites = [];
+
+    for (var j = 0; j < data.sprites.length; j++) {
+      var s = data.sprites[j];
+      s.img = null;
+      s.canvas = null;
+      s.cctx = null;
+      s.empty = false;
+      s.queued = false;
+      s.src = base + s.file;
+      s.fx = s.x;
+      s.fy = s.y;
+
+      if (s.group === 'bridge') {
+        var bcells = new Set();
+        if (s.cell !== undefined && s.cell !== -1) bcells.add(s.cell);
+        var bx0 = Math.max(0, s.x), bx1 = Math.min(ownerW, s.x + s.w);
+        var by0 = Math.max(0, s.y), by1 = Math.min(ownerH, s.y + s.h);
+        for (var by = by0; by < by1; by++) {
+          var brow = by * ownerW;
+          for (var bx = bx0; bx < bx1; bx++) {
+            var bp = (brow + bx) * 4;
+            var bval = ownerData[bp] + (ownerData[bp + 1] << 8);
+            if (bval > 0) bcells.add(bval - 1);
+          }
+        }
+        s.cells = bcells;
+        bridgeSprites.push(s);
+      }
+
+      if (s.group === 'sprite') {
+        s.sortItem = { name: s.name, wx: s.wx, wy: s.wy, draw: makeDrawSingle(s) };
+        sortSprites.push(s);
+      }
+      if (groups[s.group]) groups[s.group].push(s);
+    }
+  }
+
+  // Rebuild the alive mask of a queued island tile or collapsible bridge sprite: walk its frame pixels (one per 4x4 image pixels)
+  // and clear the runs whose owner cell fell. No getImageData: a 1024 px tile costs ~65k steps instead of a million.
+  function rebuildItem(item) {
+    if (!item.canvas) {
+      item.canvas = document.createElement('canvas');
+      item.canvas.width = item.img.naturalWidth;
+      item.canvas.height = item.img.naturalHeight;
+      item.cctx = item.canvas.getContext('2d');
+      item.cctx.drawImage(item.img, 0, 0);
+    }
+    var scale = data.scale, fw = Math.ceil(item.canvas.width / scale), fh = Math.ceil(item.canvas.height / scale);
+    for (var fy = 0; fy < fh; fy++) {
+      var gy = item.fy + fy;
+      if (gy < 0 || gy >= ownerH) continue;
+      var run = -1;
+      for (var fx = 0; fx <= fw; fx++) {
+        var dead = false;
+        if (fx < fw) {
+          var gx = item.fx + fx;
+          if (gx >= 0 && gx < ownerW) {
+            var p = (gy * ownerW + gx) * 4, val = ownerData[p] + (ownerData[p + 1] << 8);
+            dead = val > 0 && deadArr[val - 1] === 1;
+          }
+        }
+        if (dead) { if (run < 0) run = fx; }
+        else if (run >= 0) { item.cctx.clearRect(run * scale, fy * scale, (fx - run) * scale, scale); run = -1; }
+      }
+    }
+  }
+
+  function load(baseUrl) {
+    readyFlag = false;
+    base = baseUrl.endsWith('/') ? baseUrl : baseUrl + '/';
+    return fetch(base + 'art5.json')
+      .then(function (res) {
+        if (!res.ok) throw new Error();
+        return res.json();
+      })
+      .then(function (json) {
+        data = json;
+        tileFrame = data.tile / data.scale;
+        return new Promise(function (resolve, reject) {
+          var img = new Image();
+          img.onload = function () {
+            try {
+              ownerW = img.naturalWidth || data.frame.w;
+              ownerH = img.naturalHeight || data.frame.h;
+              var cv = document.createElement('canvas');
+              cv.width = ownerW;
+              cv.height = ownerH;
+              var cctx = cv.getContext('2d');
+              cctx.drawImage(img, 0, 0);
+              ownerData = cctx.getImageData(0, 0, ownerW, ownerH).data;
+              initData();
+              readyFlag = true;
+              resolve(true);
+            } catch (err) {
+              reject(err);
+            }
+          };
+          img.onerror = reject;
+          img.src = base + data.owner;
+        });
+      })
+      .catch(function () {
+        readyFlag = false;
+        return false;
+      });
+  }
+
+  function ready() {
+    return readyFlag;
+  }
+
+  function drawSwamp(ctx, v) {
+    if (!readyFlag) return;
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
+    var fit = data.fit, s = fit.s, tx = fit.tx, ty = fit.ty;
+    var cosY = Math.cos(v.yaw), sinY = Math.sin(v.yaw);
+    var ax = cosY * v.cx - sinY * v.cy;
+    var ay = v.tilt * (sinY * v.cx + cosY * v.cy);
+    var W = v.W, H = v.H, z = v.z;
+    var now = Date.now();
+
+    for (var i = 0; i < swampTiles.length; i++) {
+      var t = swampTiles[i];
+      var X = W * 0.5 + z * ((t.fx - tx) / s - ax);
+      var Y = H * 0.5 + z * ((t.fy - ty) / s - ay);
+      var sw = z * tileFrame / s;
+      var sh = z * tileFrame / s;
+
+      if (X + sw < 0 || X > W || Y + sh < 0 || Y > H) {
+        if (t.img && now - t.lastSeen > 6000) t.img = null;
+        continue;
+      }
+      t.lastSeen = now;
+      if (!t.img) {
+        t.img = new Image();
+        t.img.src = base + data.swamp.pattern.replace('{c}', t.c).replace('{r}', t.r);
+      }
+      if (t.img.complete && t.img.naturalWidth) {
+        var dx = Math.floor(X), dy = Math.floor(Y);
+        var dw = Math.ceil(X + z * t.img.naturalWidth / data.scale / s) - dx + 1, dh = Math.ceil(Y + z * t.img.naturalHeight / data.scale / s) - dy + 1;
+        ctx.drawImage(t.img, dx, dy, dw, dh);
+      }
+    }
+  }
+
+  function drawIsland(ctx, v) {
+    if (!readyFlag) return;
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
+    var fit = data.fit, s = fit.s, tx = fit.tx, ty = fit.ty;
+    var cosY = Math.cos(v.yaw), sinY = Math.sin(v.yaw);
+    var ax = cosY * v.cx - sinY * v.cy;
+    var ay = v.tilt * (sinY * v.cx + cosY * v.cy);
+    var W = v.W, H = v.H, z = v.z;
+
+    for (var i = 0; i < islandTiles.length; i++) {
+      var t = islandTiles[i];
+      if (t.empty) continue;
+      var X = W * 0.5 + z * ((t.fx - tx) / s - ax);
+      var Y = H * 0.5 + z * ((t.fy - ty) / s - ay);
+      var sw = z * tileFrame / s;
+      var sh = z * tileFrame / s;
+
+      if (X + sw < 0 || X > W || Y + sh < 0 || Y > H) continue;
+
+      var dx = Math.floor(X), dy = Math.floor(Y);
+      var src = t.canvas || t.img;
+      if (!t.canvas && !t.img) {
+        t.img = new Image();
+        t.img.src = t.src;
+        continue;
+      }
+      var nw = t.canvas ? t.canvas.width : t.img.naturalWidth, nh = t.canvas ? t.canvas.height : t.img.naturalHeight;
+      if (!nw) continue;
+      var dw = Math.ceil(X + z * nw / data.scale / s) - dx + 1, dh = Math.ceil(Y + z * nh / data.scale / s) - dy + 1;
+      ctx.drawImage(src, dx, dy, dw, dh);
+    }
+  }
+
+  function drawGroup(name, ctx, v) {
+    if (!readyFlag) return;
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
+    var list = groups[name];
+    if (!list) return;
+    for (var i = 0; i < list.length; i++) drawSprite(ctx, v, list[i]);
+  }
+
+  function drawBack(ctx, v) { drawGroup('back', ctx, v); }
+  function drawGround(ctx, v) { drawGroup('ground', ctx, v); }
+  function drawBridge(ctx, v) { drawGroup('bridge', ctx, v); }
+  function drawFront(ctx, v) { drawGroup('front', ctx, v); }
+
+  function spritesForSort() {
+    sortList.length = 0;
+    for (var i = 0; i < sortSprites.length; i++) {
+      var s = sortSprites[i];
+      if (s.empty || s.hidden) continue;
+      if (s.cell !== undefined && s.cell !== -1 && deadCells.has(s.cell)) continue;
+      sortList.push(s.sortItem);
+    }
+    return sortList;
+  }
+
+  function drop(cells) {
+    if (!cells || !cells.length) return;
+    for (var i = 0; i < cells.length; i++) { deadCells.add(cells[i]); deadArr[cells[i]] = 1; }
+    for (var j = 0; j < islandTiles.length; j++) {
+      var t = islandTiles[j];
+      if (!t.queued && !t.empty) {
+        for (var k = 0; k < cells.length; k++) {
+          if (t.cells.has(cells[k])) {
+            t.queued = true;
+            rebuildQueue.push(t);
+            break;
+          }
+        }
+      }
+    }
+    for (var m = 0; m < bridgeSprites.length; m++) {
+      var b = bridgeSprites[m];
+      if (!b.queued && !b.empty) {
+        for (var n = 0; n < cells.length; n++) {
+          if (b.cells.has(cells[n])) {
+            b.queued = true;
+            rebuildQueue.push(b);
+            break;
+          }
+        }
+      }
+    }
+  }
+
+  function tick() {
+    var processed = 0;
+    while (rebuildQueue.length > 0 && processed < 2) {
+      var item = rebuildQueue[0];
+      if (!item.img) {
+        item.img = new Image();
+        item.img.src = item.src;
+      }
+      if (item.img.complete) {
+        rebuildQueue.shift();
+        item.queued = false;
+        if (item.img.naturalWidth) {
+          rebuildItem(item);
+          processed++;
+        }
+      } else {
+        break;
+      }
+    }
+  }
+
+  function reset() {
+    deadCells.clear();
+    deadArr.fill(0);
+    rebuildQueue.length = 0;
+    for (var i = 0; i < islandTiles.length; i++) {
+      var t = islandTiles[i];
+      t.canvas = null;
+      t.cctx = null;
+      t.empty = false;
+      t.queued = false;
+    }
+    for (var j = 0; j < bridgeSprites.length; j++) {
+      var b = bridgeSprites[j];
+      b.canvas = null;
+      b.cctx = null;
+      b.empty = false;
+      b.queued = false;
+    }
+  }
+
+  function setHidden(name, flag) {
+    if (!data) return;
+    for (var i = 0; i < data.sprites.length; i++) if (data.sprites[i].name === name) data.sprites[i].hidden = !!flag;
+  }
+
+  function stats() {
+    var loaded = 0, copies = 0;
+    for (var i = 0; i < swampTiles.length; i++) {
+      if (swampTiles[i].img && swampTiles[i].img.complete && swampTiles[i].img.naturalWidth) loaded++;
+    }
+    for (var j = 0; j < islandTiles.length; j++) {
+      if (islandTiles[j].img && islandTiles[j].img.complete && islandTiles[j].img.naturalWidth) loaded++;
+      if (islandTiles[j].canvas) copies++;
+    }
+    for (var k = 0; k < bridgeSprites.length; k++) {
+      if (bridgeSprites[k].canvas) copies++;
+    }
+    return { tilesLoaded: loaded, copies: copies, queued: rebuildQueue.length };
+  }
+
+  function setAlive(cell, alive) {
+    if (alive) { deadCells.delete(cell); deadArr[cell] = 0; }
+    else drop([cell]);
+  }
+
+  return {
+    load: load,
+    ready: ready,
+    drawSwamp: drawSwamp,
+    drawBack: drawBack,
+    drawGround: drawGround,
+    drawBridge: drawBridge,
+    drawFront: drawFront,
+    drawIsland: drawIsland,
+    spritesForSort: spritesForSort,
+    drop: drop,
+    tick: tick,
+    reset: reset,
+    stats: stats,
+    setAlive: setAlive,
+    setHidden: setHidden
+  };
+})();
     // --- SPRITE ASSET MANAGER ---
     const SPRITES = {};
     const SPRITE_URLS = {
@@ -10007,6 +10454,7 @@ telemetryInit();
       weapons: hero.weapons.map(w => ({ id: w.id, lvl: w.level, evo: w.evo || null })),
       threat: enemies.reduce((a, e) => { const dx = e.x - hero.x, dy = e.y - hero.y, d2 = dx * dx + dy * dy + 1; return [a[0] + dx / d2, a[1] + dy / d2]; }, [0, 0])
     });
+    if (isGod) window.__cam = () => ({ x: CAMERA.x, y: CAMERA.y, zoom: CAMERA.zoom }); // QA: the camera, to overlay the collision grid on the art
     // ?god=1 only: map QA probe (enemies in rock, how many reach the hero)
     if (isGod) window.__map = () => {
       let rock = 0, near = 0, far = 0;
