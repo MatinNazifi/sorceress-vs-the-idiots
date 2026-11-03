@@ -2602,7 +2602,7 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
 
         if (art5Ready()) { // the painted level replaces the grey-box ground, the rock skirt and the abyss backdrop
           const dp = typeof dpr !== 'undefined' ? dpr : 1, v = art5View(cam); ctx.save(); ctx.setTransform(dp, 0, 0, dp, 0, 0);
-          ArenaArt5.tick(); ArenaArt5.drawSwamp(ctx, v); ArenaArt5.drawBack(ctx, v); ArenaArt5.drawIsland(ctx, v); ArenaArt5.drawGround(ctx, v); ArenaArt5.drawBridge(ctx, v);
+          ArenaArt5.tick(); ArenaArt5.drawSwamp(ctx, v); ArenaArt5.drawBack(ctx, v); ArenaArt5.drawIsland(ctx, v); ArenaArt5.drawGround(ctx, v); ArenaArt5.drawBridge(ctx, v); ArenaArt5.drawDebris(ctx, v);
           ctx.restore(); arenaDrawEvents(ctx); return;
         }
         if (arena) { arenaDrawAbyss(ctx); if (silPath) arenaDrawSkirt(ctx, cam.x, cam.y, viewW / 2, viewH / 2); else arenaDrawCliffs(ctx, cam.x, cam.y, viewW / 2, viewH / 2); }
@@ -2713,6 +2713,8 @@ window.ArenaArt5 = (function () {
   var deadArr = new Uint8Array(65536); // same data as deadCells, for the per-pixel loops
   var rebuildQueue = [];
   var sortList = [];
+  var debris = [];   // splash rings, floating planks and snapped posts left where a bridge or floor fell
+  var debrisImg = {};
 
   // Helper to project and render a single sprite with camera maths
   function drawSprite(ctx, v, spr) {
@@ -2986,6 +2988,44 @@ window.ArenaArt5 = (function () {
 
   function drawBack(ctx, v) { drawGroup('back', ctx, v); }
   function drawGround(ctx, v) { drawGroup('ground', ctx, v); }
+  // ---- fallen-floor debris: when cells drop, splashes ring out and broken planks / snapped posts float on the water ----
+  var DEBRIS_FILES = { splash: 'debris/splash.png', planks: 'debris/planks.png', postrope: 'debris/postrope.png', postchain: 'debris/postchain.png' };
+  function debrisImage(k) {
+    if (!debrisImg[k]) { debrisImg[k] = new Image(); debrisImg[k].src = base + DEBRIS_FILES[k]; }
+    var im = debrisImg[k];
+    return im.complete && im.naturalWidth ? im : null;
+  }
+  function frameOfCell(cell) { // frame pixel of a cell centre: frame = s * (A . world) + t
+    var gw = data.gw, wx = ((cell % gw) + 0.5) * 32, wy = (Math.floor(cell / gw) + 0.5) * 32, Y = 35 * Math.PI / 180, T = 0.75, f = data.fit;
+    return [f.s * (Math.cos(Y) * wx - Math.sin(Y) * wy) + f.tx, f.s * T * (Math.sin(Y) * wx + Math.cos(Y) * wy) + f.ty];
+  }
+  function spawnDebris(cells) {
+    var n = Math.min(18, Math.ceil(cells.length / 14)), now = performance.now(), i, k;
+    for (i = 0; i < n; i++) {
+      var c = cells[Math.floor(Math.random() * cells.length)], p = frameOfCell(c);
+      debris.push({ k: 'splash', fx: p[0], fy: p[1] + 4, w: 44 + Math.random() * 22, t0: now + Math.random() * 700, life: 1500, bob: 0 });
+      k = ['planks', 'planks', 'postrope', 'postchain'][Math.floor(Math.random() * 4)];
+      debris.push({ k: k, fx: p[0] + (Math.random() - 0.5) * 30, fy: p[1] + (Math.random() - 0.5) * 16, w: k === 'planks' ? 40 : 16, t0: now + 300 + Math.random() * 500, life: 0, bob: Math.random() * 6.3 });
+    }
+    if (debris.length > 80) debris.splice(0, debris.length - 80);
+  }
+  function drawDebris(ctx, v) {
+    if (!readyFlag || !debris.length) return;
+    var f = data.fit, cosY = Math.cos(v.yaw), sinY = Math.sin(v.yaw), ax = cosY * v.cx - sinY * v.cy, ay = v.tilt * (sinY * v.cx + cosY * v.cy), now = performance.now();
+    for (var i = debris.length - 1; i >= 0; i--) {
+      var d = debris[i], age = now - d.t0;
+      if (age < 0) continue;
+      if (d.life && age > d.life) { debris.splice(i, 1); continue; }
+      var im = debrisImage(d.k); if (!im) continue;
+      var X = v.W * 0.5 + v.z * ((d.fx - f.tx) / f.s - ax), Y = v.H * 0.5 + v.z * ((d.fy - f.ty) / f.s - ay);
+      var w = d.w / f.s * v.z * (d.life ? 0.35 + 0.9 * age / d.life : 1), h = w * im.naturalHeight / im.naturalWidth;
+      if (X + w < 0 || X - w > v.W || Y + h < 0 || Y - h > v.H) continue;
+      ctx.globalAlpha = d.life ? Math.max(0, 1 - age / d.life) * 0.9 : Math.min(1, age / 400) * 0.95;
+      ctx.drawImage(im, X - w / 2, Y - h / 2 + (d.life ? 0 : Math.sin(now / 900 + d.bob) * 1.2 * v.z), w, h);
+    }
+    ctx.globalAlpha = 1;
+  }
+
   function drawBridge(ctx, v) { drawGroup('bridge', ctx, v); }
   function drawFront(ctx, v) { drawGroup('front', ctx, v); }
 
@@ -3003,6 +3043,7 @@ window.ArenaArt5 = (function () {
   function drop(cells) {
     if (!cells || !cells.length) return;
     for (var i = 0; i < cells.length; i++) { deadCells.add(cells[i]); deadArr[cells[i]] = 1; }
+    if (readyFlag) spawnDebris(cells);
     for (var j = 0; j < islandTiles.length; j++) {
       var t = islandTiles[j];
       if (!t.queued && !t.empty) {
@@ -3052,6 +3093,7 @@ window.ArenaArt5 = (function () {
 
   function reset() {
     deadCells.clear();
+    debris.length = 0;
     deadArr.fill(0);
     rebuildQueue.length = 0;
     for (var i = 0; i < islandTiles.length; i++) {
@@ -3102,6 +3144,7 @@ window.ArenaArt5 = (function () {
     drawBack: drawBack,
     drawGround: drawGround,
     drawBridge: drawBridge,
+    drawDebris: drawDebris,
     drawFront: drawFront,
     drawIsland: drawIsland,
     spritesForSort: spritesForSort,
