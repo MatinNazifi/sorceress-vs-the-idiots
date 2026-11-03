@@ -2962,7 +2962,7 @@ window.ArenaArt5 = (function () {
   function drop(cells) {
     if (!cells || !cells.length) return;
     for (var i = 0; i < cells.length; i++) { deadCells.add(cells[i]); deadArr[cells[i]] = 1; }
-    if (readyFlag) spawnDebris(cells);
+    // debris removed until it is done cleanly (spawnDebris kept for later)
     for (var j = 0; j < islandTiles.length; j++) {
       var t = islandTiles[j];
       if (!t.queued && !t.empty) {
