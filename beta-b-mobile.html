@@ -1092,6 +1092,9 @@ window.addEventListener('load', function () { setTimeout(function () { var s = d
     const ctlHasHand = () => { try { return !!localStorage.getItem(CTL_HAND_KEY); } catch (_) { return false; } };
     let handPref = 'left'; // 'left' = dash right (old layout), 'right' = dash left
     try { const saved = localStorage.getItem(CTL_HAND_KEY); if (saved === 'left' || saved === 'right') handPref = saved; } catch (_) {}
+    // Quality tier (Matin 2026-11-24): GFX_HD = sharp art for big desktop screens (4K), light art for phones and small screens (fps). ?q=hd / ?q=std forces it.
+    // Only non-touch devices whose screen is >= 2200 device pixels on the long side count as HD (3840 x 2160 at dpr 1 or 1.5, 2560 at dpr 1 = std).
+    const GFX_HD = (() => { const q = urlParams.get('q'); if (q === 'hd' || q === 'std') return q === 'hd'; if (('ontouchstart' in window) || navigator.maxTouchPoints > 0) return false; return Math.max(screen.width, screen.height) * (window.devicePixelRatio || 1) >= 2200; })();
     // Leaderboard: stays off until the Worker URL replaces PLACEHOLDER. ?lbapi=<url> only works on localhost (testing).
     const LB_API = 'https://sorceress-leaderboard.ek-relay.workers.dev';
     const lbBase = (/^(localhost|127\.0\.0\.1)$/.test(location.hostname) && urlParams.get('lbapi')) || LB_API;
@@ -3260,6 +3263,14 @@ window.ArenaArt6 = (function () {
     if (walk.pit[i] > 128) return 2;
     return walk.floor[i] > 128 ? 1 : 0;
   }
+  // HD upgrade (big desktop screens only, GFX_HD): after the standard art is on screen, the 2x sharper copy of each layer is fetched in the background and swapped in as it lands
+  function loadHD() {
+    var hdBase = base.replace(/v6w\/$/, 'v6hd/'), q = data.layers.slice().sort(function (a, b) { return a.z - b.z; }), i = 0;
+    (function next() {
+      if (i >= q.length) return; var l = q[i++], im = new Image();
+      im.onload = function () { imgs[l.file] = im; next(); }; im.onerror = next; im.src = hdBase + l.file + '?v=1';
+    })();
+  }
   function load(baseUrl) {
     base = baseUrl.endsWith('/') ? baseUrl : baseUrl + '/';
     return Promise.all([fetch(base + 'art6.json').then(function (r) { return r.json(); }), fetch('sprites/arena/v5/art5.json').then(function (r) { return r.json(); })])
@@ -3269,7 +3280,7 @@ window.ArenaArt6 = (function () {
         // ready only when the healthy-state layers are decoded: until then the grey-box floor stays (a black map while 17 MB loaded was the bug); the other states load in the background
         var core = data.layers.filter(function (l) { return HEALTHY[l.module] === l.state; });
         data.layers.forEach(function (l) { img(l.file); });
-        return Promise.all(core.map(function (l) { return new Promise(function (r) { var im = img(l.file); if (im.complete && im.naturalWidth) r(); else { im.onload = r; im.onerror = r; } }); })).then(function () { buildWalk(); buildFeet(); ok = true; if (typeof loadOmniStrips === 'function') loadOmniStrips(); });
+        return Promise.all(core.map(function (l) { return new Promise(function (r) { var im = img(l.file); if (im.complete && im.naturalWidth) r(); else { im.onload = r; im.onerror = r; } }); })).then(function () { buildWalk(); buildFeet(); ok = true; if (typeof loadOmniStrips === 'function') loadOmniStrips(); if (GFX_HD) setTimeout(loadHD, 2500); });
       }).catch(function () { ok = false; });
   }
   function img(file) { var im = imgs[file]; if (!im) { im = imgs[file] = new Image(); im.src = base + file; } return im; }
@@ -3301,7 +3312,8 @@ window.ArenaArt6 = (function () {
     while (j < f.n) {
       if (f.foot[j] < 0 || ((l.y + f.foot[j]) / k > hFY) !== above) { j++; continue; }
       a = j; while (j < f.n && f.foot[j] >= 0 && ((l.y + f.foot[j]) / k > hFY) === above) j++; b = j; // a run of columns with the same answer = one drawImage
-      ctx.drawImage(im, a * SW, 0, Math.min((b - a) * SW, f.w - a * SW), f.h, X0 + a * SW * sc, Y0, Math.min((b - a) * SW, f.w - a * SW) * sc, f.h * sc);
+      var r = im.naturalWidth / f.w, cw = Math.min((b - a) * SW, f.w - a * SW); // r = 2 once the HD image has replaced the standard one: the columns are measured on the standard size
+      ctx.drawImage(im, a * SW * r, 0, cw * r, f.h * r, X0 + a * SW * sc, Y0, cw * sc, f.h * sc);
     }
   }
   function drawPass(ctx, v, front) {
@@ -4956,7 +4968,7 @@ window.ArenaArt6 = (function () {
     // cycles per second = speed / stride. Tune stride (world px per full cycle) and runSpeed (switch walk -> run) here.
     const OMNI_ANIM = { on: !(typeof location !== 'undefined' && /[?&]anim=old\b/.test(location.search)), runSpeed: 250, walk: { frames: 30, stride: 130 }, run: { frames: 30, stride: 170 } };
     // The two strips (~600 KB) load AFTER the map: Omni Flash clip 2 = walk, clip 3 = run (anim_test/make_omni_strips.py). Called when the level art is ready, after 6 s, and on the first step.
-    const OMNI_URLS = { 'hero-omni-walk': 'sprites/hero-omni-walk.webp?v=2', 'hero-omni-run': 'sprites/hero-omni-run.webp?v=2' };
+    const OMNI_URLS = GFX_HD ? { 'hero-omni-walk': 'sprites/hero-omni-walk-hd.webp?v=3', 'hero-omni-run': 'sprites/hero-omni-run-hd.webp?v=3' } : { 'hero-omni-walk': 'sprites/hero-omni-walk.webp?v=2', 'hero-omni-run': 'sprites/hero-omni-run.webp?v=2' };
     function loadOmniStrips() { if (!OMNI_ANIM.on) return; for (const k in OMNI_URLS) if (!SPRITES[k]) { const im = new Image(); im.src = OMNI_URLS[k]; SPRITES[k] = im; } }
     if (typeof setTimeout !== 'undefined') setTimeout(loadOmniStrips, 6000);
     function omniOn() { const a = SPRITES['hero-omni-walk'], b = SPRITES['hero-omni-run']; return OMNI_ANIM.on && !!a && !!b && a.complete && b.complete && a.naturalWidth > 0 && b.naturalWidth > 0; }
