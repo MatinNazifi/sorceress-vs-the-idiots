@@ -1009,7 +1009,10 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
 })(typeof window !== 'undefined' ? window : this);
 
   </script>
-  <script src="audio/sfx-data.js?v=20"></script>
+  <script>
+// The sound-effect data (2.5 MB of base64) used to block the page; it now downloads AFTER the page has loaded and 08-audio.js decodes it when it arrives ('sfx-ready').
+window.addEventListener('load', function () { setTimeout(function () { var s = document.createElement('script'); s.src = 'audio/sfx-data.js?v=20'; s.onload = function () { window.dispatchEvent(new Event('sfx-ready')); }; document.head.appendChild(s); }, 300); });
+</script>
   <script>
   (() => {
     'use strict';
@@ -3462,7 +3465,7 @@ window.ArenaArt6 = (function () {
         comp.connect(masterGain);
         sfxMeter = audioCtx.createAnalyser();
         sfxBus.connect(sfxMeter);
-        SFX_FILES.forEach(n => {
+        const loadSfxAll = () => SFX_FILES.forEach(n => {
           // m4a first (Safari/iOS); ogg if this browser can't decode AAC
           // Embedded as base64 in audio/sfx-data.js: a download manager can't intercept it like an .m4a URL
           const load = (v, ext) => new Promise((ok, no) => {
@@ -3478,6 +3481,7 @@ window.ArenaArt6 = (function () {
               .catch(e => console.warn('sfx failed', n, e));
           });
         });
+        if (window.SFX_DATA) loadSfxAll(); else window.addEventListener('sfx-ready', loadSfxAll, { once: true }); // the data script loads after the page: decode when it lands
         initMusic();
       }
       if (audioCtx.state === 'suspended') audioCtx.resume();
