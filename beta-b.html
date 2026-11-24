@@ -8069,7 +8069,8 @@ function drawHero0(h) {
           ctx.save();
           ctx.scale(h.facing, 1);
           ctx.globalAlpha = 0.8;
-          ctx.drawImage(sw, fi * fw, 0, fw, sw.naturalHeight, -8 - len, -hgt * 0.45, len, hgt);
+          ctx.translate(-8 - len / 2, -6); ctx.scale(-1, 1); // mirrored (Matin: curl on the other side) and 6 units higher
+          ctx.drawImage(sw, fi * fw, 0, fw, sw.naturalHeight, -len / 2, -hgt * 0.45, len, hgt);
           ctx.restore();
         }
 
