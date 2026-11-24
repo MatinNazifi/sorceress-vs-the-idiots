@@ -1363,8 +1363,9 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
     ART_NAMES.forEach(f => { const im = new Image(); im.onload = () => { chunkCache.clear(); }; im.src = 'sprites/arena/' + (ART_BAKE ? 'v4/' : ART_ISO ? 'v3/' : ART_V2 ? 'v2/' : '') + f; ART[f.replace(/\.\w+$/, '')] = im; });
   }
   const ART_BAKE = typeof location !== 'undefined' && /[?&]art=4\b/.test(location.search); // ?art=4 = the arena rendered in 3D by Blender at the game camera (sprites/arena/v4/ground.png + .json)
-  const ART_5 = typeof location !== 'undefined' && /[?&]art=5\b/.test(location.search); // ?art=5 = the painted Witch Swamp cut into layers (sprites/arena/v5), drawn by ArenaArt5 (05c-arena-art5.js)
-  let art5Started = false;
+  const ART_5 = typeof location !== 'undefined' && /[?&]art=[56]\b/.test(location.search); // ?art=5 (6 = same plus the level pack) = the painted Witch Swamp cut into layers (sprites/arena/v5), drawn by ArenaArt5 (05c-arena-art5.js)
+  let art5Started = false, art6Hid = false;
+  const ART_6 = typeof location !== 'undefined' && /[?&]art=6\b/.test(location.search); // ?art=6: ArenaArt6 (05d) draws the level pack (damaged/collapsed states) instead of the painted ground
   const ART_V2 = typeof location !== 'undefined' && /[?&]art=2\b/.test(location.search); // ?art=2 = the module pack built from the Flow sheets (sprites/arena/v2)
   const ART_ISO = typeof location !== 'undefined' && /[?&]art=3\b/.test(location.search); // ?art=3 = the iso block kit (sprites/arena/v3) on the 2:1 iso camera (yaw 45, tilt 0.5)
   const ART_ON = ART_V2 || ART_ISO || ART_BAKE || (typeof location !== 'undefined' && /[?&]art=1\b/.test(location.search)); // grey-box by default until the modular kit lands
@@ -1524,7 +1525,7 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
       arenaVaultCells = []; for (let y = sc(VG[1]); y < sc(VG[1] + VG[3]); y++) for (let x = sc(VG[0]); x < sc(VG[0] + VG[2]); x++) arenaVaultCells.push(y * GW + x);
       arenaVaultY = sc(VG[1]) * CS; arenaVaultBox = { x0: sc(25) * CS, x1: sc(39) * CS }; arenaVaultC = cc(vault); arenaEntry = cc(route);
       arenaStage = 0; arenaTraps = []; arenaBlasts = []; arenaWave = 0; arenaNextTrap = arenaNextElite = arenaCutEnd = 0;
-      if (typeof ArenaArt5 !== 'undefined' && ArenaArt5.ready()) { ArenaArt5.reset(); ['gate_1', 'gate_2', 'gate_3', 'gatehouse'].forEach(n => ArenaArt5.setHidden(n, false)); } // a new run: every painted cell stands again
+      if (typeof ArenaArt5 !== 'undefined' && ArenaArt5.ready()) { ArenaArt5.reset(); ['gate_1', 'gate_2', 'gate_3', 'gatehouse'].forEach(n => ArenaArt5.setHidden(n, ART_6)); if (ART_6) ArenaArt6.reset(); } // a new run: every painted cell stands again
       arenaGateSprs = GATES.concat([VG]).map((g, i) => ({ x: ((sc(g[0]) + sc(g[0] + g[2])) / 2) * CS, y: sc(g[1] + g[3]) * CS, vault: i === GATES.length })); // sprite foot = south edge of the gate
       arenaGateHide = new Uint8Array(GW * GH); // gate cube cells under a sprite are not drawn
       arenaGateSprs.forEach((s, i) => { const g = i < GATES.length ? GATES[i] : VG; for (let y = sc(g[1]); y < sc(g[1] + g[3]); y++) for (let x = sc(g[0]); x < sc(g[0] + g[2]); x++) if (Math.abs(x * CS + CS / 2 - s.x) < 130) arenaGateHide[y * GW + x] = 1; });
@@ -1861,11 +1862,13 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
     const art5Front = { wall: true, art5Front: true, x: 0, y: 0, ry: 2e8 }; // foreground trees: sorted after everything
     function art5Ready() {
       if (!ART_5 || arena !== true || typeof ArenaArt5 === 'undefined') return false;
-      if (!art5Started) { art5Started = true; ArenaArt5.load('sprites/arena/v5/'); }
-      return ArenaArt5.ready();
+      if (!art5Started) { art5Started = true; ArenaArt5.load('sprites/arena/v5/'); if (ART_6) ArenaArt6.load('sprites/arena/v6/'); }
+      const rd = ArenaArt5.ready() && (!ART_6 || ArenaArt6.ready());
+      if (rd && ART_6 && !art6Hid) { art6Hid = true; ['gate_1', 'gate_2', 'gate_3', 'gatehouse'].forEach(n => ArenaArt5.setHidden(n, true)); } // the level pack has the crypt and its gates itself
+      return rd;
     }
     function art5View(cam) { return { W: screenW, H: screenH, z: cam.zoom || 0.9, cx: cam.x, cy: cam.y, yaw: World.yaw, tilt: World.tilt }; }
-    function art5DrawItem(c, w) { const dp = typeof dpr !== 'undefined' ? dpr : 1; c.save(); c.setTransform(dp, 0, 0, dp, 0, 0); if (w.art5Front) ArenaArt5.drawFront(c, art5View(CAMERA)); else w.art5.draw(c, art5View(CAMERA)); c.restore(); }
+    function art5DrawItem(c, w) { const dp = typeof dpr !== 'undefined' ? dpr : 1; c.save(); c.setTransform(dp, 0, 0, dp, 0, 0); if (w.art5Front) { ArenaArt5.drawFront(c, art5View(CAMERA)); if (ART_6) ArenaArt6.drawFront(c, art5View(CAMERA)); } else w.art5.draw(c, art5View(CAMERA)); c.restore(); }
     function arenaPushWalls(list, camX, camY, hw, hh) {
       if (art5Ready()) { // the painted blocks, gates and lamps sort with the hero; the grey boxes are not used
         const its = ArenaArt5.spritesForSort();
@@ -2008,7 +2011,7 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
       if (!cells) { e.state = 'skipped'; return false; }
       e.state = 'done';
       if (e.zi !== undefined) arenaZones[e.zi].done = true;
-      arenaRebuild(cells); if (art5Ready()) ArenaArt5.drop(cells); // the painted floor under those cells goes with them
+      arenaRebuild(cells); if (art5Ready()) { ArenaArt5.drop(cells); if (ART_6) ArenaArt6.advance(); } // the painted floor under those cells goes with them
       let n = 0; for (let i = topPx / CS * GW; i < GW * GH; i++) if (grid[i] === 1) n++;
       arenaLowerNow = n;
       arenaFall(cells, 6); addShake(26);
@@ -2017,7 +2020,7 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
     function arenaOpenGates(e) {
       e.state = 'done'; arenaTopLocked = false; arenaStage = 1;
       arenaGateCells.forEach(i => { grid[i] = 1; deco[i] = 0; });
-      arenaRebuild(arenaGateCells); if (art5Ready()) ['gate_1', 'gate_2', 'gate_3'].forEach(n => ArenaArt5.setHidden(n, true)); // the painted seals open
+      arenaRebuild(arenaGateCells); if (art5Ready()) { ['gate_1', 'gate_2', 'gate_3'].forEach(n => ArenaArt5.setHidden(n, true)); if (ART_6) ArenaArt6.openCrypt(); } // the painted seals open
       let gx = 0, gy = 0; arenaGateCells.forEach(i => { gx += (i % GW + 0.5) * CS; gy += (((i / GW) | 0) + 0.5) * CS; });
       if (arenaGateCells.length) { // mini boss at the door: spawned NON-elite (an elite mootaur is flagged isFinalBoss and its death wins the run); the boss tier counters are put back so the Collector keeps its HP
         const keepN = bossCount, keepHp = lastBossHp, b = spawnEnemy('mootaur', gx / arenaGateCells.length, gy / arenaGateCells.length, false);
@@ -2030,14 +2033,14 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
     function arenaLandDrop(e) { // the whole lower map falls away: the crypt is all that is left
       e.state = 'done'; arenaStage = 2;
       const cells = []; for (let i = 0; i < GW * GH; i++) if (zone[i] === 1 && grid[i] === 1) { grid[i] = 0; deco[i] = 0; cells.push(i); }
-      arenaLowerNow = 0; arenaRebuild(cells); if (art5Ready()) ArenaArt5.drop(cells);
+      arenaLowerNow = 0; arenaRebuild(cells); if (art5Ready()) { ArenaArt5.drop(cells); if (ART_6) ArenaArt6.dropAll(); }
       if (cells.length) arenaFall(cells, 16);
       addShake(34); arenaNextElite = gameTime; arenaNextTrap = gameTime + 2.5;
     }
     function arenaOpenVault(e) { // inner gate bursts open: short cutscene, the hero walks in
       e.state = 'done'; arenaStage = 3; arenaCutEnd = gameTime + 3.5;
       arenaVaultCells.forEach(i => { grid[i] = 1; deco[i] = 0; });
-      arenaRebuild(arenaVaultCells); if (art5Ready()) ArenaArt5.setHidden('gatehouse', true);
+      arenaRebuild(arenaVaultCells); if (art5Ready()) { ArenaArt5.setHidden('gatehouse', true); if (ART_6) ArenaArt6.hideBossDoor(); }
       for (let k = 0; k < 4; k++) { const i = arenaVaultCells[Math.floor(arenaVaultCells.length * (k + 0.5) / 4)]; playVFX('explosion', (i % GW) * CS + CS / 2, ((i / GW) | 0) * CS + CS / 2, { scale: 2.8, fps: 16 }); }
       addShake(28); screenFlash = 0.3; hero.iFrames = Math.max(hero.iFrames, 3.5);
     }
@@ -2521,7 +2524,8 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
 
         if (art5Ready()) { // the painted level replaces the grey-box ground, the rock skirt and the abyss backdrop
           const dp = typeof dpr !== 'undefined' ? dpr : 1, v = art5View(cam); ctx.save(); ctx.setTransform(dp, 0, 0, dp, 0, 0);
-          ArenaArt5.tick(); ArenaArt5.drawSwamp(ctx, v); ArenaArt5.drawBack(ctx, v); ArenaArt5.drawIsland(ctx, v); ArenaArt5.drawGround(ctx, v); ArenaArt5.drawBridge(ctx, v); ArenaArt5.drawDebris(ctx, v);
+          ArenaArt5.tick();
+          if (ART_6) ArenaArt6.draw(ctx, v); else { ArenaArt5.drawSwamp(ctx, v); ArenaArt5.drawBack(ctx, v); ArenaArt5.drawIsland(ctx, v); ArenaArt5.drawGround(ctx, v); ArenaArt5.drawBridge(ctx, v); ArenaArt5.drawDebris(ctx, v); }
           ctx.restore(); arenaDrawEvents(ctx); return;
         }
         if (arena) { arenaDrawAbyss(ctx); if (silPath) arenaDrawSkirt(ctx, cam.x, cam.y, viewW / 2, viewH / 2); else arenaDrawCliffs(ctx, cam.x, cam.y, viewW / 2, viewH / 2); }
@@ -3075,6 +3079,62 @@ window.ArenaArt5 = (function () {
     setHidden: setHidden
   };
 })();
+/* game/src/05d-arena-art6.js - ?art=6: the Witch Swamp LEVEL PACK (healthy / damaged / collapsed layers per module), drawn in screen space like ArenaArt5.
+   Pack coords are the PSD canvas; frame = canvas / data.k (the 2000 px painting frame of art5's fit). The game's collapse events step the modules through their states. */
+window.ArenaArt6 = (function () {
+  'use strict';
+  var data = null, base = '', fit = null, ok = false, imgs = {}, st = {}, hits = 0;
+  // one row per area collapse of the run (in the order they land); each row sets module states
+  var STEPS = [
+    { front: 'damaged' },
+    { left: 'damaged', bridge_left: 'warning' },
+    { right: 'damaged', bridge_right: 'cracking' },
+    { main: 'damaged' },
+    { front: 'collapsed', left: 'collapsed', bridge_left: 'collapsed' },
+    { right: 'collapsed', bridge_right: 'collapsed' },
+    { main: 'collapsed' }
+  ];
+  var HEALTHY = { environment: 'healthy', crypt_floor_walls: 'closed', crypt_wall_front: 'closed', boss_door: 'locked', left: 'healthy', main: 'healthy', right: 'healthy', front: 'healthy',
+    bridge_left: 'healthy', bridge_right: 'healthy', pit_1: 'healthy', pit_2: 'healthy', pit_3: 'healthy', pit_4: 'healthy' };
+
+  function reset() { st = Object.assign({}, HEALTHY); hits = 0; var q = /[?&]art6state=(\w+)/.exec(location.search); if (q) forceAll(q[1]); }
+  function forceAll(s) { var m = { damaged: { left: 'damaged', main: 'damaged', right: 'damaged', front: 'damaged', bridge_left: 'warning', bridge_right: 'cracking' },
+    collapsed: { left: 'collapsed', main: 'collapsed', right: 'collapsed', front: 'collapsed', bridge_left: 'collapsed', bridge_right: 'collapsed' } }[s]; if (m) Object.assign(st, m); }
+  function advance() { var row = STEPS[Math.min(hits, STEPS.length - 1)]; hits++; Object.assign(st, row); }
+  function set(mod, state) { st[mod] = state; }
+  function dropAll() { Object.assign(st, STEPS[STEPS.length - 1], STEPS[4], STEPS[5], STEPS[6]); }
+  function load(baseUrl) {
+    base = baseUrl.endsWith('/') ? baseUrl : baseUrl + '/';
+    return Promise.all([fetch(base + 'art6.json').then(function (r) { return r.json(); }), fetch('sprites/arena/v5/art5.json').then(function (r) { return r.json(); })])
+      .then(function (a) { data = a[0]; data.layers.sort(function (p, q) { return p.z - q.z; }); fit = a[1].fit; reset(); ok = true; }) // draw back to front by z (the manifest lists them by module: the crypt front wall, z 15, must sit BEHIND the platform).catch(function () { ok = false; });
+  }
+  function openCrypt() { st.crypt_floor_walls = 'open'; st.crypt_wall_front = 'open'; }
+  function hideBossDoor() { st.boss_door = 'hidden'; }
+  function img(file) { var im = imgs[file]; if (!im) { im = imgs[file] = new Image(); im.src = base + file; } return im; }
+  function stateOf(L) {
+    var s = st[L.module];
+    if (L.module === 'front' && s === 'collapsed' && st.main === 'collapsed') s = 'collapsed_all';
+    if (L.module === 'bridge_left_front') return st.bridge_left === 'healthy' ? 'on' : null;
+    if (L.module === 'bridge_right_front') return st.bridge_right === 'healthy' ? 'on' : null;
+    if ((L.module.indexOf('pit_') === 0) && st.main === 'collapsed') return null; // the pits would float on the lava
+    return s;
+  }
+  function drawPass(ctx, v, front) {
+    if (!ok) return;
+    var cosY = Math.cos(v.yaw), sinY = Math.sin(v.yaw), ax = cosY * v.cx - sinY * v.cy, ay = v.tilt * (sinY * v.cx + cosY * v.cy), k = data.k, L = data.layers;
+    ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
+    for (var i = 0; i < L.length; i++) {
+      var l = L[i]; if (!!l.above_player !== front) continue;
+      if (stateOf(l) !== l.state) continue;
+      var X = v.W * 0.5 + v.z * (((l.x / k) - fit.tx) / fit.s - ax), Y = v.H * 0.5 + v.z * (((l.y / k) - fit.ty) / fit.s - ay);
+      var sw = v.z * (l.w / k) / fit.s, sh = v.z * (l.h / k) / fit.s;
+      if (X + sw < 0 || X > v.W || Y + sh < 0 || Y > v.H) continue;
+      var im = img(l.file); if (im.complete && im.naturalWidth) ctx.drawImage(im, X, Y, sw, sh);
+    }
+  }
+  return { load: load, ready: function () { return ok; }, reset: reset, advance: advance, set: set, dropAll: dropAll, openCrypt: openCrypt, hideBossDoor: hideBossDoor,
+    draw: function (ctx, v) { drawPass(ctx, v, false); }, drawFront: function (ctx, v) { drawPass(ctx, v, true); }, state: function () { return Object.assign({}, st, { hits: hits }); } };
+})();
     // --- SPRITE ASSET MANAGER ---
     const SPRITES = {};
     const SPRITE_URLS = {
@@ -3083,6 +3143,8 @@ window.ArenaArt5 = (function () {
       'hero-idle': 'sprites/hero-idle.png',
       'hero-cast': 'sprites/hero-cast.png',
       'hero-walk': 'sprites/hero-walk.png',
+      'hero-omni-walk': 'sprites/hero-omni-walk.webp', // Omni Flash clip 2 cut into 30 frames (anim_test/make_omni_strips.py); slow movement
+      'hero-omni-run': 'sprites/hero-omni-run.webp',   // Omni Flash clip 3, 30 frames; used when hero.speed >= OMNI_ANIM.runSpeed
       'potbelly': 'sprites/potbelly.png',
       'potbelly-walk': 'sprites/potbelly-walk.png',
       'fishguy': 'sprites/fishguy.png',
@@ -4559,6 +4621,15 @@ window.ArenaArt5 = (function () {
       'hero-cast': { x: 22.2, y: -77.8 },  // staff thrust forward
       'hero-walk': { y: -80.6, x: [21.5, 17.5, 15.7, 16.0, 15.1, 16.8] } // per walk frame
     };
+    // Omni hero run cycle (default ON, ?anim=old = the 6-pose walk). Playback follows the DISTANCE walked, so feet match the ground:
+    // cycles per second = speed / stride. Tune stride (world px per full cycle) and runSpeed (switch walk -> run) here.
+    const OMNI_ANIM = { on: !(typeof location !== 'undefined' && /[?&]anim=old\b/.test(location.search)), runSpeed: 250, walk: { frames: 30, stride: 130 }, run: { frames: 30, stride: 170 } };
+    function omniOn() { const a = SPRITES['hero-omni-walk'], b = SPRITES['hero-omni-run']; return OMNI_ANIM.on && !!a && !!b && a.complete && b.complete && a.naturalWidth > 0 && b.naturalWidth > 0; }
+    function omniStep(h, dt) { h.omniRun = h.speed >= OMNI_ANIM.runSpeed; h.omniPhase = ((h.omniPhase || 0) + dt * Math.hypot(h.vx, h.vy) / (h.omniRun ? OMNI_ANIM.run.stride : OMNI_ANIM.walk.stride)) % 1; }
+    // Character size vs the painted map: the level pack is drawn ~1.5x bigger than the 2k painting the characters were made for, so under ?art=6 hero and enemies are DRAWN 1.5x
+    // (hit radii unchanged). ?cs=1.3 overrides, ?cs=1 = old size. charScaleOn() opens a ctx.save() scaled about the character's feet; the caller restores.
+    const CHAR_SCALE = (() => { if (typeof location === 'undefined') return 1; const m = /[?&]cs=([\d.]+)/.exec(location.search); return m ? +m[1] : (/[?&]art=6\b/.test(location.search) ? 1.5 : 1); })();
+    function charScaleOn(e) { if (CHAR_SCALE === 1) return; ctx.save(); ctx.translate(e.x, e.y); ctx.scale(CHAR_SCALE, CHAR_SCALE); ctx.translate(-e.x, -e.y); }
     const SLAM_IMPACT = 0.14; // s: anticipation + hop before the staff hits the ground
     // Pose the hero is drawn with this frame (local frame: +x = facing direction, +rot = lean forward)
     const heroPose = { key: 'hero-idle', frame: 0, ox: 0, oy: 0, rot: 0, sx: 1, sy: 1 };
@@ -4570,7 +4641,7 @@ window.ArenaArt5 = (function () {
       const p = heroPose;
       const t = STAFF_TIP[hero.castTimer > 0 ? 'hero-cast' : p.key]; // a cast started this frame draws the cast pose
       const px = Array.isArray(t.x) ? t.x[p.frame] : t.x;
-      const lx = px * p.sx, ly = t.y * p.sy;
+      const lx = px * p.sx * CHAR_SCALE, ly = t.y * p.sy * CHAR_SCALE; // the drawn hero is CHAR_SCALE bigger, so the staff crystal moves with it
       const c = Math.cos(p.rot), s = Math.sin(p.rot);
       const ex = p.ox + hero.facing * (lx * c - ly * s), ey = (p.oy + (lx * s + ly * c)) / World.tilt; // sprite offset (screen px) -> world: undo the camera squash and turn
       tipPos.x = hero.x + ex * World.cosY + ey * World.sinY;
@@ -4648,13 +4719,13 @@ window.ArenaArt5 = (function () {
         sy *= 1 - 0.12 * e; sx *= 1 + 0.1 * e;
       }
       // Walk bob (same curve the old draw used)
-      if (h.isMoving) {
+      if (h.isMoving && !omniOn()) { // the Omni cycle has its own body motion
         rot += Math.sin(h.walkTimer) * 0.1;
         const b = Math.abs(Math.sin(h.walkTimer)) * 0.08;
         sy *= 1 - b; sx *= 1 + b;
       }
       heroPose.key = h.castTimer > 0 ? 'hero-cast' : (h.isMoving ? 'hero-walk' : 'hero-idle');
-      heroPose.frame = Math.floor(h.walkTimer * 1.6) % 6;
+      heroPose.frame = omniOn() ? Math.floor((h.omniPhase || 0) * 6) % 6 : Math.floor(h.walkTimer * 1.6) % 6; // staff tip table has 6 entries
       heroPose.ox = ox; heroPose.oy = oy; heroPose.rot = rot; heroPose.sx = sx; heroPose.sy = sy;
     }
 
@@ -4775,7 +4846,7 @@ if (metaFx.regen > 0 && hero.hp > 0) hero.hp = Math.min(hero.maxHp, hero.hp + me
           hero.vy = (moveY / (len > 1 ? len : 1)) * hero.speed;
           if (!activeBeam) hero.facing = (World.yaw ? hero.vx * World.cosY - hero.vy * World.sinY : hero.vx) >= 0 ? 1 : -1; // beam holds the staff toward its target; faces by screen side
           hero.isMoving = true;
-          hero.walkTimer += dt * 11;
+          hero.walkTimer += dt * 11; omniStep(hero, dt);
         } else {
           hero.vx = 0;
           hero.vy = 0;
@@ -7808,7 +7879,8 @@ if (metaFx.regen > 0 && hero.hp > 0) hero.hp = Math.min(hero.maxHp, hero.hp + me
     }
 
     // --- CHARACTER RENDERING (HERO, ENEMIES, VASES, PICKUPS) ---
-    function drawHero(h) {
+    function drawHero(h) { charScaleOn(h); drawHero0(h); if (CHAR_SCALE !== 1) ctx.restore(); } // ?art=6: drawn CHAR_SCALE bigger about the feet (20-staff-tip-cast-gestures.js)
+function drawHero0(h) {
       ctx.save();
       ctx.translate(h.x, h.y);
 
@@ -7852,7 +7924,8 @@ if (metaFx.regen > 0 && hero.hp > 0) hero.hp = Math.min(hero.maxHp, hero.hp + me
       ctx.scale(h.facing, 1);
       ctx.rotate(pose.rot);
       ctx.scale(pose.sx, pose.sy);
-      drawCharacterSprite(pose.key, HERO_SPRITE_H, h.walkTimer, 6, h.flashTimer > 0);
+      if (pose.key === 'hero-walk' && omniOn()) { const set = h.omniRun ? OMNI_ANIM.run : OMNI_ANIM.walk; drawCharacterSprite(h.omniRun ? 'hero-omni-run' : 'hero-omni-walk', HERO_SPRITE_H, 0, set.frames, h.flashTimer > 0, Math.floor((h.omniPhase || 0) * set.frames) % set.frames); }
+      else drawCharacterSprite(pose.key, HERO_SPRITE_H, h.walkTimer, 6, h.flashTimer > 0);
       ctx.restore();
 
       // Staff crystal glow (world space): green pulsing halo while the beam runs, sky beam on meteor call
@@ -8027,7 +8100,8 @@ if (metaFx.regen > 0 && hero.hp > 0) hero.hp = Math.min(hero.maxHp, hero.hp + me
       ctx.restore();
     }
 
-    function drawEnemy(e) {
+    function drawEnemy(e) { charScaleOn(e); drawEnemy0(e); if (CHAR_SCALE !== 1) ctx.restore(); }
+function drawEnemy0(e) {
       ctx.save();
       ctx.translate(e.x, e.y);
 
