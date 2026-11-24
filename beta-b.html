@@ -438,7 +438,7 @@
       padding: 6px 4px 8px;
     }
     .pause-panel::before, .pause-panel::after {
-      content: ''; position: absolute; top: 6px; bottom: 6px; width: 17px; pointer-events: none;
+      content: ''; position: absolute; top: 22%; bottom: 22%; width: 17px; pointer-events: none; /* mid section only: the corner flourishes occupy the top and bottom ~20 % (Matin: no runes over the art) */
       background-size: 100% auto; background-position: center top; background-repeat: space repeat;
     }
     .pause-panel::before { left: -23px; background-image: url('sprites/ui/panel-runes-left.png?v=1'); }
@@ -3312,6 +3312,7 @@ window.ArenaArt6 = (function () {
       'vfx-enemyorb': 'sprites-w/sprites/vfx/enemyorb.webp',
       'shard-blue': 'sprites/items/shard-blue.png',
       'shard-green': 'sprites/items/shard-green.png',
+      'speed-wind': 'sprites/vfx/speed-wind.webp', // wavy wind layer behind the streaks
       'speed-streak': 'sprites/vfx/speed-streak.webp', // speed-boots streaks: Flow-painted, 6 frames in one row, thick end on the right (Matin 2026-11-25)
       'bolt-comet': GFX_HD ? 'sprites/vfx/bolt-comet-hd.webp' : 'sprites/vfx/bolt-comet.webp', // Staff Bolt: Flow-painted comet, 8 frames in one row, head at 67 % (Matin picked 2026-11-25)
       'soul-small': 'sprites-w/sprites/items/soul-small.webp',
@@ -8063,6 +8064,15 @@ function drawHero0(h) {
       // Speed lines when boots buff is active
       // (Matin 2026-11-25: the 4 random green strokes had no art.) Flow-painted streak strip, 6 frames, thick end at her back, flipped by facing; nothing is drawn until the strip has loaded.
       if (h.speedBuffTimer > 0 && h.isMoving) {
+        const sw = SPRITES['speed-wind']; // both Flow looks (Matin 2026-11-25): a soft wavy wind layer behind, the pointed streaks in front
+        if (sw && sw.complete && sw.naturalWidth) {
+          const fw = sw.naturalWidth / 6, len = 128, hgt = len * sw.naturalHeight / fw, fi = (((gameTime * 11) | 0) + 3) % 6;
+          ctx.save();
+          ctx.scale(h.facing, 1);
+          ctx.globalAlpha = 0.6;
+          ctx.drawImage(sw, fi * fw, 0, fw, sw.naturalHeight, -8 - len, -62 - hgt / 2, len, hgt);
+          ctx.restore();
+        }
         const ss = SPRITES['speed-streak'];
         if (ss && ss.complete && ss.naturalWidth) {
           const fw = ss.naturalWidth / 6, len = 96, hgt = len * ss.naturalHeight / fw, fi = ((gameTime * 16) | 0) % 6;
