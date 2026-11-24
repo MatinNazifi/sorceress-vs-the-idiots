@@ -2012,7 +2012,7 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
       if (!cells) { e.state = 'skipped'; return false; }
       e.state = 'done';
       if (e.zi !== undefined) arenaZones[e.zi].done = true;
-      arenaRebuild(cells); if (art5Ready()) { ArenaArt5.drop(cells); if (ART_6) ArenaArt6.advance(); } // the painted floor under those cells goes with them
+      arenaRebuild(cells); if (art5Ready()) { ArenaArt5.drop(cells); if (ART_6) ArenaArt6.land(e.name); } // the painted floor under those cells goes with them; ArenaArt6 fades that zone's module to collapsed
       let n = 0; for (let i = topPx / CS * GW; i < GW * GH; i++) if (grid[i] === 1) n++;
       arenaLowerNow = n;
       arenaFall(cells, 6); addShake(26);
@@ -2074,6 +2074,7 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
       }
       if (!cells) { e.state = 'skipped'; return false; }
       e.cells = cells; e.state = 'warn'; e.nextShake = 0;
+      if (ART_6 && art5Ready()) ArenaArt6.warn(e.name); // the warning starts: that zone's art fades to its damaged look and stays through the 10 s warning
       return true;
     }
     function arenaReachAt(x, y) { if (!arenaReach) return 1; const i = cellAt(x, y); return i >= 0 && i < arenaReach.length ? arenaReach[i] : 0; }
@@ -3081,66 +3082,87 @@ window.ArenaArt5 = (function () {
   };
 })();
 /* game/src/05d-arena-art6.js - ?art=6: the Witch Swamp LEVEL PACK (healthy / damaged / collapsed layers per module), drawn in screen space like ArenaArt5.
-   Pack coords are the PSD canvas; frame = canvas / data.k (the 2000 px painting frame of art5's fit). The game's collapse events step the modules through their states. */
+   Pack coords are the PSD canvas; frame = canvas / data.k (the 2000 px painting frame of art5's fit).
+   Each game collapse zone drives ONE art module (measured by overlap of the projected zone with the module's alpha: 0.87-1.00):
+     west bridge -> bridge_left, east bridge -> bridge_right, south shrine -> front, west wing -> left, east wing -> right, the three hub sides -> main.
+   When a collapse WARNING starts the module fades to its damaged art (2.5 s, stays through the 10 s warning); when the floor lands it fades to collapsed (0.45 s).
+   The hub (main) has three zones: the first hub side to fall = damaged, the second and third = collapsed. */
 window.ArenaArt6 = (function () {
   'use strict';
-  var data = null, base = '', fit = null, ok = false, imgs = {}, st = {}, hits = 0;
-  // one row per area collapse of the run (in the order they land); each row sets module states
-  var STEPS = [
-    { front: 'damaged' },
-    { left: 'damaged', bridge_left: 'warning' },
-    { right: 'damaged', bridge_right: 'cracking' },
-    { main: 'damaged' },
-    { front: 'collapsed', left: 'collapsed', bridge_left: 'collapsed' },
-    { right: 'collapsed', bridge_right: 'collapsed' },
-    { main: 'collapsed' }
-  ];
+  var data = null, base = '', fit = null, ok = false, imgs = {}, byKey = {};
+  var want = {}, cur = {}, prev = {}, t0 = {}, dur = {}, pend = {}, hubFallen = 0, forced = false;
   var HEALTHY = { environment: 'healthy', crypt_floor_walls: 'closed', crypt_wall_front: 'closed', boss_door: 'locked', left: 'healthy', main: 'healthy', right: 'healthy', front: 'healthy',
-    bridge_left: 'healthy', bridge_right: 'healthy', pit_1: 'healthy', pit_2: 'healthy', pit_3: 'healthy', pit_4: 'healthy' };
+    bridge_left: 'healthy', bridge_right: 'healthy', pit_1: 'healthy', pit_2: 'healthy', pit_3: 'healthy', pit_4: 'healthy', bridge_left_front: 'on', bridge_right_front: 'on' };
+  var ZONE = { 'the west bridge': 'bridge_left', 'the east bridge': 'bridge_right', 'the south shrine': 'front', 'the west wing': 'left', 'the east wing': 'right',
+    'the west side of the hub': 'main', 'the east side of the hub': 'main', 'the south side of the hub': 'main' };
+  var DAMAGED = { bridge_left: 'warning', bridge_right: 'cracking' }; // the bridges call their damaged art differently; everything else is 'damaged'
+  var WARN_FADE = 2.5, LAND_FADE = 0.45, GATE_FADE = 1.2;
+  function nowS() { return performance.now() / 1000; }
 
-  function reset() { st = Object.assign({}, HEALTHY); hits = 0; var q = /[?&]art6state=(\w+)/.exec(location.search); if (q) forceAll(q[1]); }
-  function forceAll(s) { var m = { damaged: { left: 'damaged', main: 'damaged', right: 'damaged', front: 'damaged', bridge_left: 'warning', bridge_right: 'cracking' },
-    collapsed: { left: 'collapsed', main: 'collapsed', right: 'collapsed', front: 'collapsed', bridge_left: 'collapsed', bridge_right: 'collapsed' } }[s]; if (m) Object.assign(st, m); }
-  function advance() { var row = STEPS[Math.min(hits, STEPS.length - 1)]; hits++; Object.assign(st, row); }
-  function set(mod, state) { st[mod] = state; }
-  function dropAll() { Object.assign(st, STEPS[STEPS.length - 1], STEPS[4], STEPS[5], STEPS[6]); }
+  // what is drawn for a module right now (null = nothing): the front slab shows its 4th art when the hub is gone too, the pits sink with the hub, bridge posts in front only on a whole bridge
+  function shown(m) {
+    var s = want[m];
+    if (m === 'front' && s === 'collapsed' && want.main === 'collapsed') return 'collapsed_all';
+    if (m.indexOf('pit_') === 0) return want.main === 'collapsed' ? null : s;
+    if (m === 'bridge_left_front') return want.bridge_left === 'healthy' ? 'on' : null;
+    if (m === 'bridge_right_front') return want.bridge_right === 'healthy' ? 'on' : null;
+    return s;
+  }
+  function reset() {
+    want = Object.assign({}, HEALTHY); prev = {}; t0 = {}; dur = {}; pend = {}; hubFallen = 0; forced = false;
+    var q = /[?&]art6state=(\w+)/.exec(location.search);
+    if (q) { forced = true; var f = q[1] === 'collapsed' ? { left: 'collapsed', main: 'collapsed', right: 'collapsed', front: 'collapsed', bridge_left: 'collapsed', bridge_right: 'collapsed' } : q[1] === 'damaged' ? { left: 'damaged', main: 'damaged', right: 'damaged', front: 'damaged', bridge_left: 'warning', bridge_right: 'cracking' } : {}; Object.assign(want, f); }
+    cur = {}; for (var m in want) cur[m] = shown(m);
+  }
+  function setWant(m, s, d) { if (want[m] === s) return; want[m] = s; pend[m] = d; }
+  // start of a collapse warning: the zone's module fades to its damaged art
+  function warn(name) { var m = ZONE[name]; if (!m || forced) return; if (want[m] === 'healthy') setWant(m, DAMAGED[m] || 'damaged', WARN_FADE); }
+  // the floor lands: collapsed (the hub only after its second side)
+  function land(name) {
+    var m = ZONE[name]; if (!m || forced) return;
+    if (m === 'main') { hubFallen++; setWant('main', hubFallen >= 2 ? 'collapsed' : 'damaged', LAND_FADE); } else setWant(m, 'collapsed', LAND_FADE);
+  }
+  function dropAll() { hubFallen = 9; ['left', 'main', 'right', 'front', 'bridge_left', 'bridge_right'].forEach(function (m) { setWant(m, 'collapsed', 0.6); }); }
+  function openCrypt() { setWant('crypt_floor_walls', 'open', GATE_FADE); setWant('crypt_wall_front', 'open', GATE_FADE); }
+  function hideBossDoor() { setWant('boss_door', 'hidden', 0.01); }
+  function tick() { // a module whose shown art changed starts a fade from the old art
+    var t = nowS();
+    for (var m in want) { var s = shown(m); if (cur[m] !== s) { prev[m] = cur[m]; cur[m] = s; t0[m] = t; dur[m] = pend[m] || 0.8; } }
+  }
   function load(baseUrl) {
     base = baseUrl.endsWith('/') ? baseUrl : baseUrl + '/';
     return Promise.all([fetch(base + 'art6.json').then(function (r) { return r.json(); }), fetch('sprites/arena/v5/art5.json').then(function (r) { return r.json(); })])
       .then(function (a) {
-        data = a[0]; data.layers.sort(function (p, q) { return p.z - q.z; }); fit = a[1].fit; reset();
+        data = a[0]; data.layers.sort(function (p, q) { return p.z - q.z; }); fit = a[1].fit; reset(); // back to front by z: the crypt front wall (z 15) sits BEHIND the platform
+        data.layers.forEach(function (l) { byKey[l.module + '|' + l.state] = l; });
         // ready only when the healthy-state layers are decoded: until then the grey-box floor stays (a black map while 17 MB loaded was the bug); the other states load in the background
-        var core = data.layers.filter(function (l) { return HEALTHY[l.module] === l.state || l.state === 'on'; });
+        var core = data.layers.filter(function (l) { return HEALTHY[l.module] === l.state; });
         data.layers.forEach(function (l) { img(l.file); });
-        return Promise.all(core.map(function (l) { return new Promise(function (r) { var im = img(l.file); if (im.complete && im.naturalWidth) r(); else { im.onload = r; im.onerror = r; } }); })).then(function () { ok = true; if (typeof loadOmniStrips === 'function') loadOmniStrips(); }); // the hero strips start downloading only now
-      }) // draw back to front by z (the manifest lists them by module: the crypt front wall, z 15, must sit BEHIND the platform).catch(function () { ok = false; });
+        return Promise.all(core.map(function (l) { return new Promise(function (r) { var im = img(l.file); if (im.complete && im.naturalWidth) r(); else { im.onload = r; im.onerror = r; } }); })).then(function () { ok = true; if (typeof loadOmniStrips === 'function') loadOmniStrips(); });
+      }).catch(function () { ok = false; });
   }
-  function openCrypt() { st.crypt_floor_walls = 'open'; st.crypt_wall_front = 'open'; }
-  function hideBossDoor() { st.boss_door = 'hidden'; }
   function img(file) { var im = imgs[file]; if (!im) { im = imgs[file] = new Image(); im.src = base + file; } return im; }
-  function stateOf(L) {
-    var s = st[L.module];
-    if (L.module === 'front' && s === 'collapsed' && st.main === 'collapsed') s = 'collapsed_all';
-    if (L.module === 'bridge_left_front') return st.bridge_left === 'healthy' ? 'on' : null;
-    if (L.module === 'bridge_right_front') return st.bridge_right === 'healthy' ? 'on' : null;
-    if ((L.module.indexOf('pit_') === 0) && st.main === 'collapsed') return null; // the pits would float on the lava
-    return s;
+  function drawLayer(ctx, v, l, alpha, ax, ay) {
+    var k = data.k, X = v.W * 0.5 + v.z * (((l.x / k) - fit.tx) / fit.s - ax), Y = v.H * 0.5 + v.z * (((l.y / k) - fit.ty) / fit.s - ay), sw = v.z * (l.w / k) / fit.s, sh = v.z * (l.h / k) / fit.s;
+    if (X + sw < 0 || X > v.W || Y + sh < 0 || Y > v.H) return;
+    var im = img(l.file); if (!im.complete || !im.naturalWidth) return;
+    if (alpha < 1) ctx.globalAlpha = alpha; ctx.drawImage(im, X, Y, sw, sh); if (alpha < 1) ctx.globalAlpha = 1;
   }
   function drawPass(ctx, v, front) {
-    if (!ok) return;
-    var cosY = Math.cos(v.yaw), sinY = Math.sin(v.yaw), ax = cosY * v.cx - sinY * v.cy, ay = v.tilt * (sinY * v.cx + cosY * v.cy), k = data.k, L = data.layers;
+    if (!ok) return; tick();
+    var cosY = Math.cos(v.yaw), sinY = Math.sin(v.yaw), ax = cosY * v.cx - sinY * v.cy, ay = v.tilt * (sinY * v.cx + cosY * v.cy), L = data.layers, t = nowS();
     ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
     for (var i = 0; i < L.length; i++) {
       var l = L[i]; if (!!l.above_player !== front) continue;
-      if (stateOf(l) !== l.state) continue;
-      var X = v.W * 0.5 + v.z * (((l.x / k) - fit.tx) / fit.s - ax), Y = v.H * 0.5 + v.z * (((l.y / k) - fit.ty) / fit.s - ay);
-      var sw = v.z * (l.w / k) / fit.s, sh = v.z * (l.h / k) / fit.s;
-      if (X + sw < 0 || X > v.W || Y + sh < 0 || Y > v.H) continue;
-      var im = img(l.file); if (im.complete && im.naturalWidth) ctx.drawImage(im, X, Y, sw, sh);
+      var m = l.module; if (cur[m] !== l.state) continue; // only the module's current art; the previous art is drawn under it while a fade runs
+      var p = 1, pl = null;
+      if (prev[m] !== undefined && prev[m] !== null) { var q = (t - t0[m]) / dur[m]; if (q < 1) { p = q < 0 ? 0 : q; pl = byKey[m + '|' + prev[m]]; } }
+      if (pl) drawLayer(ctx, v, pl, 1, ax, ay);   // the old art stays fully opaque, the new art fades in on top: no see-through gap
+      drawLayer(ctx, v, l, p, ax, ay);
     }
   }
-  return { load: load, ready: function () { return ok; }, reset: reset, advance: advance, set: set, dropAll: dropAll, openCrypt: openCrypt, hideBossDoor: hideBossDoor,
-    draw: function (ctx, v) { drawPass(ctx, v, false); }, drawFront: function (ctx, v) { drawPass(ctx, v, true); }, state: function () { return Object.assign({}, st, { hits: hits }); } };
+  return { load: load, ready: function () { return ok; }, reset: reset, warn: warn, land: land, dropAll: dropAll, openCrypt: openCrypt, hideBossDoor: hideBossDoor,
+    draw: function (ctx, v) { drawPass(ctx, v, false); }, drawFront: function (ctx, v) { drawPass(ctx, v, true); }, state: function () { return Object.assign({}, want); } };
 })();
     // --- SPRITE ASSET MANAGER ---
     const SPRITES = {};
