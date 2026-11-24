@@ -545,7 +545,7 @@
       0%, 100% { transform: scale(1); filter: drop-shadow(0 6px 10px rgba(0, 0, 0, 0.7)); }
       50% { transform: scale(1.06); filter: drop-shadow(0 6px 10px rgba(0, 0, 0, 0.7)) drop-shadow(0 0 16px rgba(255, 210, 63, 0.55)); }
     }
-    .menu-lb { position: absolute; left: 50%; transform: translateX(-50%); z-index: 2; bottom: calc(max(36px, env(safe-area-inset-bottom)) + min(72vw, 300px) * 0.298 + 18px);
+    .menu-lb { position: relative; align-self: center; margin-top: 8px; z-index: 2; /* in the menu's flow under Upgrades / What's new: it used to be pinned above Play and landed on top of Upgrades */
       background: rgba(20, 16, 28, 0.85); color: #ffd23f; border: 3px solid #ffd23f; border-radius: 999px; padding: 9px 20px; box-shadow: 0 4px 0 #000;
       font: 800 15px 'Trebuchet MS', 'Segoe UI', Arial, sans-serif; letter-spacing: 1.5px; cursor: pointer; -webkit-tap-highlight-color: transparent; }
     .menu-lb:active { scale: 0.95; }
@@ -3188,7 +3188,13 @@ window.ArenaArt6 = (function () {
   function load(baseUrl) {
     base = baseUrl.endsWith('/') ? baseUrl : baseUrl + '/';
     return Promise.all([fetch(base + 'art6.json').then(function (r) { return r.json(); }), fetch('sprites/arena/v5/art5.json').then(function (r) { return r.json(); })])
-      .then(function (a) { data = a[0]; data.layers.sort(function (p, q) { return p.z - q.z; }); fit = a[1].fit; reset(); ok = true; }) // draw back to front by z (the manifest lists them by module: the crypt front wall, z 15, must sit BEHIND the platform).catch(function () { ok = false; });
+      .then(function (a) {
+        data = a[0]; data.layers.sort(function (p, q) { return p.z - q.z; }); fit = a[1].fit; reset();
+        // ready only when the healthy-state layers are decoded: until then the grey-box floor stays (a black map while 17 MB loaded was the bug); the other states load in the background
+        var core = data.layers.filter(function (l) { return HEALTHY[l.module] === l.state || l.state === 'on'; });
+        data.layers.forEach(function (l) { img(l.file); });
+        return Promise.all(core.map(function (l) { return new Promise(function (r) { var im = img(l.file); if (im.complete && im.naturalWidth) r(); else { im.onload = r; im.onerror = r; } }); })).then(function () { ok = true; });
+      }) // draw back to front by z (the manifest lists them by module: the crypt front wall, z 15, must sit BEHIND the platform).catch(function () { ok = false; });
   }
   function openCrypt() { st.crypt_floor_walls = 'open'; st.crypt_wall_front = 'open'; }
   function hideBossDoor() { st.boss_door = 'hidden'; }
