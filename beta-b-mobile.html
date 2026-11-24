@@ -307,7 +307,7 @@
       padding: 14px 34px 12px;
       margin-bottom: 14px;
       border: 22px solid transparent;
-      border-image: url('sprites/ui/panel.png') 80 70 60 70 fill / 22px stretch;
+      border-image: url('sprites-w/sprites/ui/panel.webp') 80 70 60 70 fill / 22px stretch;
       filter: drop-shadow(0 8px 12px rgba(0, 0, 0, 0.6));
     }
     .modal-banner #modal-heading { margin: 0 0 2px !important; }
@@ -318,7 +318,7 @@
       width: var(--cw);
       aspect-ratio: 628 / 900;
       padding: calc(var(--cw) * 0.21) calc(var(--cw) * 0.19) calc(var(--cw) * 0.19);
-      background: url('sprites/ui/card-normal.png') center / 100% 100% no-repeat;
+      background: url('sprites-w/sprites/ui/card-normal.webp') center / 100% 100% no-repeat;
       border: none;
       border-radius: 0;
       box-shadow: none !important;
@@ -326,8 +326,8 @@
       filter: drop-shadow(0 10px 14px rgba(0, 0, 0, 0.7));
       transition: translate 0.15s ease, scale 0.15s ease, filter 0.15s ease;
     }
-    .upgrade-card.card-evolve { background-image: url('sprites/ui/card-evolve.png'); padding-top: calc(var(--cw) * 0.26); }
-    .upgrade-card.card-relic { background-image: url('sprites/ui/card-relic.png'); padding-top: calc(var(--cw) * 0.24); }
+    .upgrade-card.card-evolve { background-image: url('sprites-w/sprites/ui/card-evolve.webp'); padding-top: calc(var(--cw) * 0.26); }
+    .upgrade-card.card-relic { background-image: url('sprites-w/sprites/ui/card-relic.webp'); padding-top: calc(var(--cw) * 0.24); }
     .upgrade-card::after { top: 8%; height: 84%; width: 30%; }
     /* Hover: frame stays, runes light up (glow colour per frame) */
     .upgrade-card { --glow-a: #ff4fd8; --glow-b: #b84dff; }
@@ -357,7 +357,7 @@
     .card-level { font-size: 11px; margin-bottom: 6px; text-shadow: var(--ink-outline); }
     .card-desc { font-size: 12px; }
     .upgrade-card button {
-      background: url('sprites/ui/button.png') center / 100% 100% no-repeat !important;
+      background: url('sprites-w/sprites/ui/button.webp') center / 100% 100% no-repeat !important;
       border: none !important;
       padding: 8px 10px !important;
       text-shadow: var(--ink-outline);
@@ -367,7 +367,7 @@
     .end-modal-content {
       background: none;
       border: 26px solid transparent;
-      border-image: url('sprites/ui/panel.png') 80 70 60 70 fill / 26px stretch;
+      border-image: url('sprites-w/sprites/ui/panel.webp') 80 70 60 70 fill / 26px stretch;
       border-radius: 0;
       box-shadow: none;
       filter: drop-shadow(0 12px 20px rgba(0, 0, 0, 0.8));
@@ -375,7 +375,7 @@
     }
     .end-stats { background: rgba(10, 8, 14, 0.45); border-color: #6b5530; color: var(--parchment); }
     .end-btn {
-      background: url('sprites/ui/button.png') center / 100% 100% no-repeat;
+      background: url('sprites-w/sprites/ui/button.webp') center / 100% 100% no-repeat;
       border: none;
       border-radius: 0;
       box-shadow: none;
@@ -390,7 +390,7 @@
     #dice-reroll {
       display: none; align-items: center; gap: 8px;
       margin-top: 10px; min-width: 250px; justify-content: center;
-      background: url('sprites/ui/button.png') center / 100% 100% no-repeat;
+      background: url('sprites-w/sprites/ui/button.webp') center / 100% 100% no-repeat;
       border: none; color: var(--parchment); font-size: 16px; font-weight: 800;
       text-shadow: var(--ink-outline); padding: 16px 30px; cursor: pointer;
       filter: drop-shadow(0 5px 6px rgba(0, 0, 0, 0.6));
@@ -403,7 +403,7 @@
     #dash-btn {
       width: 88px;
       height: 88px;
-      background: url('sprites/ui/dash-button.png') center / contain no-repeat;
+      background: url('sprites-w/sprites/ui/dash-button.webp') center / contain no-repeat;
       border: none;
       box-shadow: none;
       filter: drop-shadow(0 6px 8px rgba(0, 0, 0, 0.6));
@@ -434,12 +434,12 @@
     }
     .icon-btn:hover, .pause-action:hover .icon-btn { scale: 1.08; filter: brightness(1.15) drop-shadow(0 4px 6px rgba(0, 0, 0, 0.6)); }
     .icon-btn:active, .pause-action:active .icon-btn { scale: 0.94; }
-    .btn-pause { background-image: url('sprites/ui/btn-pause.png'); }
-    .btn-play { background-image: url('sprites/ui/btn-play.png'); }
-    .btn-restart { background-image: url('sprites/ui/btn-restart.png'); }
-    .btn-home { background-image: url('sprites/ui/btn-home.png'); }
-    .sound-toggle { background-image: url('sprites/ui/btn-sound-on.png'); }
-    .sound-toggle.muted { background-image: url('sprites/ui/btn-sound-off.png'); }
+    .btn-pause { background-image: url('sprites-w/sprites/ui/btn-pause.webp'); }
+    .btn-play { background-image: url('sprites-w/sprites/ui/btn-play.webp'); }
+    .btn-restart { background-image: url('sprites-w/sprites/ui/btn-restart.webp'); }
+    .btn-home { background-image: url('sprites-w/sprites/ui/btn-home.webp'); }
+    .sound-toggle { background-image: url('sprites-w/sprites/ui/btn-sound-on.webp'); }
+    .sound-toggle.muted { background-image: url('sprites-w/sprites/ui/btn-sound-off.webp'); }
     #pause-btn { position: absolute; width: 40px; height: 40px; z-index: 10; touch-action: manipulation; }
 
     #pause-modal { z-index: 60; }
@@ -447,7 +447,7 @@
       width: min(92vw, 440px);
       text-align: center;
       border: 26px solid transparent;
-      border-image: url('sprites/ui/panel.png') 80 70 60 70 fill / 26px stretch;
+      border-image: url('sprites-w/sprites/ui/panel.webp') 80 70 60 70 fill / 26px stretch;
       filter: drop-shadow(0 12px 20px rgba(0, 0, 0, 0.8));
       padding: 6px 4px 8px;
     }
@@ -498,7 +498,7 @@
     .menu-bg {
       position: absolute;
       inset: -4%;
-      background: url('sprites/ui/title-bg.jpg?v=4') 50% 55% / cover no-repeat;
+      background: url('sprites-w/sprites/ui/title-bg.webp?v=4') 50% 55% / cover no-repeat;
       animation: menuDrift 26s ease-in-out infinite alternate;
     }
     .menu-bg::after {
@@ -530,7 +530,7 @@
       width: min(72vw, 300px);
       aspect-ratio: 900 / 268;
       border: none;
-      background: url('sprites/ui/button.png') center / 100% 100% no-repeat;
+      background: url('sprites-w/sprites/ui/button.webp') center / 100% 100% no-repeat;
       color: var(--parchment);
       font: 900 32px 'Trebuchet MS', sans-serif;
       letter-spacing: 4px;
@@ -582,7 +582,7 @@
     @keyframes rotatePulse { 0%,100% { transform: rotate(-90deg); } 50% { transform: rotate(90deg); } }
       #loading-screen { position: fixed; inset: 0; z-index: 9000; background: #0d0c13; transition: opacity 0.5s ease; will-change: opacity; }
     #loading-screen.done { opacity: 0; pointer-events: none; }
-    #loading-screen .load-bg { position: absolute; inset: 0; background: url('sprites/ui/loading-bg.jpg?v=2') center 40% / cover no-repeat;
+    #loading-screen .load-bg { position: absolute; inset: 0; background: url('sprites-w/sprites/ui/loading-bg.webp?v=2') center 40% / cover no-repeat;
       animation: loadDrift 14s ease-in-out infinite alternate; }
     @keyframes loadDrift { from { transform: scale(1.02); } to { transform: scale(1.08) translateY(-1%); } }
     #loading-screen .load-box { position: absolute; left: 50%; bottom: 7%; transform: translateX(-50%); width: min(520px, 80vw); text-align: center; }
@@ -646,8 +646,8 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
         <p id="hand-subheading" style="font-size: 13px; color: #cbd5e1; margin-bottom: 16px;">Which thumb moves, which thumb dashes?</p>
       </div>
       <div class="modal-card-container" style="gap: 24px;">
-        <button id="hand-right" type="button" style="width:300px;min-height:72px;margin:0 8px;border:0;background:url('sprites/ui/button.png') center/100% 100% no-repeat;color:#fff;font:900 17px Trebuchet MS,sans-serif;text-shadow:2px 2px 0 #1a1a1a;cursor:pointer;">&#9995; Right-handed<br><small style="font-size:11px;opacity:.85">Right thumb moves &middot; left thumb dashes</small></button>
-        <button id="hand-left" type="button" style="width:300px;min-height:72px;margin:0 8px;border:0;background:url('sprites/ui/button.png') center/100% 100% no-repeat;color:#fff;font:900 17px Trebuchet MS,sans-serif;text-shadow:2px 2px 0 #1a1a1a;cursor:pointer;">&#9995; Left-handed<br><small style="font-size:11px;opacity:.85">Left thumb moves &middot; right thumb dashes</small></button>
+        <button id="hand-right" type="button" style="width:300px;min-height:72px;margin:0 8px;border:0;background:url('sprites-w/sprites/ui/button.webp') center/100% 100% no-repeat;color:#fff;font:900 17px Trebuchet MS,sans-serif;text-shadow:2px 2px 0 #1a1a1a;cursor:pointer;">&#9995; Right-handed<br><small style="font-size:11px;opacity:.85">Right thumb moves &middot; left thumb dashes</small></button>
+        <button id="hand-left" type="button" style="width:300px;min-height:72px;margin:0 8px;border:0;background:url('sprites-w/sprites/ui/button.webp') center/100% 100% no-repeat;color:#fff;font:900 17px Trebuchet MS,sans-serif;text-shadow:2px 2px 0 #1a1a1a;cursor:pointer;">&#9995; Left-handed<br><small style="font-size:11px;opacity:.85">Left thumb moves &middot; right thumb dashes</small></button>
       </div>
     </div>
     <div id="pause-modal" class="modal-overlay">
@@ -678,7 +678,7 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
     <!-- Main menu (skipped for ?god / ?speed / ?nomenu=1) -->
     <div id="main-menu">
       <div class="menu-bg"></div>
-      <img class="menu-logo" src="sprites/ui/logo.png" alt="Sorceress vs the Idiots">
+      <img class="menu-logo" src="sprites-w/sprites/ui/logo.webp" alt="Sorceress vs the Idiots">
       <button id="menu-play" class="menu-play" type="button">PLAY</button>
       <button class="icon-btn sound-toggle menu-sound" type="button" data-sound-toggle aria-label="Sound on"></button>
       <button id="menu-hand" class="icon-btn menu-hand" type="button" data-hand-toggle aria-label="Hand: Right" style="font-size:22px;">&#9995;</button>
@@ -1128,7 +1128,7 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
     window.addEventListener('resize', resize);
     resize();
 
-    // --- WORLD MAP (one seamless image; world coords = map pixels, sprites/world-map.jpg) ---
+    // --- WORLD MAP (one seamless image; world coords = map pixels, sprites-w/sprites/world-map.webp) ---
     const ARENA_W = 2048;
     const ARENA_H = 2048;
     const ARENA_CX = 1015, ARENA_CY = 1025; // octagon centre: hero spawn
@@ -1443,7 +1443,7 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
     artStarted = true;
     ART_NAMES.forEach(f => { const im = new Image(); im.onload = () => { chunkCache.clear(); }; im.src = 'sprites/arena/' + (ART_BAKE ? 'v4/' : ART_ISO ? 'v3/' : ART_V2 ? 'v2/' : '') + f; ART[f.replace(/\.\w+$/, '')] = im; });
   }
-  const ART_BAKE = typeof location !== 'undefined' && /[?&]art=4\b/.test(location.search); // ?art=4 = the arena rendered in 3D by Blender at the game camera (sprites/arena/v4/ground.png + .json)
+  const ART_BAKE = typeof location !== 'undefined' && /[?&]art=4\b/.test(location.search); // ?art=4 = the arena rendered in 3D by Blender at the game camera (sprites-w/sprites/arena/v4/ground.webp + .json)
   const ART_5 = typeof location !== 'undefined' && /[?&]art=[56]\b/.test(location.search); // ?art=5 (6 = same plus the level pack) = the painted Witch Swamp cut into layers (sprites/arena/v5), drawn by ArenaArt5 (05c-arena-art5.js)
   let art5Started = false, art6Hid = false;
   const ART_6 = typeof location !== 'undefined' && /[?&]art=6\b/.test(location.search); // ?art=6: ArenaArt6 (05d) draws the level pack (damaged/collapsed states) instead of the painted ground
@@ -1451,7 +1451,7 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
   const ART_ISO = typeof location !== 'undefined' && /[?&]art=3\b/.test(location.search); // ?art=3 = the iso block kit (sprites/arena/v3) on the 2:1 iso camera (yaw 45, tilt 0.5)
   const ART_ON = ART_V2 || ART_ISO || ART_BAKE || (typeof location !== 'undefined' && /[?&]art=1\b/.test(location.search)); // grey-box by default until the modular kit lands
   const BAKE = { im: null, j: null };
-  if (ART_BAKE && typeof Image !== 'undefined') { const im = new Image(); im.onload = () => { BAKE.im = im; }; im.src = 'sprites/arena/v4/ground.png'; fetch('sprites/arena/v4/ground.json').then(r => r.json()).then(j => { BAKE.j = j; }).catch(() => {}); }
+  if (ART_BAKE && typeof Image !== 'undefined') { const im = new Image(); im.onload = () => { BAKE.im = im; }; im.src = 'sprites-w/sprites/arena/v4/ground.webp'; fetch('sprites/arena/v4/ground.json').then(r => r.json()).then(j => { BAKE.j = j; }).catch(() => {}); }
   const artImg = n => { if (!ART_ON) return null; const im = ART[n]; return im && im.complete && im.naturalWidth > 0 ? im : null; };
 
   // --- DUNGEON_BIGTEST Procedural Generator (6x6 Grid of 1024 Chunks = 6144px) ---
@@ -3226,86 +3226,86 @@ window.ArenaArt6 = (function () {
     // --- SPRITE ASSET MANAGER ---
     const SPRITES = {};
     const SPRITE_URLS = {
-      'worldmap': 'sprites/world-map.jpg?v=1',
+      'worldmap': 'sprites-w/sprites/world-map.webp?v=1',
       'lavamask': 'sprites/world-map-lava.png?v=1', // half-res crack mask, make_lava_mask.py
-      'hero-idle': 'sprites/hero-idle.png',
-      'hero-cast': 'sprites/hero-cast.png',
-      'hero-walk': 'sprites/hero-walk.png',
-      'potbelly': 'sprites/potbelly.png',
-      'potbelly-walk': 'sprites/potbelly-walk.png',
-      'fishguy': 'sprites/fishguy.png',
-      'fishguy-walk': 'sprites/fishguy-walk.png',
-      'grumbo': 'sprites/grumbo.png',
-      'grumbo-cast': 'sprites/grumbo-cast.png',
-      'grumbo-walk': 'sprites/grumbo-walk.png',
-      'mootaur-idle': 'sprites/mootaur-idle.png',
-      'mootaur-charge': 'sprites/mootaur-charge.png',
-      'mootaur-walk': 'sprites/mootaur-walk.png',
-      'collector': 'sprites/collector.png', // the final boss of the arena: 4 poses (idle, hammer raised, slam, enraged), Flow sheet sliced by slice_sheet.py
+      'hero-idle': 'sprites-w/sprites/hero-idle.webp',
+      'hero-cast': 'sprites-w/sprites/hero-cast.webp',
+      'hero-walk': 'sprites-w/sprites/hero-walk.webp',
+      'potbelly': 'sprites-w/sprites/potbelly.webp',
+      'potbelly-walk': 'sprites-w/sprites/potbelly-walk.webp',
+      'fishguy': 'sprites-w/sprites/fishguy.webp',
+      'fishguy-walk': 'sprites-w/sprites/fishguy-walk.webp',
+      'grumbo': 'sprites-w/sprites/grumbo.webp',
+      'grumbo-cast': 'sprites-w/sprites/grumbo-cast.webp',
+      'grumbo-walk': 'sprites-w/sprites/grumbo-walk.webp',
+      'mootaur-idle': 'sprites-w/sprites/mootaur-idle.webp',
+      'mootaur-charge': 'sprites-w/sprites/mootaur-charge.webp',
+      'mootaur-walk': 'sprites-w/sprites/mootaur-walk.webp',
+      'collector': 'sprites-w/sprites/collector.webp', // the final boss of the arena: 4 poses (idle, hammer raised, slam, enraged), Flow sheet sliced by slice_sheet.py
       // Optional enemy attack (2-frame strip: windup, strike) and hurt (1 frame) art. Missing file = procedural fallback.
-      'potbelly-attack': 'sprites/potbelly-attack.png',
-      'fishguy-attack': 'sprites/fishguy-attack.png',
-      'grumbo-attack': 'sprites/grumbo-attack.png',
-      'potbelly-hurt': 'sprites/potbelly-hurt.png',
-      'fishguy-hurt': 'sprites/fishguy-hurt.png',
-      'grumbo-hurt': 'sprites/grumbo-hurt.png',
-      'vfx-spark': 'sprites/vfx/spark.png',
-      'vfx-poof': 'sprites/vfx/poof.png',
-      'vfx-explosion': 'sprites/vfx/explosion-soft.png',
-      'vfx-void': 'sprites/vfx/void.png',
-      'vfx-frost': 'sprites/vfx/frost.png',
-      'vfx-levelup': 'sprites/vfx/levelup.png',
-      'vfx-fire': 'sprites/vfx/fire.png',
-      'vfx-icering': 'sprites/vfx/icering.png',
-      'vfx-zap': 'sprites/vfx/zap.png',
-      'vfx-firetrail': 'sprites/vfx/firetrail.png',
+      'potbelly-attack': 'sprites-w/sprites/potbelly-attack.webp',
+      'fishguy-attack': 'sprites-w/sprites/fishguy-attack.webp',
+      'grumbo-attack': 'sprites-w/sprites/grumbo-attack.webp',
+      'potbelly-hurt': 'sprites-w/sprites/potbelly-hurt.webp',
+      'fishguy-hurt': 'sprites-w/sprites/fishguy-hurt.webp',
+      'grumbo-hurt': 'sprites-w/sprites/grumbo-hurt.webp',
+      'vfx-spark': 'sprites-w/sprites/vfx/spark.webp',
+      'vfx-poof': 'sprites-w/sprites/vfx/poof.webp',
+      'vfx-explosion': 'sprites-w/sprites/vfx/explosion-soft.webp',
+      'vfx-void': 'sprites-w/sprites/vfx/void.webp',
+      'vfx-frost': 'sprites-w/sprites/vfx/frost.webp',
+      'vfx-levelup': 'sprites-w/sprites/vfx/levelup.webp',
+      'vfx-fire': 'sprites-w/sprites/vfx/fire.webp',
+      'vfx-icering': 'sprites-w/sprites/vfx/icering.webp',
+      'vfx-zap': 'sprites-w/sprites/vfx/zap.webp',
+      'vfx-firetrail': 'sprites-w/sprites/vfx/firetrail.webp',
       'spectral-blade': 'sprites/items/spectral-blade.png', // optional: procedural fallback until the art exists
-      'hextotem': 'sprites/hextotem.png',
-      'meteorfall': 'sprites/vfx/meteorfall.png',
-      'meteorfall-ghost': 'sprites/vfx/meteorfall-ghost.png', // Sepid's own cast: black ghost with white hair-streaks, falls from the sky
-      'sigil-spirits': 'sprites/vfx/sigil-spirits.png', // her ground warning: a ring of black ghosts chasing each other (red stays for enemy danger)
-      'vfx-shadeburst': 'sprites/vfx/shadeburst.png', // meteor impact: black ghosts burst outward
-      'vfx-shadepool': 'sprites/vfx/shadepool.png', // what the impact leaves: a shadow pool with rising white wisps (replaces the red fire)
-      'petfrog': 'sprites/petfrog.png',
-      'vfx-enemyorb': 'sprites/vfx/enemyorb.png',
+      'hextotem': 'sprites-w/sprites/hextotem.webp',
+      'meteorfall': 'sprites-w/sprites/vfx/meteorfall.webp',
+      'meteorfall-ghost': 'sprites-w/sprites/vfx/meteorfall-ghost.webp', // Sepid's own cast: black ghost with white hair-streaks, falls from the sky
+      'sigil-spirits': 'sprites-w/sprites/vfx/sigil-spirits.webp', // her ground warning: a ring of black ghosts chasing each other (red stays for enemy danger)
+      'vfx-shadeburst': 'sprites-w/sprites/vfx/shadeburst.webp', // meteor impact: black ghosts burst outward
+      'vfx-shadepool': 'sprites-w/sprites/vfx/shadepool.webp', // what the impact leaves: a shadow pool with rising white wisps (replaces the red fire)
+      'petfrog': 'sprites-w/sprites/petfrog.webp',
+      'vfx-enemyorb': 'sprites-w/sprites/vfx/enemyorb.webp',
       'shard-blue': 'sprites/items/shard-blue.png',
       'shard-green': 'sprites/items/shard-green.png',
-      'soul-small': 'sprites/items/soul-small.png',
+      'soul-small': 'sprites-w/sprites/items/soul-small.webp',
       'soul-medium': 'sprites/items/soul-medium.png',
       'soul-large': 'sprites/items/soul-large.png',
-      'ice-small': 'sprites/vfx/ice-small.png',
-      'ice-med': 'sprites/vfx/ice-med.png',
-      'ice-big': 'sprites/vfx/ice-big.png',
+      'ice-small': 'sprites-w/sprites/vfx/ice-small.webp',
+      'ice-med': 'sprites-w/sprites/vfx/ice-med.webp',
+      'ice-big': 'sprites-w/sprites/vfx/ice-big.webp',
       // New Art: Vases & Broken Vases
-      'vase-a': 'sprites/items/vase-a.png',
-      'vase-b': 'sprites/items/vase-b.png',
-      'vase-c': 'sprites/items/vase-c.png',
-      'vase-a-broken': 'sprites/items/vase-a-broken.png',
-      'vase-b-broken': 'sprites/items/vase-b-broken.png',
-      'vase-c-broken': 'sprites/items/vase-c-broken.png',
+      'vase-a': 'sprites-w/sprites/items/vase-a.webp',
+      'vase-b': 'sprites-w/sprites/items/vase-b.webp',
+      'vase-c': 'sprites-w/sprites/items/vase-c.webp',
+      'vase-a-broken': 'sprites-w/sprites/items/vase-a-broken.webp',
+      'vase-b-broken': 'sprites-w/sprites/items/vase-b-broken.webp',
+      'vase-c-broken': 'sprites-w/sprites/items/vase-c-broken.webp',
       // Pickups
-      'potion': 'sprites/items/potion.png',
-      'magnet': 'sprites/items/magnet.png',
-      'boots': 'sprites/items/boots.png',
-      'dice': 'sprites/items/dice.png',
+      'potion': 'sprites-w/sprites/items/potion.webp',
+      'magnet': 'sprites-w/sprites/items/magnet.webp',
+      'boots': 'sprites-w/sprites/items/boots.webp',
+      'dice': 'sprites-w/sprites/items/dice.webp',
       // Elite drops & Relics
-      'chest': 'sprites/items/chest.png',
-      'storm-staff': 'sprites/items/storm-staff.png',
-      'twin-dash': 'sprites/items/twin-dash.png',
+      'chest': 'sprites-w/sprites/items/chest.webp',
+      'storm-staff': 'sprites-w/sprites/items/storm-staff.webp',
+      'twin-dash': 'sprites-w/sprites/items/twin-dash.webp',
       // Orbiting Gems
-      'gem-green': 'sprites/items/gem-green.png',
-      'gem-blue': 'sprites/items/gem-blue.png',
-      'gem-purple': 'sprites/items/gem-purple.png',
-      'gem-red': 'sprites/items/gem-red.png',
-      'gem-yellow': 'sprites/items/gem-yellow.png',
-      'gem-white': 'sprites/items/gem-white.png',
+      'gem-green': 'sprites-w/sprites/items/gem-green.webp',
+      'gem-blue': 'sprites-w/sprites/items/gem-blue.webp',
+      'gem-purple': 'sprites-w/sprites/items/gem-purple.webp',
+      'gem-red': 'sprites-w/sprites/items/gem-red.webp',
+      'gem-yellow': 'sprites-w/sprites/items/gem-yellow.webp',
+      'gem-white': 'sprites-w/sprites/items/gem-white.webp',
       // HUD frames (cut from sheets/ui-*.jpg by slice_ui.py)
-      'ui-hp-frame': 'sprites/ui/hp-frame.png',
-      'ui-xp-frame': 'sprites/ui/xp-frame.png',
-      'ui-level-badge': 'sprites/ui/level-badge.png',
-      'ui-timer-plate': 'sprites/ui/timer-plate.png',
-      'ui-kill-plate': 'sprites/ui/kill-plate.png',
-      'ui-ruby-plate': 'sprites/ui/ruby-plate.png'
+      'ui-hp-frame': 'sprites-w/sprites/ui/hp-frame.webp',
+      'ui-xp-frame': 'sprites-w/sprites/ui/xp-frame.webp',
+      'ui-level-badge': 'sprites-w/sprites/ui/level-badge.webp',
+      'ui-timer-plate': 'sprites-w/sprites/ui/timer-plate.webp',
+      'ui-kill-plate': 'sprites-w/sprites/ui/kill-plate.webp',
+      'ui-ruby-plate': 'sprites-w/sprites/ui/ruby-plate.webp'
     };
 
     const LOAD = { total: Object.keys(SPRITE_URLS).length, done: 0, shownAt: performance.now(), MIN_MS: 1400 };
@@ -3322,7 +3322,7 @@ window.ArenaArt6 = (function () {
         const wait = Math.max(0, LOAD.MIN_MS - (performance.now() - LOAD.shownAt));
         // UI art that used to download the first time it was shown (level-up cards, pause panel, buttons, icons): fetch + decode it now, quietly, behind the loading fade
         window.__uiKeep = ['card-normal','card-evolve','card-relic','panel','button','dash-button','btn-pause','btn-play','btn-home','btn-restart','btn-settings','btn-sound-on','btn-sound-off','btn-skull']
-          .map(n => 'sprites/ui/' + n + '.png')
+          .map(n => 'sprites-w/sprites/ui/' + n + '.webp')
           .concat(['bolt','chain','frost','blades','beam','runes','frog','meteor','meteor-ghost','fire','area','damage','speed','cooldown','health','magnet','vortex','orbs','totem'].map(n => 'sprites/icons/' + n + '.png'))
           .map(u => { const im = new Image(); im.decoding = 'async'; im.src = u; if (im.decode) im.decode().catch(() => {}); return im; });
         setTimeout(() => {
@@ -4263,7 +4263,7 @@ window.ArenaArt6 = (function () {
         id: 'meteor',
         name: 'Meteor Call',
         icon: '☄️',
-        iconSrc: 'sprites/icons/meteor-ghost.png',
+        iconSrc: 'sprites-w/sprites/icons/meteor-ghost.webp',
         desc: 'Calls ghost spirits down from the sky onto enemy clusters.',
         levels: [
           { count: 1, dmg: 100, rad: 100, cd: 5.5 },
@@ -4306,7 +4306,7 @@ window.ArenaArt6 = (function () {
         id: 'vortex',
         name: 'Gravity Well',
         icon: '🌀',
-        iconSrc: 'sprites/icons/vortex.png',
+        iconSrc: 'sprites-w/sprites/icons/vortex.webp',
         desc: 'A vortex drags enemies together, then pops in an explosion.',
         levels: [
           { dmg: 60, rad: 130, cd: 6.0 },
@@ -4371,7 +4371,7 @@ window.ArenaArt6 = (function () {
       'storm-staff': {
         id: 'storm-staff',
         name: 'Storm Staff',
-        icon: 'sprites/items/storm-staff.png',
+        icon: 'sprites-w/sprites/items/storm-staff.webp',
         desc: 'Staff Bolt turns green, deals +60% damage, pierces 2 enemies, and leaves tiny green sparks.',
         apply: () => {
           hero.relics.add('storm-staff');
@@ -4380,7 +4380,7 @@ window.ArenaArt6 = (function () {
       'twin-dash': {
         id: 'twin-dash',
         name: 'Twin Dash',
-        icon: 'sprites/items/twin-dash.png',
+        icon: 'sprites-w/sprites/items/twin-dash.webp',
         desc: 'Grants 2 dash charges; button displays charge pips.',
         apply: () => {
           hero.relics.add('twin-dash');
@@ -4391,7 +4391,7 @@ window.ArenaArt6 = (function () {
       'swift-soles': {
         id: 'swift-soles',
         name: 'Swift Soles',
-        icon: 'sprites/items/boots.png',
+        icon: 'sprites-w/sprites/items/boots.webp',
         desc: '+15% permanent movement speed for the rest of the run.',
         apply: () => {
           hero.relics.add('swift-soles');
@@ -4400,7 +4400,7 @@ window.ArenaArt6 = (function () {
       'heart-flask': {
         id: 'heart-flask',
         name: 'Heart Flask',
-        icon: 'sprites/items/potion.png',
+        icon: 'sprites-w/sprites/items/potion.webp',
         desc: '+40 Max HP and a complete full heal.',
         apply: () => {
           hero.relics.add('heart-flask');
@@ -4462,7 +4462,7 @@ window.ArenaArt6 = (function () {
         id: 'focus',
         name: 'Arcane Focus',
         icon: '🎯',
-        iconSrc: 'sprites/icons/damage.png',
+        iconSrc: 'sprites-w/sprites/icons/damage.webp',
         iconFilter: 'hue-rotate(200deg) saturate(1.3)',
         desc: '+6% chance for any hit to crit for x1.75 damage.',
         apply: () => { hero.passives.focus++; }
@@ -4471,7 +4471,7 @@ window.ArenaArt6 = (function () {
         id: 'siphon',
         name: 'Soul Siphon',
         icon: '🩸',
-        iconSrc: 'sprites/icons/health.png',
+        iconSrc: 'sprites-w/sprites/icons/health.webp',
         iconFilter: 'hue-rotate(250deg) saturate(1.3)',
         desc: 'Every 25 kills heal 3 HP per level.',
         apply: () => { hero.passives.siphon++; }
@@ -6758,9 +6758,9 @@ if (metaFx.regen > 0 && hero.hp > 0) hero.hp = Math.min(hero.maxHp, hero.hp + me
       hero.cooldownMult = Math.max(0.4, 1.0 - hero.passives.cooldown * 0.08 - blessCount.haste * 0.04 - metaFx.cd);
     }
     const BLESSINGS = [
-      { name: 'Arcane Might', desc: '+8% damage (stacks forever).', icon: 'sprites/icons/damage.png', apply: () => { blessCount.might++; recalcBlessings(); } },
+      { name: 'Arcane Might', desc: '+8% damage (stacks forever).', icon: 'sprites-w/sprites/icons/damage.webp', apply: () => { blessCount.might++; recalcBlessings(); } },
       { name: 'Swift Sigil', desc: '-4% weapon cooldowns (stacks).', icon: 'sprites/icons/cooldown.png', apply: () => { blessCount.haste++; recalcBlessings(); } },
-      { name: 'Troll Heart', desc: '+20 max HP and a full heal.', icon: 'sprites/icons/health.png', apply: () => { hero.maxHp += 20; hero.hp = hero.maxHp; } },
+      { name: 'Troll Heart', desc: '+20 max HP and a full heal.', icon: 'sprites-w/sprites/icons/health.webp', apply: () => { hero.maxHp += 20; hero.hp = hero.maxHp; } },
       { name: 'Dragon Hoard', desc: 'A shower of 8 big soul gems.', icon: 'sprites/items/soul-large.png', apply: () => { for (let i = 0; i < 8; i++) spawnSoulGem(hero.x + (Math.random() - 0.5) * 140, hero.y + (Math.random() - 0.5) * 100, 'large'); } }
     ];
     function openRelicModal() {
@@ -7339,7 +7339,7 @@ if (metaFx.regen > 0 && hero.hp > 0) hero.hp = Math.min(hero.maxHp, hero.hp + me
             el.style.fontFamily = "'Trebuchet MS', sans-serif";
             el.style.fontWeight = '900';
             el.style.fontSize = '19px';
-            el.style.cssText += ';position:absolute;left:12px;top:max(10px,env(safe-area-inset-top));z-index:5;width:116px;height:50px;box-sizing:border-box;padding-left:34px;display:flex;align-items:center;justify-content:center;background:url(sprites/ui/ruby-plate.png) center/100% 100% no-repeat;text-shadow:-1px -1px 0 #140f0c,1px -1px 0 #140f0c,-1px 1px 0 #140f0c,1px 1px 0 #140f0c;'; // top-left, opposite the sound button
+            el.style.cssText += ';position:absolute;left:12px;top:max(10px,env(safe-area-inset-top));z-index:5;width:116px;height:50px;box-sizing:border-box;padding-left:34px;display:flex;align-items:center;justify-content:center;background:url(sprites-w/sprites/ui/ruby-plate.webp) center/100% 100% no-repeat;text-shadow:-1px -1px 0 #140f0c,1px -1px 0 #140f0c,-1px 1px 0 #140f0c,1px 1px 0 #140f0c;'; // top-left, opposite the sound button
             el.style.cursor = 'pointer';
             el.style.setProperty('-webkit-tap-highlight-color', 'transparent');
             el.addEventListener('click', () => { if (typeof SVShop !== 'undefined') SVShop.open(); }); // the plate opens the ruby shop (27c)
@@ -7396,14 +7396,14 @@ if (metaFx.regen > 0 && hero.hp > 0) hero.hp = Math.min(hero.maxHp, hero.hp + me
     const SVShop = (function () {
         // Fallback icon targets when custom shop icons have not been authored
         const ICON_FALLBACKS = {
-            vit: 'sprites/icons/health.png',
-            stride: 'sprites/icons/speed.png',
+            vit: 'sprites-w/sprites/icons/health.webp',
+            stride: 'sprites-w/sprites/icons/speed.webp',
             magnet: 'sprites/icons/magnet.png',
             scholar: 'sprites/icons/cooldown.png',
-            staff: 'sprites/icons/damage.png',
+            staff: 'sprites-w/sprites/icons/damage.webp',
             chance: 'sprites/icons/ruby.png',
-            skin: 'sprites/icons/health.png',
-            troll: 'sprites/icons/health.png',
+            skin: 'sprites-w/sprites/icons/health.webp',
+            troll: 'sprites-w/sprites/icons/health.webp',
             hands: 'sprites/icons/cooldown.png',
             weave: 'sprites/icons/area.png',
             hunger: 'sprites/icons/ruby.png',
@@ -7413,7 +7413,7 @@ if (metaFx.regen > 0 && hero.hp > 0) hero.hp = Math.min(hero.maxHp, hero.hp + me
         const st = document.createElement('style');
         st.textContent =
             '#shop-modal{position:fixed;inset:0;z-index:150;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,.7);-webkit-tap-highlight-color:transparent}' +
-            '#shop-modal .sh-panel{width:min(92vw,440px);max-height:92vh;box-sizing:border-box;display:flex;flex-direction:column;border-style:solid;border-color:transparent;border-width:48px 32px 32px;border-image:url("sprites/ui/panel-tall.png") 62 40 40 fill / 48px 32px 32px stretch;filter:drop-shadow(0 12px 20px rgba(0,0,0,.8));padding:6px 12px 8px;text-align:left}' +
+            '#shop-modal .sh-panel{width:min(92vw,440px);max-height:92vh;box-sizing:border-box;display:flex;flex-direction:column;border-style:solid;border-color:transparent;border-width:48px 32px 32px;border-image:url("sprites-w/sprites/ui/panel-tall.webp") 62 40 40 fill / 48px 32px 32px stretch;filter:drop-shadow(0 12px 20px rgba(0,0,0,.8));padding:6px 12px 8px;text-align:left}' +
             '#shop-modal .sh-t{text-align:center;font:900 26px "Trebuchet MS",sans-serif;color:#ffd23f;text-shadow:var(--ink-outline),0 0 18px rgba(255,79,216,.55);margin:0}' +
             '#shop-modal .sh-s{text-align:center;font:700 13px "Trebuchet MS",sans-serif;color:#cbd5e1;margin:2px 0 8px}' +
             '#shop-modal .sh-bal{display:flex;align-items:center;justify-content:center;gap:6px;margin-bottom:8px;font:800 16px "Trebuchet MS",sans-serif;color:#f6d6e0;text-shadow:var(--ink-outline)}' +
@@ -7649,7 +7649,7 @@ if (metaFx.regen > 0 && hero.hp > 0) hero.hp = Math.min(hero.maxHp, hero.hp + me
             // the Play button's painted look, smaller and without its pulse
             const btnStyle = document.createElement('style');
             btnStyle.textContent =
-                '#menu-shop{position:relative;width:min(54vw,200px);aspect-ratio:900/268;margin-top:4px;padding:0;border:none;background:url("sprites/ui/button.png") center/100% 100% no-repeat;color:var(--parchment);font:900 17px "Trebuchet MS",sans-serif;letter-spacing:2px;text-shadow:var(--ink-outline),0 0 10px rgba(255,210,63,.45);cursor:pointer;-webkit-tap-highlight-color:transparent}' +
+                '#menu-shop{position:relative;width:min(54vw,200px);aspect-ratio:900/268;margin-top:4px;padding:0;border:none;background:url("sprites-w/sprites/ui/button.webp") center/100% 100% no-repeat;color:var(--parchment);font:900 17px "Trebuchet MS",sans-serif;letter-spacing:2px;text-shadow:var(--ink-outline),0 0 10px rgba(255,210,63,.45);cursor:pointer;-webkit-tap-highlight-color:transparent}' +
                 '#menu-shop:hover{filter:brightness(1.15)}#menu-shop:active{scale:.95}';
             document.head.appendChild(btnStyle);
             menuBtn.addEventListener('click', open);
@@ -9970,7 +9970,7 @@ function drawEnemy0(e) {
           const relics = Array.from(hero.relics).filter(id => RELIC_REGISTRY[id]).map(id => {
             const reg = RELIC_REGISTRY[id]; return row(icon(reg.icon), reg.name, '', reg.desc);
           });
-          if (blessCount.might) relics.push(row(icon('sprites/icons/damage.png'), 'Arcane Might', 'x' + blessCount.might, '+8% damage each.'));
+          if (blessCount.might) relics.push(row(icon('sprites-w/sprites/icons/damage.webp'), 'Arcane Might', 'x' + blessCount.might, '+8% damage each.'));
           if (blessCount.haste) relics.push(row(icon('sprites/icons/cooldown.png'), 'Swift Sigil', 'x' + blessCount.haste, '-4% weapon cooldowns each.'));
           section(list, 'RELICS & BLESSINGS', relics);
 
@@ -10006,7 +10006,7 @@ function drawEnemy0(e) {
       st.textContent =
         '.pn-btn{position:relative;margin-top:14px;background:none;border:2px solid #7c4dbd;border-radius:999px;padding:8px 20px;color:var(--parchment);font:800 15px "Trebuchet MS",sans-serif;letter-spacing:1px;text-shadow:var(--ink-outline);cursor:pointer;-webkit-tap-highlight-color:transparent}' +
         '.pn-btn .pn-new{position:absolute;top:-9px;right:-8px;background:#e8344f;color:#fff;border-radius:999px;padding:1px 7px;font:900 10px "Trebuchet MS",sans-serif;letter-spacing:1px;box-shadow:0 0 10px rgba(232,52,79,.8)}' +
-        '#patch-modal{z-index:150}#patch-modal .pn-panel{width:min(92vw,440px);border-style:solid;border-color:transparent;border-width:48px 32px 32px;border-image:url("sprites/ui/panel-tall.png") 62 40 40 fill / 48px 32px 32px stretch;filter:drop-shadow(0 12px 20px rgba(0,0,0,.8));padding:6px 12px 8px;text-align:left}' +
+        '#patch-modal{z-index:150}#patch-modal .pn-panel{width:min(92vw,440px);border-style:solid;border-color:transparent;border-width:48px 32px 32px;border-image:url("sprites-w/sprites/ui/panel-tall.webp") 62 40 40 fill / 48px 32px 32px stretch;filter:drop-shadow(0 12px 20px rgba(0,0,0,.8));padding:6px 12px 8px;text-align:left}' +
         '#patch-modal .pn-t{text-align:center;font:900 26px "Trebuchet MS",sans-serif;color:#ffd23f;text-shadow:var(--ink-outline),0 0 18px rgba(255,79,216,.55)}' +
         '#patch-modal .pn-s{text-align:center;font:700 13px "Trebuchet MS",sans-serif;color:#cbd5e1;margin:2px 0 10px}' +
         '#patch-modal ul,#patch-modal ul *{touch-action:pan-y}' +
