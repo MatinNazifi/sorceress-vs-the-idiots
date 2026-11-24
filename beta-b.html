@@ -4887,16 +4887,7 @@ window.ArenaArt6 = (function () {
       const tp = staffTip();
       const gx = tp.x, gy = hero.y + 2; // the staff's foot, on the ground under the crystal
       playVFX('frost', gx, gy - 6, { scale: 0.45, fps: 22 });
-      spawnGroundCrack(gx, gy, 24);
-      for (let i = 0; i < 4; i++) {
-        spawnParticle({
-          type: 'chunk', x: gx, y: gy - 4,
-          vx: (Math.random() - 0.5) * 220, vy: -120 - Math.random() * 120,
-          groundY: gy + 4 + Math.random() * 12, bounced: false,
-          rot: Math.random() * Math.PI * 2, vrot: (Math.random() - 0.5) * 14,
-          size: 3 + Math.random() * 3, color: '#bae6fd', life: 0.6
-        });
-      }
+      // 2026-11-25 (Matin): the procedural dark zigzag crack and the 4 light-blue outlined chunks at the staff's foot had no art. Removed until Flow paints an ice-crack decal + shard sprites (STATE: ART VIA FLOW list).
       // Expanding ice ring: the strip's ring grows from ~57 px to ~95 px (outer edge) across its 6 frames
       const ringRad = stats.radius * hero.areaMult;
       const endScale = ringRad / ICE_RING_EDGE_END;
@@ -10402,6 +10393,8 @@ telemetryInit();
     // ?god=1 only: staff-tip / cast-gesture probe for visual QA
     if (isGod) window.__cast = {
       tip: () => ({ ...staffTip() }),
+      // QA: hero bolts and enemies (world coordinates) so a bolt that misses can be measured instead of guessed
+      probe: () => ({ hero: { x: Math.round(hero.x), y: Math.round(hero.y) }, projs: heroProjectiles.map(p => ({ x: Math.round(p.x), y: Math.round(p.y), vx: Math.round(p.vx), vy: Math.round(p.vy) })), enemies: enemies.slice(0, 40).map(e => ({ x: Math.round(e.x), y: Math.round(e.y), r: e.radius, vx: Math.round(e.vx || 0), vy: Math.round(e.vy || 0), hp: Math.round(e.hp) })) }),
       pose: () => ({ ...heroPose, anim: hero.anim, animT: hero.animT, facing: hero.facing, x: hero.x, y: hero.y, beam: !!activeBeam }),
       face: f => { hero.facing = f; },
       end: v => triggerGameOver(!!v), // leaderboard test: end the run
