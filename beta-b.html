@@ -5329,6 +5329,7 @@ if (metaFx.regen > 0 && hero.hp > 0) hero.hp = Math.min(hero.maxHp, hero.hp + me
               isStormStaff: hasStormStaff,
               size: isLance ? 2.6 : 1,
               hitSet: isLance ? new Set() : null,
+              target: (count === 1 && !isLance) ? target : null, // single bolts curve toward their target (a straight shot missed moving enemies; fans and the lance stay straight)
               trail: []
             });
             Sound.bolt();
@@ -6206,6 +6207,7 @@ if (metaFx.regen > 0 && hero.hp > 0) hero.hp = Math.min(hero.maxHp, hero.hp + me
     }
 
     // --- PROJECTILES, PARTICLES & SOUL GEMS ---
+    const BOLT_TURN = 5.5; // rad/s a homing hero bolt may turn (a 620 px/s bolt then curves onto a target that walked ~60 px sideways)
     function updateProjectilesAndEffects(dt) {
       updateVFX(dt);
       World.update(dt); // arena timed events
@@ -6216,6 +6218,13 @@ if (metaFx.regen > 0 && hero.hp > 0) hero.hp = Math.min(hero.maxHp, hero.hp + me
         p.trail.push({ x: p.x, y: p.y });
         if (p.trail.length > 3) p.trail.shift();
 
+        // Light homing (Matin 2026-11-25: bolts passed enemies): steer toward the target's CURRENT ground position, at most BOLT_TURN rad/s, while it is alive and ahead
+        const bt = p.target;
+        if (bt && bt.hp > 0 && !bt.dead) {
+          const want = Math.atan2(bt.y - p.y, bt.x - p.x), have = Math.atan2(p.vy, p.vx);
+          let dA = want - have; dA -= Math.round(dA / (Math.PI * 2)) * Math.PI * 2;                        // shortest signed turn
+          if (Math.abs(dA) < 2.2) { const turn = Math.max(-BOLT_TURN * dt, Math.min(BOLT_TURN * dt, dA)), sp = Math.hypot(p.vx, p.vy), na = have + turn; p.vx = Math.cos(na) * sp; p.vy = Math.sin(na) * sp; } // not once it has flown past (> ~126 deg off)
+        }
         p.x += p.vx * dt;
         p.y += p.vy * dt;
         p.life -= dt;
