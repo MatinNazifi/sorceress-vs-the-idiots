@@ -4968,23 +4968,26 @@ window.ArenaArt6 = (function () {
     // cycles per second = speed / stride. Tune stride (world px per full cycle) and runSpeed (switch walk -> run) here.
     const OMNI_ANIM = { on: !(typeof location !== 'undefined' && /[?&]anim=old\b/.test(location.search)), runSpeed: 250, walk: { frames: 30, stride: 130 }, run: { frames: 30, stride: 170 } };
     // The two strips (~600 KB) load AFTER the map: Omni Flash clip 2 = walk, clip 3 = run (anim_test/make_omni_strips.py). Called when the level art is ready, after 6 s, and on the first step.
-    const OMNI_URLS = GFX_HD ? { 'hero-omni-walk': 'sprites/hero-omni-walk-hd.webp?v=3', 'hero-omni-run': 'sprites/hero-omni-run-hd.webp?v=3', 'hero-omni-atk': 'sprites/hero-omni-atk-hd.webp?v=1' } : { 'hero-omni-walk': 'sprites/hero-omni-walk.webp?v=2', 'hero-omni-run': 'sprites/hero-omni-run.webp?v=2', 'hero-omni-atk': 'sprites/hero-omni-atk.webp?v=1' };
+    const OMNI_URLS = GFX_HD ? { 'hero-omni-walk': 'sprites/hero-omni-walk-hd.webp?v=3', 'hero-omni-run': 'sprites/hero-omni-run-hd.webp?v=3', 'hero-omni-atk': 'sprites/hero-omni-atk-hd.webp?v=1', 'hero-omni-cast': 'sprites/hero-omni-cast-hd.webp?v=1' } : { 'hero-omni-walk': 'sprites/hero-omni-walk.webp?v=2', 'hero-omni-run': 'sprites/hero-omni-run.webp?v=2', 'hero-omni-atk': 'sprites/hero-omni-atk.webp?v=1', 'hero-omni-cast': 'sprites/hero-omni-cast.webp?v=1' };
     // Attack while running (Matin's swing clip, anim_test/make_omni_atk.py): 24 frames, plays OVER the run (no stopping). dur = clip seconds, speed = playback rate, start = first frame (skips the wind-up so the burst
     // lands ~0.2 s after the cast), map[i] = the run-strip frame whose legs match attack frame i: when the attack ends the run phase continues from there (no leg jump).
-    const OMNI_ATK = { frames: 24, dur: 1.003, speed: 1.5, start: 4, cool: 0.25, map: [15, 16, 18, 19, 13, 20, 26, 26, 26, 28, 13, 15, 16, 18, 18, 19, 22, 22, 25, 28, 28, 29, 18, 18] };
-    function omniAtkFrame(h) { return h.atkT >= 0 ? Math.min(OMNI_ATK.frames - 1, Math.floor(h.atkT / OMNI_ATK.dur * OMNI_ATK.frames)) : -1; }
+    const OMNI_ATK = { frames: 24, speed: 1.5, cool: 0.25, variants: [ // 0 = staff swing, 1 = hand cast (Matin's two clips); each attack takes the next one
+      { key: 'hero-omni-atk', dur: 1.003, start: 4, map: [15, 16, 18, 19, 13, 20, 26, 26, 26, 28, 13, 15, 16, 18, 18, 19, 22, 22, 25, 28, 28, 29, 18, 18] },
+      { key: 'hero-omni-cast', dur: 1.453, start: 2, map: [16, 19, 26, 26, 13, 15, 16, 18, 5, 20, 26, 12, 12, 15, 16, 19, 19, 13, 29, 16, 16, 19, 13, 13] } ] };
+    function omniAtkV(h) { return OMNI_ATK.variants[h.atkV || 0]; }
+    function omniAtkFrame(h) { return h.atkT >= 0 ? Math.min(OMNI_ATK.frames - 1, Math.floor(h.atkT / omniAtkV(h).dur * OMNI_ATK.frames)) : -1; }
     function loadOmniStrips() { if (!OMNI_ANIM.on) return; for (const k in OMNI_URLS) if (!SPRITES[k]) { const im = new Image(); im.src = OMNI_URLS[k]; SPRITES[k] = im; } }
     if (typeof setTimeout !== 'undefined') setTimeout(loadOmniStrips, 6000);
     function omniOn() { const a = SPRITES['hero-omni-walk'], b = SPRITES['hero-omni-run']; return OMNI_ANIM.on && !!a && !!b && a.complete && b.complete && a.naturalWidth > 0 && b.naturalWidth > 0; }
     function omniStep(h, dt) {
       loadOmniStrips(); h.omniRun = h.speed >= OMNI_ANIM.runSpeed;
-      const A = SPRITES['hero-omni-atk'], atkReady = !!A && A.complete && A.naturalWidth > 0;
+      const nv = ((h.atkV || 0) + 1) % OMNI_ATK.variants.length, A = SPRITES[OMNI_ATK.variants[nv].key], atkReady = !!A && A.complete && A.naturalWidth > 0;
       if (!(h.atkT >= 0)) { h.atkT = -1; h.atkCool = (h.atkCool || 0) - dt; }
       if (h.atkT >= 0 && !h.isMoving) h.atkT = -1;                                         // stopped: back to the idle pose
-      if (h.atkT < 0 && atkReady && h.isMoving && h.castTimer > 0 && h.atkCool <= 0) h.atkT = OMNI_ATK.start / OMNI_ATK.frames * OMNI_ATK.dur;
+      if (h.atkT < 0 && atkReady && h.isMoving && h.castTimer > 0 && h.atkCool <= 0) { h.atkV = nv; h.atkT = omniAtkV(h).start / OMNI_ATK.frames * omniAtkV(h).dur; }
       if (h.atkT >= 0) {
         h.atkT += dt * OMNI_ATK.speed;
-        if (h.atkT >= OMNI_ATK.dur) { h.atkT = -1; h.atkCool = OMNI_ATK.cool; h.omniPhase = OMNI_ATK.map[OMNI_ATK.frames - 1] / OMNI_ANIM.run.frames; }
+        if (h.atkT >= omniAtkV(h).dur) { h.atkT = -1; h.atkCool = OMNI_ATK.cool; h.omniPhase = omniAtkV(h).map[OMNI_ATK.frames - 1] / OMNI_ANIM.run.frames; }
         return;                                                                           // the legs of the attack strip run by themselves, the run phase waits
       }
       h.omniPhase = ((h.omniPhase || 0) + dt * Math.hypot(h.vx, h.vy) / (h.omniRun ? OMNI_ANIM.run.stride : OMNI_ANIM.walk.stride)) % 1; }
@@ -8280,7 +8283,7 @@ function drawHero0(h) {
       ctx.scale(h.facing, 1);
       ctx.rotate(pose.rot);
       ctx.scale(pose.sx, pose.sy);
-      if (pose.key === 'hero-walk' && omniOn() && omniAtkFrame(h) >= 0) drawCharacterSprite('hero-omni-atk', HERO_SPRITE_H, 0, OMNI_ATK.frames, h.flashTimer > 0, omniAtkFrame(h));
+      if (pose.key === 'hero-walk' && omniOn() && omniAtkFrame(h) >= 0) drawCharacterSprite(omniAtkV(h).key, HERO_SPRITE_H, 0, OMNI_ATK.frames, h.flashTimer > 0, omniAtkFrame(h));
       else if (pose.key === 'hero-walk' && omniOn()) { const set = h.omniRun ? OMNI_ANIM.run : OMNI_ANIM.walk; drawCharacterSprite(h.omniRun ? 'hero-omni-run' : 'hero-omni-walk', HERO_SPRITE_H, 0, set.frames, h.flashTimer > 0, Math.floor((h.omniPhase || 0) * set.frames) % set.frames); }
       else drawCharacterSprite(pose.key, HERO_SPRITE_H, h.walkTimer, 6, h.flashTimer > 0);
       ctx.restore();
