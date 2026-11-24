@@ -1871,10 +1871,24 @@ window.addEventListener('load', function () { setTimeout(function () { var s = d
       if (!ART_5 || arena !== true || typeof ArenaArt5 === 'undefined') return false;
       if (!art5Started) { art5Started = true; ArenaArt5.load('sprites/arena/v5/'); if (ART_6) ArenaArt6.load('sprites/arena/v6w/'); }
       const rd = ArenaArt5.ready() && (!ART_6 || ArenaArt6.ready());
+      if (rd && ART_6 && !art6Walk) applyArtWalk();
       if (rd && ART_6 && !art6Hid) { art6Hid = true; ['gate_1', 'gate_2', 'gate_3', 'gatehouse', 'block_h1', 'block_h2', 'block_h3', 'block_h4', 'block_h5', 'block_c1', 'block_c2', 'block_c3', 'block_c4'].forEach(n => ArenaArt5.setHidden(n, true)); } // the level pack has the crypt and its gates itself and no cover blocks
       return rd;
     }
-    function art5View(cam) { return { W: screenW, H: screenH, z: cam.zoom || 0.9, cx: cam.x, cy: cam.y, yaw: World.yaw, tilt: World.tilt }; }
+    // ?art=6: the lower map is walkable only where the ART has floor, and a pit is a solid block (the grid used to be the old grey-box shape: she walked on water, over pits and "under" the bridge posts)
+    let art6Walk = false; window.__artWalkStats = null;
+    function applyArtWalk() {
+      art6Walk = true; const ch = []; let off = 0, pit = 0;
+      for (let i = 0; i < GW * GH; i++) {
+        if (zone[i] !== 1 || grid[i] !== 1) continue;
+        const st = ArenaArt6.cellState((i % GW) * CS + CS / 2, ((i / GW) | 0) * CS + CS / 2, World.yaw, World.tilt);
+        if (st !== 1) { grid[i] = 0; ch.push(i); if (st === 2) pit++; else off++; }
+      }
+      if (ch.length) arenaRebuild(ch);
+      if (!World.isWalkable(hero.x, hero.y, hero.radius)) { const s = World.snap(hero.x, hero.y); hero.x = s.x; hero.y = s.y; }
+      window.__artWalkStats = { blockedOffArt: off, blockedPit: pit };
+    }
+    function art5View(cam) { return { hx: hero.x, hy: hero.y, W: screenW, H: screenH, z: cam.zoom || 0.9, cx: cam.x, cy: cam.y, yaw: World.yaw, tilt: World.tilt }; }
     function art5DrawItem(c, w) { const dp = typeof dpr !== 'undefined' ? dpr : 1; c.save(); c.setTransform(dp, 0, 0, dp, 0, 0); if (w.art5Front) { ArenaArt5.drawFront(c, art5View(CAMERA)); if (ART_6) ArenaArt6.drawFront(c, art5View(CAMERA)); } else w.art5.draw(c, art5View(CAMERA)); c.restore(); }
     function arenaPushWalls(list, camX, camY, hw, hh) {
       if (art5Ready()) { // the painted blocks, gates and lamps sort with the hero; the grey boxes are not used
@@ -3146,6 +3160,25 @@ window.ArenaArt6 = (function () {
     var t = nowS();
     for (var m in want) { var s = shown(m); if (cur[m] !== s) { prev[m] = cur[m]; cur[m] = s; t0[m] = t; dur[m] = pend[m] || 0.8; } }
   }
+  // WALK MASK: where the art really has floor. Built once from the healthy layers at half frame size (1000 x 558); cellState(wx, wy) says 1 = floor, 2 = under a pit, 0 = nothing there (water, wall tops, off the slab).
+  var walk = null, WM = 0.5;
+  var FLOOR_MODS = { left: 1, main: 1, right: 1, front: 1, bridge_left: 1, bridge_right: 1 };
+  function buildWalk() {
+    var k = data.k, W = Math.round(2000 * WM), H = Math.round(1116 * WM), mk = function (pred) {
+      var cv = document.createElement('canvas'); cv.width = W; cv.height = H; var c = cv.getContext('2d');
+      data.layers.forEach(function (l) { if (HEALTHY[l.module] === l.state && pred(l.module)) { var im = img(l.file); if (im.complete && im.naturalWidth) c.drawImage(im, l.x / k * WM, l.y / k * WM, l.w / k * WM, l.h / k * WM); } });
+      return c.getImageData(0, 0, W, H).data;
+    };
+    walk = { W: W, H: H, floor: mk(function (m) { return !!FLOOR_MODS[m]; }), pit: mk(function (m) { return m.indexOf('pit_') === 0; }) };
+  }
+  function cellState(wx, wy, yaw, tilt) {
+    if (!walk) return 1;
+    var u = Math.cos(yaw) * wx - Math.sin(yaw) * wy, v = tilt * (Math.sin(yaw) * wx + Math.cos(yaw) * wy), fx = Math.round((fit.tx + fit.s * u) * WM), fy = Math.round((fit.ty + fit.s * v) * WM);
+    if (fx < 0 || fy < 0 || fx >= walk.W || fy >= walk.H) return 0;
+    var i = (fy * walk.W + fx) * 4 + 3;
+    if (walk.pit[i] > 128) return 2;
+    return walk.floor[i] > 128 ? 1 : 0;
+  }
   function load(baseUrl) {
     base = baseUrl.endsWith('/') ? baseUrl : baseUrl + '/';
     return Promise.all([fetch(base + 'art6.json').then(function (r) { return r.json(); }), fetch('sprites/arena/v5/art5.json').then(function (r) { return r.json(); })])
@@ -3155,7 +3188,7 @@ window.ArenaArt6 = (function () {
         // ready only when the healthy-state layers are decoded: until then the grey-box floor stays (a black map while 17 MB loaded was the bug); the other states load in the background
         var core = data.layers.filter(function (l) { return HEALTHY[l.module] === l.state; });
         data.layers.forEach(function (l) { img(l.file); });
-        return Promise.all(core.map(function (l) { return new Promise(function (r) { var im = img(l.file); if (im.complete && im.naturalWidth) r(); else { im.onload = r; im.onerror = r; } }); })).then(function () { ok = true; if (typeof loadOmniStrips === 'function') loadOmniStrips(); });
+        return Promise.all(core.map(function (l) { return new Promise(function (r) { var im = img(l.file); if (im.complete && im.naturalWidth) r(); else { im.onload = r; im.onerror = r; } }); })).then(function () { buildWalk(); buildFeet(); ok = true; if (typeof loadOmniStrips === 'function') loadOmniStrips(); });
       }).catch(function () { ok = false; });
   }
   function img(file) { var im = imgs[file]; if (!im) { im = imgs[file] = new Image(); im.src = base + file; } return im; }
@@ -3165,12 +3198,40 @@ window.ArenaArt6 = (function () {
     var im = img(l.file); if (!im.complete || !im.naturalWidth) return;
     if (alpha < 1) ctx.globalAlpha = alpha; ctx.drawImage(im, X, Y, sw, sh); if (alpha < 1) ctx.globalAlpha = 1;
   }
+  // BRIDGE FRONT POSTS sorted against the hero: the front layer is cut into 6 px columns; each column's FOOT (lowest opaque pixel, with the max taken over its neighbours so a rope
+  // takes the foot of the post it hangs from) is compared with the hero's feet on the painting: a column whose foot is LOWER on screen than her feet is in front of her (drawn after her),
+  // otherwise she is in front of it (drawn before her). Before this the whole layer always covered her.
+  var feet = {}, SW = 6;
+  function buildFeet() {
+    data.layers.forEach(function (l) {
+      if (!l.above_player) return; var im = img(l.file); if (!(im.complete && im.naturalWidth)) return;
+      var c = document.createElement('canvas'); c.width = im.naturalWidth; c.height = im.naturalHeight; var x = c.getContext('2d'); x.drawImage(im, 0, 0);
+      var d = x.getImageData(0, 0, c.width, c.height).data, n = Math.ceil(c.width / SW), sb = new Array(n).fill(-1), px, py, j;
+      for (px = 0; px < c.width; px++) for (py = c.height - 1; py >= 0; py--) if (d[(py * c.width + px) * 4 + 3] > 128) { j = (px / SW) | 0; if (py > sb[j]) sb[j] = py; break; }
+      var foot = new Array(n).fill(-1);
+      for (j = 0; j < n; j++) if (sb[j] >= 0) { var mx = sb[j]; for (var u = Math.max(0, j - 9); u <= Math.min(n - 1, j + 9); u++) if (sb[u] > mx) mx = sb[u]; foot[j] = mx; }
+      feet[l.file] = { n: n, foot: foot, h: c.height, w: c.width };
+    });
+  }
+  function drawStrips(ctx, v, l, above, ax, ay, hFY) { // draws the columns of a front layer that are in front of (above) or behind the hero
+    var f = feet[l.file], im = img(l.file); if (!f || !im.complete || !im.naturalWidth) return;
+    var k = data.k, sc = v.z / (k * fit.s), X0 = v.W * 0.5 + v.z * (((l.x / k) - fit.tx) / fit.s - ax), Y0 = v.H * 0.5 + v.z * (((l.y / k) - fit.ty) / fit.s - ay), j = 0, a, b;
+    if (X0 + l.w * sc < 0 || X0 > v.W || Y0 + l.h * sc < 0 || Y0 > v.H) return;
+    while (j < f.n) {
+      if (f.foot[j] < 0 || ((l.y + f.foot[j]) / k > hFY) !== above) { j++; continue; }
+      a = j; while (j < f.n && f.foot[j] >= 0 && ((l.y + f.foot[j]) / k > hFY) === above) j++; b = j; // a run of columns with the same answer = one drawImage
+      ctx.drawImage(im, a * SW, 0, Math.min((b - a) * SW, f.w - a * SW), f.h, X0 + a * SW * sc, Y0, Math.min((b - a) * SW, f.w - a * SW) * sc, f.h * sc);
+    }
+  }
   function drawPass(ctx, v, front) {
     if (!ok) return; tick();
     var cosY = Math.cos(v.yaw), sinY = Math.sin(v.yaw), ax = cosY * v.cx - sinY * v.cy, ay = v.tilt * (sinY * v.cx + cosY * v.cy), L = data.layers, t = nowS();
+    var hFY = v.hx === undefined ? -1e9 : fit.ty + fit.s * (v.tilt * (sinY * v.hx + cosY * v.hy)); // the hero's feet on the painting (no hero = everything counts as in front)
     ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
     for (var i = 0; i < L.length; i++) {
-      var l = L[i]; if (!!l.above_player !== front) continue;
+      var l = L[i];
+      if (l.above_player) { if (cur[l.module] === l.state && feet[l.file]) drawStrips(ctx, v, l, front, ax, ay, hFY); continue; } // front pass: columns in front of her; back pass: columns behind her
+      if (front) continue;
       var m = l.module; if (cur[m] !== l.state) continue; // only the module's current art; the previous art is drawn under it while a fade runs
       var p = 1, pl = null;
       if (prev[m] !== undefined && prev[m] !== null) { var q = (t - t0[m]) / dur[m]; if (q < 1) { p = q < 0 ? 0 : q; pl = byKey[m + '|' + prev[m]]; } }
@@ -3178,7 +3239,7 @@ window.ArenaArt6 = (function () {
       drawLayer(ctx, v, l, p, ax, ay);
     }
   }
-  return { load: load, ready: function () { return ok; }, reset: reset, warn: warn, land: land, dropAll: dropAll, openCrypt: openCrypt, closeCrypt: closeCrypt, hideBossDoor: hideBossDoor,
+  return { load: load, ready: function () { return ok; }, reset: reset, warn: warn, land: land, dropAll: dropAll, openCrypt: openCrypt, closeCrypt: closeCrypt, hideBossDoor: hideBossDoor, cellState: cellState,
     draw: function (ctx, v) { drawPass(ctx, v, false); }, drawFront: function (ctx, v) { drawPass(ctx, v, true); }, state: function () { return Object.assign({}, want); } };
 })();
     // --- SPRITE ASSET MANAGER ---
