@@ -1944,7 +1944,7 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
     const art5Front = { wall: true, art5Front: true, x: 0, y: 0, ry: 2e8 }; // foreground trees: sorted after everything
     function art5Ready() {
       if (!ART_5 || arena !== true || typeof ArenaArt5 === 'undefined') return false;
-      if (!art5Started) { art5Started = true; ArenaArt5.load('sprites/arena/v5/'); if (ART_6) ArenaArt6.load('sprites/arena/v6/'); }
+      if (!art5Started) { art5Started = true; ArenaArt5.load('sprites/arena/v5/'); if (ART_6) ArenaArt6.load('sprites/arena/v6w/'); }
       const rd = ArenaArt5.ready() && (!ART_6 || ArenaArt6.ready());
       if (rd && ART_6 && !art6Hid) { art6Hid = true; ['gate_1', 'gate_2', 'gate_3', 'gatehouse', 'block_h1', 'block_h2', 'block_h3', 'block_h4', 'block_h5', 'block_c1', 'block_c2', 'block_c3', 'block_c4'].forEach(n => ArenaArt5.setHidden(n, true)); } // the level pack has the crypt and its gates itself and no cover blocks
       return rd;
