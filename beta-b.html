@@ -8066,20 +8066,20 @@ function drawHero0(h) {
       if (h.speedBuffTimer > 0 && h.isMoving) {
         const sw = SPRITES['speed-wind']; // both Flow looks (Matin 2026-11-25): a soft wavy wind layer behind, the pointed streaks in front
         if (sw && sw.complete && sw.naturalWidth) {
-          const fw = sw.naturalWidth / 6, len = 128, hgt = len * sw.naturalHeight / fw, fi = (((gameTime * 11) | 0) + 3) % 6;
+          const fw = sw.naturalWidth / 6, len = 62, hgt = len * sw.naturalHeight / fw, fi = (((gameTime * 11) | 0) + 3) % 6;
           ctx.save();
           ctx.scale(h.facing, 1);
-          ctx.globalAlpha = 0.6;
-          ctx.drawImage(sw, fi * fw, 0, fw, sw.naturalHeight, -8 - len, -62 - hgt / 2, len, hgt);
+          ctx.globalAlpha = 0.28;
+          ctx.drawImage(sw, fi * fw, 0, fw, sw.naturalHeight, -6 - len, -26 - hgt / 2, len, hgt);
           ctx.restore();
         }
         const ss = SPRITES['speed-streak'];
         if (ss && ss.complete && ss.naturalWidth) {
-          const fw = ss.naturalWidth / 6, len = 96, hgt = len * ss.naturalHeight / fw, fi = ((gameTime * 16) | 0) % 6;
+          const fw = ss.naturalWidth / 6, len = 50, hgt = len * ss.naturalHeight / fw, fi = ((gameTime * 16) | 0) % 6;
           ctx.save();
           ctx.scale(h.facing, 1);
-          ctx.globalAlpha = 0.9;
-          ctx.drawImage(ss, fi * fw, 0, fw, ss.naturalHeight, -12 - len, -48 - hgt / 2, len, hgt);
+          ctx.globalAlpha = 0.6;
+          ctx.drawImage(ss, fi * fw, 0, fw, ss.naturalHeight, -4 - len, -34 - hgt / 2, len, hgt);
           ctx.restore();
         }
       }
@@ -8788,7 +8788,7 @@ function drawEnemy0(e) {
         const cmImg = p.isStormStaff ? null : SPRITES['bolt-comet'];
         if (cmImg && cmImg.complete && cmImg.naturalWidth) {
           const fw = cmImg.naturalWidth / 8, fi = (((gameTime * 20) | 0) + ((p.x * 0.37) | 0)) & 7; // 20 fps flicker, projectiles out of step
-          const len = 104 * (p.size || 1), hgt = len * cmImg.naturalHeight / fw;
+          const len = 84 * (p.size || 1), hgt = len * cmImg.naturalHeight / fw;
           ctx.translate(p.x, p.y);
           ctx.rotate(ang);
           ctx.drawImage(cmImg, fi * fw, 0, fw, cmImg.naturalHeight, -len * 0.67, -hgt / 2, len, hgt);
