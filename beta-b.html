@@ -1491,6 +1491,7 @@ window.addEventListener('load', function () { setTimeout(function () { var s = d
     // The run: 0-10:00 the lower map collapses piece by piece; 10:00 the crypt gates open and the lower map falls 20 s later (run north);
     // then ~3 minutes of crypt fight (elite waves, floor traps); at 13:00 the inner gate opens (cutscene), the hero walks into the final room,
     // the doors seal behind and the final boss appears. Only the final boss's death wins the run.
+    const DMG_LEAD = 42; // s before a collapse that its art turns damaged (half of the 85 s between collapses)
     const EVENT_WARN = 10, GATE_WARN = 6, DROP_WARN = 20, VAULT_WARN = 8; let GATES_AT = 600, DROP_AT = 630, VAULT_AT = 810, arenaReach = null, arenaReachTime = -1, arenaReachCount = 0, arenaCryptChests = 0;
     const warnOf = e => e.kind === 'gates' ? GATE_WARN : e.kind === 'drop' ? DROP_WARN : e.kind === 'vault' ? VAULT_WARN : e.kind === 'ring' ? 6 : EVENT_WARN;
     let arenaStage = 0; // 0 lower map, 1 gates open (run north), 2 crypt fight, 3 inner gate open, 4 final room sealed with the boss
@@ -1595,12 +1596,14 @@ window.addEventListener('load', function () { setTimeout(function () { var s = d
         ['the west side of the hub', [[18, 26, 6, 28]]], ['the east side of the hub', [[40, 26, 6, 28]]], ['the south side of the hub', [[22, 48, 20, 6]]]];
       // loose tiers so the map keeps shrinking until the finale (a wing takes its bridge down with it, so a fully random order runs out of things to drop):
       // bridges tend to go first, then wings and the south shrine, then the sides of the hub; the seed still shuffles within and across tiers
-      const TIER = [0, 0, 1, 1, 1, 2, 2, 2];
-      const order = ZONES.map((z, i) => ({ i, k: TIER[i] + rand() * 1.3 })).sort((x, y) => x.k - y.k).map(o => o.i);
+      // Matin 2026-11-24: FIVE collapses, one per art piece: both bridges first (random between them so the order can't be tracked), then the west wing, the east wing and the south shrine in random order.
+      // The hub (the middle slab, zones 5-7) no longer falls by itself: it goes with the great drop after the crypt gates open.
+      const shuf = a => a.map(x => ({ x, k: rand() })).sort((p, q) => p.k - q.k).map(o => o.x);
+      const order = shuf([0, 1]).concat(shuf([2, 3, 4]));
       arenaZones = ZONES.map(z => ({ name: z[0], done: false, rects: z[1].map(r => [sc(r[0]), sc(r[1]), sc(r[0] + r[2]), sc(r[1] + r[3])]) }));
-      const events = order.slice(0, 7).map((zi, i) => ({ id: i, kind: 'collapse', zi, name: ZONES[zi][0], t: 120 + i * 70 + Math.floor(rand() * 21) - 10, state: 'wait', cells: null, rects: arenaZones[zi].rects }));
+      const events = order.map((zi, i) => ({ id: i, kind: 'collapse', zi, name: ZONES[zi][0], t: 130 + i * 85 + Math.floor(rand() * 21) - 10, state: 'wait', cells: null, rects: arenaZones[zi].rects }));
       GATES_AT = 570 + Math.floor(rand() * 31); DROP_AT = GATES_AT + 30; VAULT_AT = 780; arenaCryptChests = 0; // gates open 9:30-10:00, 30 s to get inside, the inner door opens at 13:00
-      events.push({ id: 7, kind: 'gates', name: 'the crypt gates', t: GATES_AT, state: 'wait' }, { id: 8, kind: 'drop', name: 'the lower realm', t: DROP_AT, state: 'wait', cells: null }, { id: 9, kind: 'vault', name: 'the inner gate', t: VAULT_AT, state: 'wait' });
+      events.push({ id: 5, kind: 'gates', name: 'the crypt gates', t: GATES_AT, state: 'wait' }, { id: 6, kind: 'drop', name: 'the lower realm', t: DROP_AT, state: 'wait', cells: null }, { id: 7, kind: 'vault', name: 'the inner gate', t: VAULT_AT, state: 'wait' });
       let lower = 0; for (let i = topPx / CS * GW; i < GW * GH; i++) if (grid[i] === 1) lower++;
       arenaLower0 = arenaLowerNow = lower;
       return { rooms, startX: st.x, startY: st.y, pois, spawnList: rooms.slice(2, -1).map(cc), lanes, events, seedInfo: { seed: seedUsed, blocks: blocks.length, events: events.map(e => e.name + ' @' + e.t + 's') } };
@@ -2039,6 +2042,12 @@ window.addEventListener('load', function () { setTimeout(function () { var s = d
       const cells = []; for (let i = 0; i < GW * GH; i++) if (zone[i] === 1 && grid[i] === 1) { grid[i] = 0; deco[i] = 0; cells.push(i); }
       arenaLowerNow = 0; arenaRebuild(cells); if (art5Ready()) { ArenaArt5.drop(cells); if (ART_6) ArenaArt6.dropAll(); }
       if (cells.length) arenaFall(cells, 16);
+      // Matin: after the great drop the crypt gates CLOSE again and the player stays inside (a hero standing in a gate is put back inside the crypt first)
+      if (arenaGateCells.length) {
+        const gset = new Set(arenaGateCells); if (gset.has(cellAt(hero.x, hero.y))) { hero.x = arenaEntry.x; hero.y = arenaEntry.y; }
+        arenaGateCells.forEach(i => { grid[i] = 0; deco[i] = 8; }); arenaRebuild(arenaGateCells);
+        if (ART_6 && art5Ready()) ArenaArt6.closeCrypt();
+      }
       addShake(34); arenaNextElite = gameTime; arenaNextTrap = gameTime + 2.5;
     }
     function arenaOpenVault(e) { // inner gate bursts open: short cutscene, the hero walks in
@@ -2164,6 +2173,10 @@ window.addEventListener('load', function () { setTimeout(function () { var s = d
       arenaUpdateReach();
       for (let i = 0; i < arenaEvents.length; i++) {
         const e = arenaEvents[i], warn = warnOf(e);
+        // art=6: the piece shows its DAMAGED art from half the time between collapses before it falls (about 42 s), long before the 10 s warning, so the player sees the art first.
+        // The hub (middle slab) turns damaged 30 s before the crypt gates open and collapses with the great drop.
+        const dmgLead = e.kind === 'collapse' ? DMG_LEAD : e.kind === 'gates' ? 30 : 0; // the drop and the inner gate have no damaged art of their own
+        if (ART_6 && dmgLead > 0 && e.state === 'wait' && !e.dmg && art5Ready() && gameTime >= e.t - dmgLead) { e.dmg = true; ArenaArt6.warn(e.kind === 'collapse' ? e.name : 'the west side of the hub'); }
         if (e.state === 'wait' && gameTime >= e.t - warn) arenaWarn(e);
         if (e.state === 'warn') {
           const p = 1 - Math.max(0, e.t - gameTime) / warn;
@@ -3127,6 +3140,7 @@ window.ArenaArt6 = (function () {
   }
   function dropAll() { hubFallen = 9; ['left', 'main', 'right', 'front', 'bridge_left', 'bridge_right'].forEach(function (m) { setWant(m, 'collapsed', 0.6); }); }
   function openCrypt() { setWant('crypt_floor_walls', 'open', GATE_FADE); setWant('crypt_wall_front', 'open', GATE_FADE); }
+  function closeCrypt() { setWant('crypt_floor_walls', 'closed', GATE_FADE); setWant('crypt_wall_front', 'closed', GATE_FADE); } // after the great drop the gates shut again
   function hideBossDoor() { setWant('boss_door', 'hidden', 0.01); }
   function tick() { // a module whose shown art changed starts a fade from the old art
     var t = nowS();
@@ -3164,7 +3178,7 @@ window.ArenaArt6 = (function () {
       drawLayer(ctx, v, l, p, ax, ay);
     }
   }
-  return { load: load, ready: function () { return ok; }, reset: reset, warn: warn, land: land, dropAll: dropAll, openCrypt: openCrypt, hideBossDoor: hideBossDoor,
+  return { load: load, ready: function () { return ok; }, reset: reset, warn: warn, land: land, dropAll: dropAll, openCrypt: openCrypt, closeCrypt: closeCrypt, hideBossDoor: hideBossDoor,
     draw: function (ctx, v) { drawPass(ctx, v, false); }, drawFront: function (ctx, v) { drawPass(ctx, v, true); }, state: function () { return Object.assign({}, want); } };
 })();
     // --- SPRITE ASSET MANAGER ---
@@ -4674,7 +4688,7 @@ window.ArenaArt6 = (function () {
     // World position of the staff crystal for the current sprite/frame/facing/pose
     function staffTip() {
       const p = heroPose;
-      const t = STAFF_TIP[hero.castTimer > 0 ? 'hero-cast' : p.key]; // a cast started this frame draws the cast pose
+      const t = STAFF_TIP[(hero.castTimer > 0 && !(hero.isMoving && omniOn())) ? 'hero-cast' : p.key]; // a cast started this frame draws the cast pose (not while the Omni run keeps playing)
       const px = Array.isArray(t.x) ? t.x[p.frame] : t.x;
       const lx = px * p.sx * CHAR_SCALE, ly = t.y * p.sy * CHAR_SCALE; // the drawn hero is CHAR_SCALE bigger, so the staff crystal moves with it
       const c = Math.cos(p.rot), s = Math.sin(p.rot);
@@ -4759,7 +4773,8 @@ window.ArenaArt6 = (function () {
         const b = Math.abs(Math.sin(h.walkTimer)) * 0.08;
         sy *= 1 - b; sx *= 1 + b;
       }
-      heroPose.key = h.castTimer > 0 ? 'hero-cast' : (h.isMoving ? 'hero-walk' : 'hero-idle');
+      // Omni walk/run keeps playing while she casts on the move (the old cast pose used to cut the run off mid-stride); standing still she still uses the cast pose until an Omni attack clip exists
+      heroPose.key = (h.castTimer > 0 && !(h.isMoving && omniOn())) ? 'hero-cast' : (h.isMoving ? 'hero-walk' : 'hero-idle');
       heroPose.frame = omniOn() ? Math.floor((h.omniPhase || 0) * 6) % 6 : Math.floor(h.walkTimer * 1.6) % 6; // staff tip table has 6 entries
       heroPose.ox = ox; heroPose.oy = oy; heroPose.rot = rot; heroPose.sx = sx; heroPose.sy = sy;
     }
