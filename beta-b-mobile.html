@@ -3393,6 +3393,7 @@ window.ArenaArt6 = (function () {
       'vfx-enemyorb': 'sprites-w/sprites/vfx/enemyorb.webp',
       'shard-blue': 'sprites/items/shard-blue.png',
       'shard-green': 'sprites/items/shard-green.png',
+      'speed-streak': 'sprites/vfx/speed-streak.webp', // speed-boots streaks: Flow-painted, 6 frames in one row, thick end on the right (Matin 2026-11-25)
       'bolt-comet': GFX_HD ? 'sprites/vfx/bolt-comet-hd.webp' : 'sprites/vfx/bolt-comet.webp', // Staff Bolt: Flow-painted comet, 8 frames in one row, head at 67 % (Matin picked 2026-11-25)
       'soul-small': 'sprites-w/sprites/items/soul-small.webp',
       'soul-medium': 'sprites/items/soul-medium.png',
@@ -8278,19 +8279,17 @@ function drawHero0(h) {
       ctx.fill();
 
       // Speed lines when boots buff is active
+      // (Matin 2026-11-25: the 4 random green strokes had no art.) Flow-painted streak strip, 6 frames, thick end at her back, flipped by facing; nothing is drawn until the strip has loaded.
       if (h.speedBuffTimer > 0 && h.isMoving) {
-        ctx.save();
-        ctx.strokeStyle = 'rgba(124, 255, 107, 0.7)';
-        ctx.lineWidth = 2;
-        for (let s = 0; s < 4; s++) {
-          const offY = (s - 1.5) * 12;
-          const len = 30 + Math.random() * 20;
-          ctx.beginPath();
-          ctx.moveTo(-h.facing * 18, offY - 20);
-          ctx.lineTo(-h.facing * (18 + len), offY - 20);
-          ctx.stroke();
+        const ss = SPRITES['speed-streak'];
+        if (ss && ss.complete && ss.naturalWidth) {
+          const fw = ss.naturalWidth / 6, len = 96, hgt = len * ss.naturalHeight / fw, fi = ((gameTime * 16) | 0) % 6;
+          ctx.save();
+          ctx.scale(h.facing, 1);
+          ctx.globalAlpha = 0.9;
+          ctx.drawImage(ss, fi * fw, 0, fw, ss.naturalHeight, -12 - len, -48 - hgt / 2, len, hgt);
+          ctx.restore();
         }
-        ctx.restore();
       }
 
       // Body: pose from updateHeroPose (walk bob + cast gesture), rotated/squashed around the feet
