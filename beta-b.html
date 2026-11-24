@@ -311,6 +311,7 @@
     .upgrade-card.card-evolve { background-image: url('sprites-w/sprites/ui/card-evolve.webp'); padding-top: calc(var(--cw) * 0.26); }
     .upgrade-card.card-relic { background-image: url('sprites-w/sprites/ui/card-relic.webp'); padding-top: calc(var(--cw) * 0.24); }
     .upgrade-card::after { top: 8%; height: 84%; width: 30%; }
+    .upgrade-card { justify-content: center; } /* Matin 2026-11-25: icon + title + text sat at the top with an empty lower half; centred in the card now */
     /* Hover: frame stays, runes light up (glow colour per frame) */
     .upgrade-card { --glow-a: #ff4fd8; --glow-b: #b84dff; }
     .upgrade-card.card-evolve { --glow-a: #ffd23f; --glow-b: #ff9d2e; }
@@ -426,13 +427,22 @@
 
     #pause-modal { z-index: 60; }
     .pause-panel {
+      position: relative;
       width: min(92vw, 440px);
       text-align: center;
-      border: 26px solid transparent;
-      border-image: url('sprites-w/sprites/ui/panel.webp') 80 70 60 70 fill / 26px stretch;
+      border: 32px solid transparent;
+      /* panel-base.png = panel.png with the side runes removed (the runes sat inside the stretched edge and grew 4x taller than wide as the panel grew with items; Matin 2026-11-25).
+         The runes are the two ::before/::after columns below: natural proportions, tiled with `space` so any height gets whole clusters, never stretched. */
+      border-image: url('sprites-w/sprites/ui/panel-base.webp?v=1') 80 70 60 70 fill / 32px stretch;
       filter: drop-shadow(0 12px 20px rgba(0, 0, 0, 0.8));
       padding: 6px 4px 8px;
     }
+    .pause-panel::before, .pause-panel::after {
+      content: ''; position: absolute; top: 6px; bottom: 6px; width: 17px; pointer-events: none;
+      background-size: 100% auto; background-position: center top; background-repeat: space repeat;
+    }
+    .pause-panel::before { left: -23px; background-image: url('sprites/ui/panel-runes-left.png?v=1'); }
+    .pause-panel::after { right: -23px; background-image: url('sprites/ui/panel-runes-right.png?v=1'); }
     .pause-title {
       font-size: 34px;
       font-weight: 900;
@@ -522,6 +532,7 @@
       0%, 100% { transform: scale(1); filter: drop-shadow(0 6px 10px rgba(0, 0, 0, 0.7)); }
       50% { transform: scale(1.06); filter: drop-shadow(0 6px 10px rgba(0, 0, 0, 0.7)) drop-shadow(0 0 16px rgba(255, 210, 63, 0.55)); }
     }
+    #menu-play-wrap, #main-menu > .menu-play { position: relative; top: 9vh; } /* Matin 2026-11-25: Play + Upgrades sat on her face; lower, onto the cloak */
     .menu-lb { position: relative; align-self: center; margin-top: 8px; z-index: 2; /* in the menu's flow under Upgrades / What's new: it used to be pinned above Play and landed on top of Upgrades */
       background: rgba(20, 16, 28, 0.85); color: #ffd23f; border: 3px solid #ffd23f; border-radius: 999px; padding: 9px 20px; box-shadow: 0 4px 0 #000;
       font: 800 15px 'Trebuchet MS', 'Segoe UI', Arial, sans-serif; letter-spacing: 1.5px; cursor: pointer; -webkit-tap-highlight-color: transparent; }
