@@ -3301,6 +3301,7 @@ window.ArenaArt6 = (function () {
       'vfx-enemyorb': 'sprites-w/sprites/vfx/enemyorb.webp',
       'shard-blue': 'sprites/items/shard-blue.png',
       'shard-green': 'sprites/items/shard-green.png',
+      'bolt-comet': GFX_HD ? 'sprites/vfx/bolt-comet-hd.webp' : 'sprites/vfx/bolt-comet.webp', // Staff Bolt: Flow-painted comet, 8 frames in one row, head at 67 % (Matin picked 2026-11-25)
       'soul-small': 'sprites-w/sprites/items/soul-small.webp',
       'soul-medium': 'sprites/items/soul-medium.png',
       'soul-large': 'sprites/items/soul-large.png',
@@ -8763,6 +8764,17 @@ function drawEnemy0(e) {
           ctx.restore();
         });
 
+        // Staff Bolt = painted gold comet (8-frame flicker, head on the hit point, tail behind). The green Storm Staff keeps the green shard until it gets its own art.
+        const cmImg = p.isStormStaff ? null : SPRITES['bolt-comet'];
+        if (cmImg && cmImg.complete && cmImg.naturalWidth) {
+          const fw = cmImg.naturalWidth / 8, fi = (((gameTime * 20) | 0) + ((p.x * 0.37) | 0)) & 7; // 20 fps flicker, projectiles out of step
+          const len = 104 * (p.size || 1), hgt = len * cmImg.naturalHeight / fw;
+          ctx.translate(p.x, p.y);
+          ctx.rotate(ang);
+          ctx.drawImage(cmImg, fi * fw, 0, fw, cmImg.naturalHeight, -len * 0.67, -hgt / 2, len, hgt);
+          ctx.restore();
+          return;
+        }
         // Painted crystal shard (Flow art, faces right, carries its own energy trail)
         const shardImg = SPRITES[p.isStormStaff ? 'shard-green' : 'shard-blue'];
         if (shardImg && shardImg.complete && shardImg.naturalWidth) {
