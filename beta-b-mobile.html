@@ -1606,7 +1606,7 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
       arenaVaultCells = []; for (let y = sc(VG[1]); y < sc(VG[1] + VG[3]); y++) for (let x = sc(VG[0]); x < sc(VG[0] + VG[2]); x++) arenaVaultCells.push(y * GW + x);
       arenaVaultY = sc(VG[1]) * CS; arenaVaultBox = { x0: sc(25) * CS, x1: sc(39) * CS }; arenaVaultC = cc(vault); arenaEntry = cc(route);
       arenaStage = 0; arenaTraps = []; arenaBlasts = []; arenaWave = 0; arenaNextTrap = arenaNextElite = arenaCutEnd = 0;
-      if (typeof ArenaArt5 !== 'undefined' && ArenaArt5.ready()) { ArenaArt5.reset(); ['gate_1', 'gate_2', 'gate_3', 'gatehouse'].forEach(n => ArenaArt5.setHidden(n, ART_6)); if (ART_6) ArenaArt6.reset(); } // a new run: every painted cell stands again
+      if (typeof ArenaArt5 !== 'undefined' && ArenaArt5.ready()) { ArenaArt5.reset(); ['gate_1', 'gate_2', 'gate_3', 'gatehouse'].forEach(n => ArenaArt5.setHidden(n, ART_6)); if (ART_6) { ArenaArt6.reset(); ['block_h1', 'block_h2', 'block_h3', 'block_h4', 'block_h5', 'block_c1', 'block_c2', 'block_c3', 'block_c4'].forEach(n => ArenaArt5.setHidden(n, true)); } } // a new run: every painted cell stands again
       arenaGateSprs = GATES.concat([VG]).map((g, i) => ({ x: ((sc(g[0]) + sc(g[0] + g[2])) / 2) * CS, y: sc(g[1] + g[3]) * CS, vault: i === GATES.length })); // sprite foot = south edge of the gate
       arenaGateHide = new Uint8Array(GW * GH); // gate cube cells under a sprite are not drawn
       arenaGateSprs.forEach((s, i) => { const g = i < GATES.length ? GATES[i] : VG; for (let y = sc(g[1]); y < sc(g[1] + g[3]); y++) for (let x = sc(g[0]); x < sc(g[0] + g[2]); x++) if (Math.abs(x * CS + CS / 2 - s.x) < 130) arenaGateHide[y * GW + x] = 1; });
@@ -1651,7 +1651,8 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
         [9, 34], [13, 43], [53, 34], [49, 43], [28, 61], [34, 58], // wings, south shrine
         [10, 12], [18, 18], [8, 20], [52, 12], [44, 18], [54, 20]]; // chambers
       const blocks = [];
-      if (ART_5) [[21, 39, 2, 3], [43, 30, 2, 2], [53, 34, 2, 3], [49, 43, 3, 2], [28, 61, 2, 3], [8, 20, 2, 3], [18, 18, 2, 2], [44, 18, 3, 2], [54, 20, 2, 3]].forEach(b => blocks.push({ x: b[0], y: b[1], w: b[2], h: b[3] })); // the painted level has its nine blocks in fixed slots
+      if (ART_6) { /* the level pack has no cover blocks: Matin's floor is open */ }
+      else if (ART_5) [[21, 39, 2, 3], [43, 30, 2, 2], [53, 34, 2, 3], [49, 43, 3, 2], [28, 61, 2, 3], [8, 20, 2, 3], [18, 18, 2, 2], [44, 18, 3, 2], [54, 20, 2, 3]].forEach(b => blocks.push({ x: b[0], y: b[1], w: b[2], h: b[3] })); // the painted level has its nine blocks in fixed slots
       else SLOTS.forEach(s => { if (rand() < 0.55) { const sh = [[2, 2], [3, 2], [2, 3]][Math.floor(rand() * 3)]; blocks.push({ x: s[0], y: s[1], w: sh[0], h: sh[1] }); } });
       const putBlock = (b, on) => { fill(grid, b.x, b.y, b.x + b.w, b.y + b.h, on ? 0 : 1); fill(deco, b.x, b.y, b.x + b.w, b.y + b.h, on ? 2 : 0); };
       blocks.forEach(b => putBlock(b, true));
@@ -1945,7 +1946,7 @@ if(lm&&dl&&Math.abs(lm-dl)>2000){sessionStorage.setItem('svti_fresh','1');fetch(
       if (!ART_5 || arena !== true || typeof ArenaArt5 === 'undefined') return false;
       if (!art5Started) { art5Started = true; ArenaArt5.load('sprites/arena/v5/'); if (ART_6) ArenaArt6.load('sprites/arena/v6/'); }
       const rd = ArenaArt5.ready() && (!ART_6 || ArenaArt6.ready());
-      if (rd && ART_6 && !art6Hid) { art6Hid = true; ['gate_1', 'gate_2', 'gate_3', 'gatehouse'].forEach(n => ArenaArt5.setHidden(n, true)); } // the level pack has the crypt and its gates itself
+      if (rd && ART_6 && !art6Hid) { art6Hid = true; ['gate_1', 'gate_2', 'gate_3', 'gatehouse', 'block_h1', 'block_h2', 'block_h3', 'block_h4', 'block_h5', 'block_c1', 'block_c2', 'block_c3', 'block_c4'].forEach(n => ArenaArt5.setHidden(n, true)); } // the level pack has the crypt and its gates itself and no cover blocks
       return rd;
     }
     function art5View(cam) { return { W: screenW, H: screenH, z: cam.zoom || 0.9, cx: cam.x, cy: cam.y, yaw: World.yaw, tilt: World.tilt }; }
