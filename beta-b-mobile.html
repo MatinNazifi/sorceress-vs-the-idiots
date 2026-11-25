@@ -2331,7 +2331,9 @@ window.addEventListener('load', function () { setTimeout(function () { var s = d
       }
     }
     // WARNING MARKER (art=6, Matin 2026-11-25): molten cracks over the doomed cells + a glowing rune border; written by Neon high (QC by Claude), art from Flow (sprites/arena/warn-*.jpg, drawn additively on black)
-    const WARN_IMG = {};
+    // One neutral pattern for every level (Matin 2026-11-25: the lava look was too specific): the texture is white-hot fractures, WARN_THEME tints it per level (a later level overrides it)
+    const WARN_IMG = {}, WARN_TINTED = {}, WARN_THEME = { tint: 'rgb(255,175,85)', line: 'rgb(255,165,70)', glow: 'rgb(255,125,35)' };
+    function warnTint(im, col) { if (!im) return null; const k = im.src + col; if (!WARN_TINTED[k]) { const cv = document.createElement('canvas'); cv.width = im.naturalWidth; cv.height = im.naturalHeight; const x = cv.getContext('2d'); x.drawImage(im, 0, 0); x.globalCompositeOperation = 'multiply'; x.fillStyle = col; x.fillRect(0, 0, cv.width, cv.height); WARN_TINTED[k] = cv; } return WARN_TINTED[k]; }
     function warnArt(n) { let im = WARN_IMG[n]; if (!im) { im = WARN_IMG[n] = new Image(); im.src = 'sprites/arena/' + n; } return im.complete && im.naturalWidth ? im : null; }
     const WARN_DASH = [18, 12]; // Reused dash pattern to avoid per-frame allocations
 
@@ -2385,7 +2387,7 @@ window.addEventListener('load', function () { setTimeout(function () { var s = d
     const wb = e._wb || warnBuild(e, GW, CS);
     c.save();
     c.globalCompositeOperation = 'lighter';
-    const cracks = warnArt('warn-cracks.jpg');
+    const cracks = warnTint(warnArt('warn-cracks.jpg'), WARN_THEME.tint);
     if (cracks) {
     c.save(); // Isolate clip so border and runes draw outside the zone
     c.clip(wb.path);
@@ -2398,10 +2400,10 @@ window.addEventListener('load', function () { setTimeout(function () { var s = d
     }
     c.restore();
     }
-    c.strokeStyle = 'rgb(255,150,40)';
+    c.strokeStyle = WARN_THEME.line;
     c.lineWidth = 4;
     c.globalAlpha = 0.55 + 0.4 * p;
-    c.shadowColor = 'rgb(255,120,20)';
+    c.shadowColor = WARN_THEME.glow;
     c.shadowBlur = 14;
     c.setLineDash(WARN_DASH);
     c.lineDashOffset = -gameTime * 40;
@@ -11129,7 +11131,7 @@ telemetryInit();
       }
     };
 
-    const BUILD_ID = '1125-2229';
+    const BUILD_ID = '1125-2236';
     if (/beta-b/.test(location.pathname)) { const bid = document.createElement('div'); bid.textContent = 'build ' + BUILD_ID; bid.style.cssText = 'position:fixed;right:6px;bottom:2px;font:10px monospace;color:#fff;opacity:.45;z-index:99999;pointer-events:none'; document.body.appendChild(bid); }   // which build is this? (Matin 2026-11-25: fixes were reported 'still wrong' and I could not tell if the new build was running)
     // --- ASSET CACHE (beta pages only): sw.js keeps the art / clips / sounds in the browser so every visit after the first downloads nothing. play.html and the stable index never register it. ---
     if ('serviceWorker' in navigator && /[?&]nosw=1/.test(location.search)) {   // safety switch: ?nosw=1 removes the cache worker and its files
