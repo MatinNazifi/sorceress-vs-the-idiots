@@ -2441,7 +2441,7 @@ window.addEventListener('load', function () { setTimeout(function () { var s = d
     c.restore();
     }
     // SANDSTORM (?warn=storm, test, Matin 2026-11-25): a see-through dust haze drifting over the doomed floor + fast wind streaks, stronger as the fall nears; level-neutral (WARN_THEME.dust tints it). Blobs and streaks come from fixed seeds, nothing allocates per frame.
-    const WARN_HAZE = (() => { const cv = document.createElement('canvas'); cv.width = cv.height = 128; const x = cv.getContext('2d'), g = x.createRadialGradient(64, 64, 0, 64, 64, 64); g.addColorStop(0, 'rgba(255,255,255,0.95)'); g.addColorStop(0.5, 'rgba(255,255,255,0.4)'); g.addColorStop(1, 'rgba(255,255,255,0)'); x.fillStyle = g; x.fillRect(0, 0, 128, 128); x.globalCompositeOperation = 'multiply'; x.fillStyle = 'rgb(205,185,150)'; x.fillRect(0, 0, 128, 128); return cv; })();
+    const WARN_HAZE = (() => { const cv = document.createElement('canvas'); cv.width = cv.height = 128; const x = cv.getContext('2d'), g = x.createRadialGradient(64, 64, 0, 64, 64, 64); g.addColorStop(0, 'rgba(255,255,255,0.95)'); g.addColorStop(0.5, 'rgba(255,255,255,0.4)'); g.addColorStop(1, 'rgba(255,255,255,0)'); x.fillStyle = g; x.fillRect(0, 0, 128, 128); x.globalCompositeOperation = 'source-in'; x.fillStyle = 'rgb(215,195,160)'; x.fillRect(0, 0, 128, 128); return cv; })();   // source-in: tint only where the blob has alpha (multiply filled the transparent corners = square edges)
     function warnStorm(c, e, p, wb) {
       const bw = wb.maxX - wb.minX, bh = wb.maxY - wb.minY, n = Math.min(40, 8 + ((bw * bh) / 24000) | 0), T = gameTime;
       c.save(); c.clip(wb.path);
@@ -11168,7 +11168,7 @@ telemetryInit();
       }
     };
 
-    const BUILD_ID = '1125-2326';
+    const BUILD_ID = '1125-2327';
     if (/beta-b/.test(location.pathname)) { const bid = document.createElement('div'); bid.textContent = 'build ' + BUILD_ID; bid.style.cssText = 'position:fixed;right:6px;bottom:2px;font:10px monospace;color:#fff;opacity:.45;z-index:99999;pointer-events:none'; document.body.appendChild(bid); }   // which build is this? (Matin 2026-11-25: fixes were reported 'still wrong' and I could not tell if the new build was running)
     // --- ASSET CACHE (beta pages only): sw.js keeps the art / clips / sounds in the browser so every visit after the first downloads nothing. play.html and the stable index never register it. ---
     if ('serviceWorker' in navigator && /[?&]nosw=1/.test(location.search)) {   // safety switch: ?nosw=1 removes the cache worker and its files
