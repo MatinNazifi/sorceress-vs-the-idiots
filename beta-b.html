@@ -3228,7 +3228,7 @@ window.ArenaArt6 = (function () {
         // ready only when the healthy-state layers are decoded: until then the grey-box floor stays (a black map while 17 MB loaded was the bug); the other states load in the background
         var core = data.layers.filter(function (l) { return HEALTHY[l.module] === l.state; });
         data.layers.forEach(function (l) { img(l.file); });
-        return Promise.all(core.map(function (l) { return new Promise(function (r) { var im = img(l.file); if (im.complete && im.naturalWidth) r(); else { im.onload = r; im.onerror = r; } }); })).then(function () { buildWalk(); buildFeet(); ok = true; if (typeof loadOmniStrips === 'function') loadOmniStrips(); if (GFX_HD && !GFX_ULTRA) setTimeout(loadHD, 2500); if (GFX_ULTRA) setTimeout(loadUltra, 3000); });
+        return Promise.all(core.map(function (l) { return new Promise(function (r) { var im = img(l.file); if (im.complete && im.naturalWidth) r(); else { im.onload = r; im.onerror = r; } }); })).then(function () { buildWalk(); buildFeet(); ok = true; if (typeof loadOmniStrips === 'function') loadOmniStrips(); if (GFX_HD) setTimeout(loadHD, 2500);   // the quick 2x sharp art always comes first (4.4 MB); the 4x tiles refine it later if (GFX_ULTRA) setTimeout(loadUltra, 3000); });
       }).catch(function () { ok = false; });
   }
   function img(file) { var im = imgs[file]; if (!im) { im = imgs[file] = new Image(); im.src = base + file; } return im; }

@@ -19,7 +19,7 @@ self.addEventListener('fetch', e => {
   if (req.method !== 'GET' || u.origin !== location.origin || !/\/(sprites|audio)\//.test(u.pathname) || req.headers.has('range')) return;
   e.respondWith((async () => {
     if (!manifestReady) manifestReady = syncManifest();
-    await manifestReady;
+    await Promise.race([manifestReady, new Promise(r => setTimeout(r, 1500))]);   // a slow link must not stall the art: after 1.5 s serve what is cached
     const c = await caches.open(CACHE), hit = await c.match(req, { ignoreSearch: true });
     if (hit) return hit;
     const r = await fetch(req);
