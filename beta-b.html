@@ -4796,6 +4796,8 @@ window.ArenaArt6 = (function () {
     function loadOmniStrips() { if (!OMNI_ANIM.on) return; for (const k in OMNI_URLS) if (!SPRITES[k]) { const im = new Image(); im.src = OMNI_URLS[k]; SPRITES[k] = im; } }
     if (typeof setTimeout !== 'undefined') setTimeout(loadOmniStrips, 6000);
     function omniOn() { const a = SPRITES['hero-omni-walk'], b = SPRITES['hero-omni-run']; return OMNI_ANIM.on && !!a && !!b && a.complete && b.complete && a.naturalWidth > 0 && b.naturalWidth > 0; }
+    // Screen-side (+ = right of the screen) of a WORLD offset: the camera is yawed, so "target.x >= hero.x" (world) put the sprite on the wrong side for enemies to her screen right/left (Matin 2026-11-25: the hand was on the other side).
+    function screenDX(dx, dy) { return World.yaw ? dx * World.cosY - dy * World.sinY : dx; }
     // Which direction clip fits the heading on SCREEN (the camera is yawed and tilted): 0 = mostly up/down, 1 = diagonal, 2 = sideways (the side walk/run). Hysteresis of 6 degrees stops flicker at the borders.
     function omniDirOf(h) {
       const sx = h.vx * World.cosY - h.vy * World.sinY, sy = (h.vx * World.sinY + h.vy * World.cosY) * World.tilt, ph = Math.atan2(Math.abs(sx), Math.abs(sy)) * 57.2958; // 0 = straight vertical
@@ -5362,7 +5364,7 @@ if (metaFx.regen > 0 && hero.hp > 0) hero.hp = Math.min(hero.maxHp, hero.hp + me
             if (i === 0) {
               const aim = Math.atan2(target.y - hero.y, target.x - hero.x);
               // Standing still: turn to face the target so the bolt leaves the front of the staff
-              if (!hero.isMoving && !hero.isDashing && !activeBeam) hero.facing = target.x >= hero.x ? 1 : -1;
+              if (!hero.isMoving && !hero.isDashing && !activeBeam) hero.facing = screenDX(target.x - hero.x, target.y - hero.y) >= 0 ? 1 : -1;
               // Staff thrust; mid-thrust re-casts only get a tiny recoil
               if (!startHeroAnim('thrust', 0.15, 1, Math.cos(aim), Math.sin(aim))) {
                 hero.animDirX = Math.cos(aim); hero.animDirY = Math.sin(aim); hero.recoilT = 0.06;
@@ -5428,7 +5430,7 @@ if (metaFx.regen > 0 && hero.hp > 0) hero.hp = Math.min(hero.maxHp, hero.hp + me
         const beamLen = stats.length * hero.areaMult * (overcharge ? 1.5 : 1);
         const aimAng = beamAimAngle(beamLen);
         if (aimAng === null) { w.timer = BEAM_RETRY_S; w.cdMax = 0; return; } // nothing in reach: hold fire, retry soon
-        if (!hero.isDashing) hero.facing = Math.cos(aimAng) >= 0 ? 1 : -1; // staff (and its tip) turns to the target
+        if (!hero.isDashing) hero.facing = screenDX(Math.cos(aimAng), Math.sin(aimAng)) >= 0 ? 1 : -1; // staff (and its tip) turns to the target (screen side)
         hero.castTimer = 0.65; // cast pose (staff forward) for the whole beam
         startHeroAnim('brace', 0.65, 2, hero.facing);
         tipFlash(0.45);
@@ -5528,7 +5530,7 @@ if (metaFx.regen > 0 && hero.hp > 0) hero.hp = Math.min(hero.maxHp, hero.hp + me
         if (!target && !storm) return;
         const tp = staffTip();
         const aim = target ? Math.atan2(target.y - 15 - tp.y, target.x - tp.x) : (hero.facing > 0 ? 0 : Math.PI);
-        if (target && !hero.isMoving && !hero.isDashing && !activeBeam) hero.facing = target.x >= hero.x ? 1 : -1;
+        if (target && !hero.isMoving && !hero.isDashing && !activeBeam) hero.facing = screenDX(target.x - hero.x, target.y - hero.y) >= 0 ? 1 : -1;
         hero.castTimer = 0.15;
         startHeroAnim('flick', 0.18, 1, Math.cos(aim), Math.sin(aim));
         tipFlash(0.4);
@@ -5828,7 +5830,7 @@ if (metaFx.regen > 0 && hero.hp > 0) hero.hp = Math.min(hero.maxHp, hero.hp + me
               e.state = 'windup';
               e.stateTimer = 0.6;
               e.attackTelegraph = 0.6;
-              e.facing = toHeroX >= 0 ? 1 : -1; // swing toward the hero
+              e.facing = screenDX(toHeroX, toHeroY) >= 0 ? 1 : -1; // swing toward the hero (screen side)
             } else if (distToHero > 0.1) {
               e.vx = (toHeroX / distToHero) * effectiveSpeed;
               e.vy = (toHeroY / distToHero) * effectiveSpeed;
@@ -5937,7 +5939,7 @@ if (metaFx.regen > 0 && hero.hp > 0) hero.hp = Math.min(hero.maxHp, hero.hp + me
               e.stateTimer = 0.8;
               e.chargeDirX = toHeroX;
               e.chargeDirY = toHeroY;
-              e.facing = toHeroX >= 0 ? 1 : -1;
+              e.facing = screenDX(toHeroX, toHeroY) >= 0 ? 1 : -1;
               Sound.bossStun();
             }
           }
@@ -5946,11 +5948,12 @@ if (metaFx.regen > 0 && hero.hp > 0) hero.hp = Math.min(hero.maxHp, hero.hp + me
         // Facing follows the sign of horizontal velocity (sprites face RIGHT), so nobody moonwalks
         // Dead-zone: |vx| <= 8 keeps the last facing, so near-vertical movers don't flicker
         // Grumbo (caster) always faces the hero it shoots at, even while backing off or standing
+        // (screen side, not world x: the camera is yawed, so world x put some enemies on the wrong side, 2026-11-25)
         if (e.type === 'grumbo') {
-          if (toHeroX > 8) e.facing = 1;
-          else if (toHeroX < -8) e.facing = -1;
-        } else if (e.vx > 8) e.facing = 1;
-        else if (e.vx < -8) e.facing = -1;
+          const sh = screenDX(toHeroX, toHeroY);
+          if (sh > 8) e.facing = 1;
+          else if (sh < -8) e.facing = -1;
+        } else { const sv = screenDX(e.vx, e.vy); if (sv > 8) e.facing = 1; else if (sv < -8) e.facing = -1; }
         // Walk-sheet frame rate scales with movement speed: ~10 fps at base speed
         const moveSpeed = Math.hypot(e.vx, e.vy);
         e.isMovingNow = moveSpeed > 5;
@@ -6052,7 +6055,7 @@ if (metaFx.regen > 0 && hero.hp > 0) hero.hp = Math.min(hero.maxHp, hero.hp + me
       e.atkDX = dx / d; e.atkDY = dy / d;
       e.atkT = 0;
       e.atkRearm = ATK_REARM;
-      if (Math.abs(dx) > 4) e.facing = dx > 0 ? 1 : -1;
+      const sdx = screenDX(dx, dy); if (Math.abs(sdx) > 4) e.facing = sdx > 0 ? 1 : -1;   // screen side (the camera is yawed)
     }
 
     function hitHero(damage, srcType) {
