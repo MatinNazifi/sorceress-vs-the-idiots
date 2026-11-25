@@ -4793,7 +4793,15 @@ window.ArenaArt6 = (function () {
     }
     function omniAtkV(h) { return (h.atkSet === 'S' || h.atkSet === 'N' ? OMNI_DIRATK[h.atkSet] : OMNI_ATK.variants)[h.atkV || 0]; }
     function omniAtkFrame(h) { return h.atkT >= 0 ? Math.min(OMNI_ATK.frames - 1, Math.floor(h.atkT / omniAtkV(h).dur * OMNI_ATK.frames)) : -1; }
-    function loadOmniStrips() { if (!OMNI_ANIM.on) return; for (const k in OMNI_URLS) if (!SPRITES[k]) { const im = new Image(); im.src = OMNI_URLS[k]; SPRITES[k] = im; } }
+    // Walk + run load FIRST and alone; the other ~12 strips (directions, attacks, standing: 7 MB, 15 MB in HD) only start once those two are ready. Loading all 14 at once shared the bandwidth, so on a slow
+    // connection walk/run arrived late and the game showed the OLD 6-pose animation until then (Matin 2026-11-25: "all the animations are gone back to the old one").
+    function loadOmniStrips() {
+      if (!OMNI_ANIM.on) return;
+      const get = k => { if (!SPRITES[k]) { const im = new Image(); im.src = OMNI_URLS[k]; SPRITES[k] = im; } };
+      get('hero-omni-walk'); get('hero-omni-run');
+      if (!omniOn()) return;
+      for (const k in OMNI_URLS) get(k);
+    }
     if (typeof setTimeout !== 'undefined') setTimeout(loadOmniStrips, 6000);
     function omniOn() { const a = SPRITES['hero-omni-walk'], b = SPRITES['hero-omni-run']; return OMNI_ANIM.on && !!a && !!b && a.complete && b.complete && a.naturalWidth > 0 && b.naturalWidth > 0; }
     // Screen-side (+ = right of the screen) of a WORLD offset: the camera is yawed, so "target.x >= hero.x" (world) put the sprite on the wrong side for enemies to her screen right/left (Matin 2026-11-25: the hand was on the other side).
