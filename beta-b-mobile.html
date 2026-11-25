@@ -2447,18 +2447,12 @@ window.addEventListener('load', function () { setTimeout(function () { var s = d
       const bw = wb.maxX - wb.minX, bh = wb.maxY - wb.minY, n = Math.min(40, 8 + ((bw * bh) / 24000) | 0), T = gameTime;
       c.save(); c.clip(wb.path);
       for (let i = 0; i < n; i++) { // soft haze blobs drifting with the wind (to the right / down the screen), wrapping inside the zone box
-        const R = 70 + ((i * 53) % 60), s1 = ((i * 2654435761) >>> 0) / 4294967296, s2 = ((i * 40503 + 17) >>> 0) % 997 / 997;
+        const R = 40 + ((i * 53) % 35), s1 = ((i * 2654435761) >>> 0) / 4294967296, s2 = ((i * 40503 + 17) >>> 0) % 997 / 997;
         const x = wb.minX + (((s1 * bw + T * (34 + (i % 5) * 6)) % (bw + 2 * R)) + (bw + 2 * R)) % (bw + 2 * R) - R, y = wb.minY + (s2 * bh + Math.sin(T * 0.6 + i) * 14 + T * 8) % (bh + R) - R * 0.5;
         c.globalAlpha = (0.05 + 0.2 * p) * (0.7 + 0.3 * Math.sin(T * 1.3 + i));
         c.drawImage(WARN_HAZE, x - R, y - R * 0.6, R * 2, R * 1.2);
       }
-      c.strokeStyle = 'rgb(235,220,190)'; c.lineWidth = 2; c.lineCap = 'round'; c.globalAlpha = 0.1 + 0.3 * p; c.beginPath();
-      for (let i = 0; i < n * 2; i++) { // wind streaks: short fast lines
-        const L = 45 + ((i * 29) % 50), s1 = ((i * 1597334677 + 11) >>> 0) / 4294967296, s2 = ((i * 3266489917 + 5) >>> 0) / 4294967296;
-        const x = wb.minX + ((s1 * bw + T * (230 + (i % 4) * 40)) % (bw + 100)) - 50, y = wb.minY + s2 * bh;
-        c.moveTo(x, y); c.lineTo(x + L, y + L * 0.28);
-      }
-      c.stroke(); c.restore();
+      c.restore();   // (the wind streaks were removed: Matin said they look like rain lines)
     }
     let warnClipKey = '', warnClipPath = null;
     function arenaWarnClip() { // big rectangle + the doomed zones (evenodd clip = everything EXCEPT the marker areas); null when no collapse warning is on
@@ -11129,7 +11123,7 @@ telemetryInit();
       if (!weatherInit) { weatherInit = true; const wq = new URLSearchParams(location.search).get('weather'); if (wq === 'cycle') { // ?weather=cycle: all eight types one after another, 5 s each, the name shown on top (to look at them fast)
           let ci = 0; const lab = document.createElement('div'); lab.style.cssText = 'position:fixed;left:50%;top:8px;transform:translateX(-50%);font:700 18px sans-serif;color:#fff;background:rgba(0,0,0,.55);padding:4px 14px;border-radius:12px;z-index:99999;pointer-events:none'; document.body.appendChild(lab);
           const stepW = () => { const ty = Weather.TYPES[ci++ % Weather.TYPES.length]; Weather.set(ty, 0.9, 1); lab.textContent = ty; }; stepW(); setInterval(stepW, 5000);
-        } else if (!wq && /[?&]art=6/.test(location.search)) Ambient.init((('ontouchstart' in window) || navigator.maxTouchPoints > 0) ? 0.5 : 1);   // this level: spores on the swamp, embers on the island, rain/mist/leaves now and then (44x-ambient.js)
+        } else if (!wq && /[?&]art=6/.test(location.search) && !/[?&]amb=0/.test(location.search)) Ambient.init((('ontouchstart' in window) || navigator.maxTouchPoints > 0) ? 0.5 : 1);   // this level: spores on the swamp, embers on the island, rain/mist/leaves now and then (44x-ambient.js)
         else Weather.set(wq || Weather.random(Date.now() % 100000), 0.6, (('ontouchstart' in window) || navigator.maxTouchPoints > 0) ? 0.45 : 1); }
       Weather.update(dt, screenW, screenH);
       if (Ambient.active()) Ambient.tick(dt, CAMERA, World, screenW, screenH, gameTime);
@@ -11552,19 +11546,20 @@ telemetryInit();
       function toWorld(c, sx, sy, out) { const u = (sx - c.W / 2) / c.zoom, v = (sy - c.H / 2) / (c.zoom * c.tilt); out.x = c.x + u * c.cos + v * c.sin; out.y = c.y - u * c.sin + v * c.cos; }
       const P = { x: 0, y: 0 };
       function nearFloor(x, y, inside) { for (let k = 0; k < 8; k++) if (inside(x + RING[k][0] * 170, y + RING[k][1] * 170)) return true; return false; }
+      let _wt = 0.75; const overArt = (x, y) => ArenaArt6.ready() && ArenaArt6.cellState(x, y, World.yaw, World.tilt) !== 0;   // painted floor OR a pit (pits are not floor in the grid but are still part of the island)
       function spawnE(i, pits) { // very small embers rising over one of the pits
         if (!pits.length) { eX[i] = 1e9; eA[i] = 0; eL[i] = 0.5; return; }
         const p = pits[i % pits.length], a = R(0, 6.28), r = Math.sqrt(Math.random()) * p.r;
         eX[i] = p.x + Math.cos(a) * r; eY[i] = p.y + Math.sin(a) * r * 0.7; eH[i] = R(0, 8); eV[i] = R(14, 26); eA[i] = 0; eL[i] = R(2.2, 4); eS[i] = R(0, 6.28); eC[i] = pickCell(FX.embers);
       }
       function spawnS(i, c, inside) { // spores float in the swamp right AROUND the playable floor, never over it
-        for (let t = 0; t < 8; t++) { toWorld(c, R(-60, c.W + 60), R(-40, c.H + 60), P); if (!inside(P.x, P.y) && nearFloor(P.x, P.y, inside)) { sX[i] = P.x; sY[i] = P.y; sVx[i] = R(-6, 6); sVy[i] = R(-6, 6); sA[i] = 0; sL[i] = R(6, 11); sS[i] = R(0, 6.28); sC[i] = pickCell(FX.spores); return; } }
+        for (let t = 0; t < 8; t++) { toWorld(c, R(-60, c.W + 60), R(-40, c.H + 60), P); if (!inside(P.x, P.y) && !overArt(P.x, P.y) && nearFloor(P.x, P.y, inside)) { sX[i] = P.x; sY[i] = P.y; sVx[i] = R(-6, 6); sVy[i] = R(-6, 6); sA[i] = 0; sL[i] = R(6, 11); sS[i] = R(0, 6.28); sC[i] = pickCell(FX.spores); return; } }
         sA[i] = 0; sL[i] = 0.2; sX[i] = 1e9;
       }
       function startRain() { rainOn = true; for (let i = 0; i < N_RAIN; i++) { rX[i] = R(0, W); rY[i] = R(-H, H); rV[i] = R(950, 1300); rC[i] = pickCell(FX.rain, 'streak'); } for (let i = 0; i < N_SPL; i++) { pX[i] = R(0, W); pY[i] = R(H * 0.15, H); pA[i] = R(-1, 0); pC[i] = pickCell(FX.rain, 'splash'); } }
       function startEvent(forced) { // leaves or mist now and then (rain has its own long window)
         const types = ['mist', 'leaves'].filter(t => t !== lastType); const type = forced || types[(Math.random() * types.length) | 0]; lastType = type; ev = { type, t: 0, dur: R(22, 38) };
-        if (type === 'mist') for (let i = 0; i < N_MIST; i++) { mX[i] = R(-300, W); mY[i] = R(-100, H - 100); mV[i] = R(9, 24); mS[i] = R(520, 900); mC[i] = (Math.random() * 6) | 0; }
+        if (type === 'mist') for (let i = 0; i < N_MIST; i++) { toWorld(cam, R(-100, W + 100), R(-50, H + 50), P); mX[i] = P.x; mY[i] = P.y; mV[i] = R(8, 18); mS[i] = R(190, 340); mC[i] = (Math.random() * 6) | 0; }   // mist belongs to the MAP (world position, drifting), not to the camera
         else for (let i = 0; i < N_LEAF; i++) { lX[i] = R(-100, W); lY[i] = R(-60, H); lVx[i] = R(90, 170); lVy[i] = R(25, 70); lR[i] = R(0, 6.28); lVr[i] = R(-2.4, 2.4); lP[i] = R(0, 6.28); lC[i] = (Math.random() * 8) | 0; }
       }
       const rainFade = () => (force === 'rain') ? 1 : Math.max(0, Math.min(1, (gt - RAIN_FROM) / 8, (RAIN_TO - gt) / 12));
@@ -11586,7 +11581,7 @@ telemetryInit();
         if (!ev) { if (clock >= nextAt && ready(FX.mist) && ready(FX.leaves)) startEvent(); }
         else {
           ev.t += dt;
-          if (ev.type === 'mist') for (let i = 0; i < N_MIST; i++) { mX[i] += mV[i] * dt; if (mX[i] > W + 100) mX[i] = -mS[i]; }
+          if (ev.type === 'mist') for (let i = 0; i < N_MIST; i++) { mX[i] += mV[i] * dt; if (Math.hypot(mX[i] - c.x, mY[i] - c.y) > 1100 / c.zoom) { toWorld(c, R(-100, W + 100), R(-50, H + 50), P); mX[i] = P.x; mY[i] = P.y; } }
           else for (let i = 0; i < N_LEAF * q; i++) { lP[i] += dt * 2.1; lX[i] += (lVx[i] + Math.sin(lP[i]) * 40) * dt; lY[i] += (lVy[i] + Math.cos(lP[i] * 1.3) * 25) * dt; lR[i] += lVr[i] * dt; if (lX[i] > W + 60 || lY[i] > H + 60) { lX[i] = R(-120, -20); lY[i] = R(-40, H); } }
           if (ev.t > ev.dur) { ev = null; nextAt = clock + R(45, 90); }
         }
@@ -11613,12 +11608,12 @@ telemetryInit();
         const pits = ArenaArt6.ready() ? ArenaArt6.pitSpots() : [];
         for (let i = 0; i < pits.length; i++) { const dx = pits[i].x - c.x, dy = pits[i].y - c.y, g = 170 * c.zoom; ctx.globalAlpha = 0.1 + 0.09 * Math.sin(clock * 1.7 + i * 1.9) * Math.sin(clock * 0.6 + i); ctx.drawImage(glow, c.W / 2 + (dx * c.cos - dy * c.sin) * c.zoom - g / 2, c.H / 2 + (dx * c.sin + dy * c.cos) * c.zoom * c.tilt - g / 2, g, g); }
         for (let i = 0; i < N_SPO * q; i++) { // spores: pulse in and out, bob a little; hidden if one drifted onto the floor
-          if (sX[i] > 1e8 || insideFn(sX[i], sY[i])) continue; const f = Math.sin(Math.PI * Math.min(1, sA[i] / sL[i])), pulse = 0.55 + 0.45 * Math.sin(sA[i] * 1.6 + sS[i]), dx = sX[i] - c.x, dy = sY[i] - c.y;
+          if (sX[i] > 1e8 || insideFn(sX[i], sY[i]) || overArt(sX[i], sY[i])) continue; const f = Math.sin(Math.PI * Math.min(1, sA[i] / sL[i])), pulse = 0.55 + 0.45 * Math.sin(sA[i] * 1.6 + sS[i]), dx = sX[i] - c.x, dy = sY[i] - c.y;
           ctx.globalAlpha = 0.9 * f * pulse; cellDraw(ctx, FX.spores, sC[i], c.W / 2 + (dx * c.cos - dy * c.sin) * c.zoom, c.H / 2 + (dx * c.sin + dy * c.cos) * c.zoom * c.tilt - (12 + 8 * Math.sin(sA[i] * 0.9 + sS[i])) * c.zoom, (16 + (sS[i] % 3) * 9) * c.zoom);
         }
         for (let i = 0; i < N_EMB * q; i++) { // embers: tiny, rising over the pits
           if (eX[i] > 1e8) continue; const f = Math.sin(Math.PI * Math.min(1, eA[i] / eL[i])), dx = eX[i] - c.x, dy = eY[i] - c.y;
-          ctx.globalAlpha = 0.95 * f; cellDraw(ctx, FX.embers, eC[i], c.W / 2 + (dx * c.cos - dy * c.sin) * c.zoom, c.H / 2 + (dx * c.sin + dy * c.cos) * c.zoom * c.tilt - eH[i] * c.zoom, (5 + (eS[i] % 3) * 1.6) * c.zoom);
+          ctx.globalAlpha = 0.95 * f; cellDraw(ctx, FX.embers, eC[i], c.W / 2 + (dx * c.cos - dy * c.sin) * c.zoom, c.H / 2 + (dx * c.sin + dy * c.cos) * c.zoom * c.tilt - eH[i] * c.zoom, (2.6 + (eS[i] % 3) * 0.7) * c.zoom);   // tiny, like the little sparks (Matin)
         }
         if (rf > 0 && rainOn && ready(FX.rain)) {
           ctx.globalAlpha = 0.6 * rf; for (let i = 0; i < N_RAIN * q; i++) cellDraw(ctx, FX.rain, rC[i], rX[i], rY[i], 6 + (rC[i] % 4) * 2, 0);
@@ -11627,14 +11622,14 @@ telemetryInit();
         }
         if (ev && ready(FX[ev.type])) {
           const fade = Math.min(1, ev.t / 4, (ev.dur - ev.t) / 4);
-          if (ev.type === 'mist') { ctx.globalAlpha = 0.085 * fade; for (let i = 0; i < N_MIST; i++) cellDraw(ctx, FX.mist, mC[i], mX[i] + mS[i] / 2, mY[i] + mS[i] / 3, mS[i], 0); }
+          if (ev.type === 'mist') { ctx.globalAlpha = 0.1 * fade; for (let i = 0; i < N_MIST; i++) { const dx = mX[i] - c.x, dy = mY[i] - c.y; cellDraw(ctx, FX.mist, mC[i], c.W / 2 + (dx * c.cos - dy * c.sin) * c.zoom, c.H / 2 + (dx * c.sin + dy * c.cos) * c.zoom * c.tilt, mS[i] * c.zoom, 0); } }
           else { ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 0.95 * fade; for (let i = 0; i < N_LEAF * q; i++) cellDraw(ctx, FX.leaves, lC[i], lX[i], lY[i], 26 + (lC[i] % 3) * 6, lR[i]); }
         }
         ctx.restore();
       }
       return { init, tick, drawNow, active: () => started, event: () => (ev ? ev.type : null), rain: () => rainOn, force: type => { if (type === 'rain') { force = 'rain'; } else { ev = null; startEvent(type); } }, clearForce: () => { force = null; } };
     })();
-    const BUILD_ID = '1126-0042';
+    const BUILD_ID = '1126-0103';
     if (/beta-b/.test(location.pathname)) { const bid = document.createElement('div'); bid.textContent = 'build ' + BUILD_ID; bid.style.cssText = 'position:fixed;right:6px;bottom:2px;font:10px monospace;color:#fff;opacity:.45;z-index:99999;pointer-events:none'; document.body.appendChild(bid); }   // which build is this? (Matin 2026-11-25: fixes were reported 'still wrong' and I could not tell if the new build was running)
     // --- ASSET CACHE (beta pages only): sw.js keeps the art / clips / sounds in the browser so every visit after the first downloads nothing. play.html and the stable index never register it. ---
     if ('serviceWorker' in navigator && /[?&]nosw=1/.test(location.search)) {   // safety switch: ?nosw=1 removes the cache worker and its files
