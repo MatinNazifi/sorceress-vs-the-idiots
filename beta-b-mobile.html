@@ -3298,7 +3298,7 @@ window.ArenaArt6 = (function () {
   function loadHD() {
     var hdBase = base.replace(/v6w\/$/, 'v6hd/'), q = data.layers.slice().sort(function (a, b) { return a.z - b.z; }), i = 0;
     (function next() {
-      if (i >= q.length) return; var l = q[i++], im = new Image();
+      if (i >= q.length) { if (ok) buildCanvases(); return; } var l = q[i++], im = new Image();
       im.onload = function () { imgs[l.file] = im; next(); }; im.onerror = next; im.src = hdBase + l.file + '?v=1';
     })();
   }
@@ -3360,60 +3360,91 @@ window.ArenaArt6 = (function () {
     if (!im.complete || !im.naturalWidth) return;
     if (alpha < 1) ctx.globalAlpha = alpha; ctx.drawImage(im, X, Y, sw, sh); if (alpha < 1) ctx.globalAlpha = 1;
   }
-  // BRIDGE FRONT POSTS sorted against the hero: the front layer is cut into 6 px columns; each column's FOOT (lowest opaque pixel, with the max taken over its neighbours so a rope
-  // takes the foot of the post it hangs from) is compared with the hero's feet on the painting: a column whose foot is LOWER on screen than her feet is in front of her (drawn after her),
-  // otherwise she is in front of it (drawn before her). Before this the whole layer always covered her.
-  var feet = {}, SW = 6;
+  // BRIDGE FRONT POSTS AND ROPES, sorted against EVERYTHING (Matin 2026-11-25).
+  // The front layer is split into its connected PIECES (a rail = its posts and ropes joined). Each piece is drawn from its own masked copy of the image, so two pieces that share screen columns
+  // (a far post above a near post) never share a depth. Inside a piece every 6 px column has a CONTACT depth: a post column (a thick vertical stroke, >= 28 px) = its own lowest pixel; a rope column = linear
+  // between the posts on both sides. A post standing IN THE WATER (no bridge under its foot) continues DECK px below the deck edge, so its contact is that much higher; a post standing on the deck
+  // (the inner corner) has contact = foot. Pieces are cut into depth BANDS of BAND world units (the render depth key 'ry'); each band is one sortable item, drawn after what is higher on screen, before what is lower.
+  var feet = {}, pieces = {}, baseCache = {}, SW = 6, DBGPOSTS = /[?&]posts=1/.test(location.search), DECK = 84, BIAS = 10, BAND = 6, bands = {}, bandItems = {}, bandKeys = [];
+  function labelPieces(d, w, h) {
+    var lab = new Int16Array(w * h), nc = 0, st = new Int32Array(w * h), x, y, sp, p, q, qx, qy, dx, dy, nx, ny, np;
+    for (y = 0; y < h; y++) for (x = 0; x < w; x++) {
+      p = y * w + x; if (lab[p] || d[p * 4 + 3] <= 128) continue; nc++; lab[p] = nc; sp = 0; st[sp++] = p;
+      while (sp) {
+        q = st[--sp]; qx = q % w; qy = (q / w) | 0;
+        for (dy = -1; dy <= 1; dy++) for (dx = -1; dx <= 1; dx++) { nx = qx + dx; ny = qy + dy; if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue; np = ny * w + nx; if (!lab[np] && d[np * 4 + 3] > 128) { lab[np] = nc; st[sp++] = np; } }
+      }
+    }
+    return { lab: lab, nc: nc };
+  }
+  function baseAlpha(l) { // the bridge module under a front layer (bridge_left_front -> bridge_left, healthy art): is there bridge below a point?
+    var bm = l.module.replace(/_front$/, ''), bl = byKey[bm + '|' + HEALTHY[bm]]; if (!bl) return null;
+    if (baseCache[bl.file]) return baseCache[bl.file]; var im = img(bl.file); if (!(im.complete && im.naturalWidth)) return null;
+    var c = document.createElement('canvas'); c.width = im.naturalWidth; c.height = im.naturalHeight; var x = c.getContext('2d', { willReadFrequently: true }); x.drawImage(im, 0, 0);
+    return (baseCache[bl.file] = { d: x.getImageData(0, 0, c.width, c.height).data, w: c.width, h: c.height, x: bl.x, y: bl.y, r: c.width / bl.w });
+  }
+  function baseSolid(b, cx, cy) { if (!b) return false; var px = Math.round((cx - b.x) * b.r), py = Math.round((cy - b.y) * b.r); return px >= 0 && py >= 0 && px < b.w && py < b.h && b.d[(py * b.w + px) * 4 + 3] > 128; }
   function buildFeet() {
+    feet = {}; pieces = {};
     data.layers.forEach(function (l) {
       if (!l.above_player) return; var im = img(l.file); if (!(im.complete && im.naturalWidth)) return;
-      var c = document.createElement('canvas'); c.width = im.naturalWidth; c.height = im.naturalHeight; var x = c.getContext('2d'); x.drawImage(im, 0, 0);
-      var d = x.getImageData(0, 0, c.width, c.height).data, n = Math.ceil(c.width / SW), sb = new Array(n).fill(-1), px, py, j;
-      for (px = 0; px < c.width; px++) for (py = c.height - 1; py >= 0; py--) if (d[(py * c.width + px) * 4 + 3] > 128) { j = (px / SW) | 0; if (py > sb[j]) sb[j] = py; break; }
-      // POST columns (an opaque vertical run of at least 28 px: a post is a thick stroke, a rope is 6-15 px) keep their OWN foot; rope columns take the foot of the nearest post column
-      // (Matin 2026-11-25: the old rule 'highest of the 9 neighbours each side' lifted a post's foot to its lower neighbour's, so the hero standing in front of a post was drawn behind it)
-      var th = new Array(n).fill(0), run, foot = new Array(n).fill(-1);
-      for (px = 0; px < c.width; px++) { run = 0; j = (px / SW) | 0; for (py = 0; py < c.height; py++) { if (d[(py * c.width + px) * 4 + 3] > 128) { run++; if (run > th[j]) th[j] = run; } else run = 0; } }
-      var post = []; for (j = 0; j < n; j++) if (sb[j] >= 0 && th[j] >= 28) post.push(j);
-      for (j = 0; j < n; j++) {
-        if (sb[j] < 0) continue;
-        if (th[j] >= 28 || !post.length) { foot[j] = sb[j]; continue; }
-        var best = post[0], bd = 1e9; for (var u = 0; u < post.length; u++) { var dd = Math.abs(post[u] - j); if (dd < bd) { bd = dd; best = post[u]; } }
-        foot[j] = sb[best];
-      }
-      feet[l.file] = { n: n, foot: foot, h: c.height, w: c.width };
+      var c = document.createElement('canvas'), w = im.naturalWidth, h = im.naturalHeight; c.width = w; c.height = h; var x = c.getContext('2d', { willReadFrequently: true }); x.drawImage(im, 0, 0);
+      var d = x.getImageData(0, 0, w, h).data, L = labelPieces(d, w, h), n = Math.ceil(w / SW), cnt = new Int32Array(L.nc + 1), k, i, ids = [], b = baseAlpha(l);
+      for (i = 0; i < w * h; i++) cnt[L.lab[i]]++;
+      for (k = 1; k <= L.nc; k++) if (cnt[k] >= 25) ids.push(k);
+      pieces[l.file] = { w: w, h: h, lab: L.lab, ids: ids };
+      ids.forEach(function (k) {
+        var sb = new Array(n).fill(-1), th = new Array(n).fill(0), px, py, j, run, post = [], cl = [], ct = new Array(n).fill(-1), u;
+        for (px = 0; px < w; px++) { run = 0; j = (px / SW) | 0; for (py = 0; py < h; py++) { if (L.lab[py * w + px] === k) { run++; if (run > th[j]) th[j] = run; if (py > sb[j]) sb[j] = py; } else run = 0; } }
+        for (j = 0; j < n; j++) if (sb[j] >= 0 && th[j] >= 28) { if (post.length && post[post.length - 1] === j - 1) cl[cl.length - 1].push(j); else cl.push([j]); post.push(j); }
+        cl.forEach(function (g) {   // one post: its foot = its lowest pixel; contact = foot, or DECK higher when it stands in the water
+          var foot = 0, cx = l.x + ((g[0] + g[g.length - 1] + 1) / 2) * SW, deck = false, o; g.forEach(function (jj) { if (sb[jj] > foot) foot = sb[jj]; });
+          for (o = 3; o <= 15 && !deck; o += 6) deck = baseSolid(b, cx, l.y + foot + o);
+          g.forEach(function (jj) { ct[jj] = foot - (deck ? 0 : DECK); });
+        });
+        for (j = 0; j < n; j++) {
+          if (sb[j] < 0 || (ct[j] >= 0 && th[j] >= 28)) continue;
+          var pl = -1, pr = -1; for (u = j - 1; u >= 0; u--) if (th[u] >= 28 && sb[u] >= 0) { pl = u; break; } for (u = j + 1; u < n; u++) if (th[u] >= 28 && sb[u] >= 0) { pr = u; break; }
+          if (pl >= 0 && pr >= 0) ct[j] = ct[pl] + (ct[pr] - ct[pl]) * (j - pl) / (pr - pl); else if (pl >= 0) ct[j] = ct[pl]; else if (pr >= 0) ct[j] = ct[pr]; else ct[j] = sb[j];
+        }
+        feet[l.file + '#' + k] = { n: n, ct: ct, w: w, h: h, l: l, k: k, cv: null, r: 1 };
+      });
     });
+    buildCanvases();
   }
-  // BRIDGE FRONT POSTS sorted against EVERYTHING (Matin 2026-11-25: enemies, vases and gems on the bridge were hidden by posts they stand in front of; before, only the hero was sorted).
-  // Every column of a front layer has a foot (above); columns are grouped into depth BANDS of BAND world units of 'ry' (x*sinY + y*cosY, the render pipeline's depth key); each band is one sortable
-  // item that is drawn after everything whose feet are higher up the screen and before everything lower. sortBands() returns the bands that are on screen.
-  var DBGPOSTS = /[?&]posts=1/.test(location.search), DECK = 84, BIAS = 10, BAND = 6, bands = {}, bandItems = {}, bandKeys = [];
+  function buildCanvases() { // one masked copy of the layer image per piece, at the size of the image that is loaded now (standard, then 2x once the HD art lands)
+    for (var key in feet) {
+      var e = feet[key], im = img(e.l.file), pc = pieces[e.l.file]; if (!pc || !(im.complete && im.naturalWidth)) continue;
+      var r = im.naturalWidth / pc.w, cw = im.naturalWidth, ch = im.naturalHeight, cv = document.createElement('canvas'); cv.width = cw; cv.height = ch;
+      var cx = cv.getContext('2d', { willReadFrequently: true }); cx.drawImage(im, 0, 0); var id = cx.getImageData(0, 0, cw, ch), dd = id.data, x, y;
+      for (y = 0; y < ch; y++) for (x = 0; x < cw; x++) if (pc.lab[((y / r) | 0) * pc.w + ((x / r) | 0)] !== e.k) dd[(y * cw + x) * 4 + 3] = 0;
+      cx.putImageData(id, 0, 0); e.cv = cv; e.r = r;
+    }
+  }
   function buildBands() {
     bands = {}; bandItems = {}; var tilt = (typeof World !== 'undefined' && World.tilt) || 0.75, k = data.k;
-    data.layers.forEach(function (l) {
-      var f = feet[l.file]; if (!l.above_player || !f) return; var pi = null, a = 0, j, idx;
-      for (j = 0; j <= f.n; j++) {
-        idx = (j < f.n && f.foot[j] >= 0) ? Math.floor((((l.y + f.foot[j] - DECK) / k - fit.ty) / fit.s / tilt) / BAND) : null;
-        if (idx !== pi) { if (pi !== null) (bands[pi] = bands[pi] || []).push({ l: l, a: a, b: j }); pi = idx; a = j; }
+    for (var key in feet) {
+      var e = feet[key], pi = null, a = 0, j, idx;
+      for (j = 0; j <= e.n; j++) {
+        idx = (j < e.n && e.ct[j] >= 0) ? Math.floor((((e.l.y + e.ct[j]) / k - fit.ty) / fit.s / tilt) / BAND) : null;
+        if (idx !== pi) { if (pi !== null) (bands[pi] = bands[pi] || []).push({ e: e, a: a, b: j }); pi = idx; a = j; }
       }
-    });
+    }
     bandKeys = Object.keys(bands).map(Number).sort(function (x, y) { return x - y; });
-    bandKeys.forEach(function (i) { bandItems[i] = { wall: true, band: i, x: 0, y: 0, ry: (i + 0.5) * BAND - BIAS }; });   // BIAS: a post only covers someone whose feet are clearly ABOVE its foot (Matin 2026-11-25: she stood in front, 10 px below the foot, and was still drawn behind)
+    bandKeys.forEach(function (i) { bandItems[i] = { wall: true, band: i, x: 0, y: 0, ry: (i + 0.5) * BAND - BIAS }; });   // BIAS: a post only covers someone whose feet are clearly ABOVE its contact
   }
-  // QA (?god=1): the post columns of the front layers with their foot as WORLD x/y (to put the hero beside a post at a chosen depth)
+  // QA (?god=1): the front pieces' post runs with their contact as WORLD x/y (to put the hero beside a post at a chosen depth)
   function debugPosts() {
     var out = [], k = data.k, tilt = World.tilt, cosY = World.cosY, sinY = World.sinY;
-    data.layers.forEach(function (l) {
-      var f = feet[l.file]; if (!l.above_player || !f) return; var j = 0;
-      while (j < f.n) { if (f.foot[j] < 0) { j++; continue; } var a0 = j, fo = f.foot[j]; while (j < f.n && f.foot[j] === fo) j++;
-        var fx = (l.x + ((a0 + j) / 2) * SW) / k, fy = (l.y + fo) / k, u = (fx - fit.tx) / fit.s, ry = (fy - fit.ty) / fit.s / tilt;
-        if (j - a0 >= 4) out.push({ layer: l.module, cols: [a0, j], footCanvasY: l.y + fo, ry: Math.round(ry), x: Math.round(cosY * u + sinY * ry), y: Math.round(-sinY * u + cosY * ry) }); }
-    });
+    bandKeys.forEach(function (bk) { bands[bk].forEach(function (run) {
+      if (run.b - run.a < 4) return; var e = run.e, ct = e.ct[run.a], fx = (e.l.x + ((run.a + run.b) / 2) * SW) / k, fy = (e.l.y + ct) / k, u = (fx - fit.tx) / fit.s, ry = (fy - fit.ty) / fit.s / tilt;
+      out.push({ layer: e.l.module, piece: e.k, cols: [run.a, run.b], contactCanvasY: Math.round(e.l.y + ct), ry: Math.round(ry), x: Math.round(cosY * u + sinY * ry), y: Math.round(-sinY * u + cosY * ry) });
+    }); });
     return out;
   }
   function runBox(v, run, ax, ay) {
-    var l = run.l, k = data.k, sc = v.z / (k * fit.s), X0 = v.W * 0.5 + v.z * (((l.x / k) - fit.tx) / fit.s - ax), Y0 = v.H * 0.5 + v.z * (((l.y / k) - fit.ty) / fit.s - ay);
-    return { x: X0 + run.a * SW * sc, y: Y0, w: Math.min((run.b - run.a) * SW, feet[l.file].w - run.a * SW) * sc, h: feet[l.file].h * sc, sc: sc };
+    var e = run.e, l = e.l, k = data.k, sc = v.z / (k * fit.s), X0 = v.W * 0.5 + v.z * (((l.x / k) - fit.tx) / fit.s - ax), Y0 = v.H * 0.5 + v.z * (((l.y / k) - fit.ty) / fit.s - ay);
+    return { x: X0 + run.a * SW * sc, y: Y0, w: Math.min((run.b - run.a) * SW, e.w - run.a * SW) * sc, h: e.h * sc, sc: sc };
   }
   function viewAxAy(v) { var cosY = Math.cos(v.yaw), sinY = Math.sin(v.yaw); return [cosY * v.cx - sinY * v.cy, v.tilt * (sinY * v.cx + cosY * v.cy)]; }
   function sortBands(v) {
@@ -3422,21 +3453,20 @@ window.ArenaArt6 = (function () {
     for (i = 0; i < bandKeys.length; i++) {
       runs = bands[bandKeys[i]];
       for (r = 0; r < runs.length; r++) {
-        if (cur[runs[r].l.module] !== runs[r].l.state) continue; b = runBox(v, runs[r], a[0], a[1]);
+        if (cur[runs[r].e.l.module] !== runs[r].e.l.state) continue; b = runBox(v, runs[r], a[0], a[1]);
         if (b.x + b.w >= 0 && b.x <= v.W && b.y + b.h >= 0 && b.y <= v.H) { out.push(bandItems[bandKeys[i]]); break; }
       }
     }
     return out;
   }
   function drawBand(ctx, v, idx) {
-    var runs = bands[idx], a = viewAxAy(v), r, run, f, im, b, ratio;
+    var runs = bands[idx], a = viewAxAy(v), r, run, e, b, cy;
     if (!runs) return;
     for (r = 0; r < runs.length; r++) {
-      run = runs[r]; if (cur[run.l.module] !== run.l.state) continue; f = feet[run.l.file]; im = img(run.l.file); if (!f || !im.complete || !im.naturalWidth) continue;
+      run = runs[r]; e = run.e; if (cur[e.l.module] !== e.l.state || !e.cv) continue;
       b = runBox(v, run, a[0], a[1]); if (b.x + b.w < 0 || b.x > v.W || b.y + b.h < 0 || b.y > v.H) continue;
-      ratio = im.naturalWidth / f.w;   // 2 once the HD image has replaced the standard one: the columns are measured on the standard size
-      if (DBGPOSTS) { ctx.save(); ctx.strokeStyle = 'rgba(255,40,40,0.95)'; ctx.lineWidth = 3; var cy = b.y + (f.foot[run.a] - DECK) * b.sc; ctx.beginPath(); ctx.moveTo(b.x, cy); ctx.lineTo(b.x + b.w, cy); ctx.stroke(); ctx.restore(); }   // ?posts=1: where the game thinks this post meets the deck
-      ctx.drawImage(im, run.a * SW * ratio, 0, Math.min((run.b - run.a) * SW, f.w - run.a * SW) * ratio, f.h * ratio, b.x, b.y, b.w, b.h);
+      if (DBGPOSTS) { ctx.save(); ctx.strokeStyle = 'rgba(255,40,40,0.95)'; ctx.lineWidth = 3; cy = b.y + e.ct[run.a] * b.sc; ctx.beginPath(); ctx.moveTo(b.x, cy); ctx.lineTo(b.x + b.w, cy); ctx.stroke(); ctx.restore(); }   // ?posts=1: where the game puts this part's contact depth
+      ctx.drawImage(e.cv, run.a * SW * e.r, 0, Math.min((run.b - run.a) * SW, e.w - run.a * SW) * e.r, e.h * e.r, b.x, b.y, b.w, b.h);
     }
   }
   function drawPass(ctx, v, front) {
@@ -11003,7 +11033,7 @@ telemetryInit();
       }
     };
 
-    const BUILD_ID = '1125-2217';
+    const BUILD_ID = '1125-2221';
     if (/beta-b/.test(location.pathname)) { const bid = document.createElement('div'); bid.textContent = 'build ' + BUILD_ID; bid.style.cssText = 'position:fixed;right:6px;bottom:2px;font:10px monospace;color:#fff;opacity:.45;z-index:99999;pointer-events:none'; document.body.appendChild(bid); }   // which build is this? (Matin 2026-11-25: fixes were reported 'still wrong' and I could not tell if the new build was running)
     // --- ASSET CACHE (beta pages only): sw.js keeps the art / clips / sounds in the browser so every visit after the first downloads nothing. play.html and the stable index never register it. ---
     if ('serviceWorker' in navigator && /[?&]nosw=1/.test(location.search)) {   // safety switch: ?nosw=1 removes the cache worker and its files
