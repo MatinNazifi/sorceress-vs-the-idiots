@@ -2394,10 +2394,13 @@ window.addEventListener('load', function () { setTimeout(function () { var s = d
     }
 
     function warnDraw(c, e, p, pulse, GW, CS) {
+    if (WARN_MODE === 'storm') warnDrawBase(c, e, p, pulse, GW, CS), warnStorm(c, e, p, e._wb); else warnDrawBase(c, e, p, pulse, GW, CS);
+  }
+  function warnDrawBase(c, e, p, pulse, GW, CS) {
     const wb = e._wb || warnBuild(e, GW, CS);
     c.save();
     c.globalCompositeOperation = 'lighter';
-    const cracks = WARN_MODE === 'dust' ? null : warnTint(warnArt('warn-cracks.jpg'), WARN_THEME.tint);
+    const cracks = (WARN_MODE === 'dust' || WARN_MODE === 'storm') ? null : warnTint(warnArt('warn-cracks.jpg'), WARN_THEME.tint);
     if (cracks) {
     c.save(); // Isolate clip so border and runes draw outside the zone
     c.clip(wb.path);
@@ -2412,7 +2415,7 @@ window.addEventListener('load', function () { setTimeout(function () { var s = d
     }
     c.strokeStyle = WARN_THEME.line;
     c.lineWidth = 4;
-    c.globalAlpha = (WARN_MODE === 'dust' ? 0.35 : 0.55) + 0.4 * p;
+    c.globalAlpha = (WARN_MODE === 'dust' || WARN_MODE === 'storm' ? 0.35 : 0.55) + 0.4 * p;
     c.shadowColor = WARN_THEME.glow;
     c.shadowBlur = 14;
     c.setLineDash(WARN_DASH);
@@ -2425,7 +2428,7 @@ window.addEventListener('load', function () { setTimeout(function () { var s = d
     }
     c.stroke();
     c.shadowBlur = 0; // Avoid expensive shadow pass on rune sprites
-    const runes = WARN_MODE === 'dust' ? null : warnArt('warn-runes.jpg');
+    const runes = (WARN_MODE === 'dust' || WARN_MODE === 'storm') ? null : warnArt('warn-runes.jpg');
     if (runes) {
     const rw = runes.width / 6, rh = runes.height;
     const sz = 42 * (1 + 0.12 * pulse), half = sz * 0.5;
@@ -2436,6 +2439,25 @@ window.addEventListener('load', function () { setTimeout(function () { var s = d
     }
     }
     c.restore();
+    }
+    // SANDSTORM (?warn=storm, test, Matin 2026-11-25): a see-through dust haze drifting over the doomed floor + fast wind streaks, stronger as the fall nears; level-neutral (WARN_THEME.dust tints it). Blobs and streaks come from fixed seeds, nothing allocates per frame.
+    const WARN_HAZE = (() => { const cv = document.createElement('canvas'); cv.width = cv.height = 128; const x = cv.getContext('2d'), g = x.createRadialGradient(64, 64, 0, 64, 64, 64); g.addColorStop(0, 'rgba(255,255,255,0.95)'); g.addColorStop(0.5, 'rgba(255,255,255,0.4)'); g.addColorStop(1, 'rgba(255,255,255,0)'); x.fillStyle = g; x.fillRect(0, 0, 128, 128); x.globalCompositeOperation = 'multiply'; x.fillStyle = 'rgb(205,185,150)'; x.fillRect(0, 0, 128, 128); return cv; })();
+    function warnStorm(c, e, p, wb) {
+      const bw = wb.maxX - wb.minX, bh = wb.maxY - wb.minY, n = Math.min(40, 8 + ((bw * bh) / 24000) | 0), T = gameTime;
+      c.save(); c.clip(wb.path);
+      for (let i = 0; i < n; i++) { // soft haze blobs drifting with the wind (to the right / down the screen), wrapping inside the zone box
+        const R = 70 + ((i * 53) % 60), s1 = ((i * 2654435761) >>> 0) / 4294967296, s2 = ((i * 40503 + 17) >>> 0) % 997 / 997;
+        const x = wb.minX + (((s1 * bw + T * (34 + (i % 5) * 6)) % (bw + 2 * R)) + (bw + 2 * R)) % (bw + 2 * R) - R, y = wb.minY + (s2 * bh + Math.sin(T * 0.6 + i) * 14 + T * 8) % (bh + R) - R * 0.5;
+        c.globalAlpha = (0.05 + 0.2 * p) * (0.7 + 0.3 * Math.sin(T * 1.3 + i));
+        c.drawImage(WARN_HAZE, x - R, y - R * 0.6, R * 2, R * 1.2);
+      }
+      c.strokeStyle = 'rgb(235,220,190)'; c.lineWidth = 2; c.lineCap = 'round'; c.globalAlpha = 0.1 + 0.3 * p; c.beginPath();
+      for (let i = 0; i < n * 2; i++) { // wind streaks: short fast lines
+        const L = 45 + ((i * 29) % 50), s1 = ((i * 1597334677 + 11) >>> 0) / 4294967296, s2 = ((i * 3266489917 + 5) >>> 0) / 4294967296;
+        const x = wb.minX + ((s1 * bw + T * (230 + (i % 4) * 40)) % (bw + 100)) - 50, y = wb.minY + s2 * bh;
+        c.moveTo(x, y); c.lineTo(x + L, y + L * 0.28);
+      }
+      c.stroke(); c.restore();
     }
     function arenaDrawEvents(c) { // floor marking while a collapse / the gates are about to go, and the red traps
       arenaDrawDecals(c);
@@ -11146,7 +11168,7 @@ telemetryInit();
       }
     };
 
-    const BUILD_ID = '1125-2319';
+    const BUILD_ID = '1125-2326';
     if (/beta-b/.test(location.pathname)) { const bid = document.createElement('div'); bid.textContent = 'build ' + BUILD_ID; bid.style.cssText = 'position:fixed;right:6px;bottom:2px;font:10px monospace;color:#fff;opacity:.45;z-index:99999;pointer-events:none'; document.body.appendChild(bid); }   // which build is this? (Matin 2026-11-25: fixes were reported 'still wrong' and I could not tell if the new build was running)
     // --- ASSET CACHE (beta pages only): sw.js keeps the art / clips / sounds in the browser so every visit after the first downloads nothing. play.html and the stable index never register it. ---
     if ('serviceWorker' in navigator && /[?&]nosw=1/.test(location.search)) {   // safety switch: ?nosw=1 removes the cache worker and its files
