@@ -1626,7 +1626,7 @@ window.addEventListener('load', function () { setTimeout(function () { var s = d
       arenaVaultCells = []; for (let y = sc(VG[1]); y < sc(VG[1] + VG[3]); y++) for (let x = sc(VG[0]); x < sc(VG[0] + VG[2]); x++) arenaVaultCells.push(y * GW + x);
       arenaVaultY = sc(VG[1]) * CS; arenaVaultBox = { x0: sc(25) * CS, x1: sc(39) * CS }; arenaVaultC = cc(vault); arenaEntry = cc(route);
       arenaStage = 0; arenaTraps = []; arenaBlasts = []; arenaWave = 0; arenaNextTrap = arenaNextElite = arenaCutEnd = 0;
-      if (typeof ArenaArt5 !== 'undefined' && ArenaArt5.ready()) { ArenaArt5.reset(); ['gate_1', 'gate_2', 'gate_3', 'gatehouse'].forEach(n => ArenaArt5.setHidden(n, ART_6)); if (ART_6) { ArenaArt6.reset(); ['block_h1', 'block_h2', 'block_h3', 'block_h4', 'block_h5', 'block_c1', 'block_c2', 'block_c3', 'block_c4'].forEach(n => ArenaArt5.setHidden(n, true)); } } // a new run: every painted cell stands again
+      if (typeof ArenaArt5 !== 'undefined' && ArenaArt5.ready()) { ArenaArt5.reset(); ['gate_1', 'gate_2', 'gate_3', 'gatehouse'].forEach(n => ArenaArt5.setHidden(n, ART_6)); if (ART_6) { ArenaArt6.reset(); ['block_h1', 'block_h2', 'block_h3', 'block_h4', 'block_h5', 'block_c1', 'block_c2', 'block_c3', 'block_c4', 'lamp_post_s'].forEach(n => ArenaArt5.setHidden(n, true)); } } // a new run: every painted cell stands again
       arenaGateSprs = GATES.concat([VG]).map((g, i) => ({ x: ((sc(g[0]) + sc(g[0] + g[2])) / 2) * CS, y: sc(g[1] + g[3]) * CS, vault: i === GATES.length })); // sprite foot = south edge of the gate
       arenaGateHide = new Uint8Array(GW * GH); // gate cube cells under a sprite are not drawn
       arenaGateSprs.forEach((s, i) => { const g = i < GATES.length ? GATES[i] : VG; for (let y = sc(g[1]); y < sc(g[1] + g[3]); y++) for (let x = sc(g[0]); x < sc(g[0] + g[2]); x++) if (Math.abs(x * CS + CS / 2 - s.x) < 130) arenaGateHide[y * GW + x] = 1; });
@@ -1970,7 +1970,7 @@ window.addEventListener('load', function () { setTimeout(function () { var s = d
       if (!art5Started) { art5Started = true; ArenaArt5.load('sprites/arena/v5/'); if (ART_6) ArenaArt6.load('sprites/arena/v6w/'); }
       const rd = ArenaArt5.ready() && (!ART_6 || ArenaArt6.ready());
       if (rd && ART_6 && !art6Walk) applyArtWalk();
-      if (rd && ART_6 && !art6Hid) { art6Hid = true; ['gate_1', 'gate_2', 'gate_3', 'gatehouse', 'block_h1', 'block_h2', 'block_h3', 'block_h4', 'block_h5', 'block_c1', 'block_c2', 'block_c3', 'block_c4'].forEach(n => ArenaArt5.setHidden(n, true)); } // the level pack has the crypt and its gates itself and no cover blocks
+      if (rd && ART_6 && !art6Hid) { art6Hid = true; ['gate_1', 'gate_2', 'gate_3', 'gatehouse', 'block_h1', 'block_h2', 'block_h3', 'block_h4', 'block_h5', 'block_c1', 'block_c2', 'block_c3', 'block_c4', 'lamp_post_s'].forEach(n => ArenaArt5.setHidden(n, true)); } // the level pack has the crypt and its gates itself and no cover blocks
       return rd;
     }
     // ?art=6: the lower map is walkable only where the ART has floor, and a pit is a solid block (the grid used to be the old grey-box shape: she walked on water, over pits and "under" the bridge posts)
@@ -1987,12 +1987,13 @@ window.addEventListener('load', function () { setTimeout(function () { var s = d
       window.__artWalkStats = { blockedOffArt: off, blockedPit: pit };
     }
     function art5View(cam) { return { hx: hero.x, hy: hero.y, W: screenW, H: screenH, z: cam.zoom || 0.9, cx: cam.x, cy: cam.y, yaw: World.yaw, tilt: World.tilt }; }
-    function art5DrawItem(c, w) { const dp = typeof dpr !== 'undefined' ? dpr : 1; c.save(); c.setTransform(dp, 0, 0, dp, 0, 0); if (w.art5Front) { ArenaArt5.drawFront(c, art5View(CAMERA)); if (ART_6) ArenaArt6.drawFront(c, art5View(CAMERA)); } else w.art5.draw(c, art5View(CAMERA)); c.restore(); }
+    function art5DrawItem(c, w) { const dp = typeof dpr !== 'undefined' ? dpr : 1; c.save(); c.setTransform(dp, 0, 0, dp, 0, 0); if (w.band !== undefined) ArenaArt6.drawBand(c, art5View(CAMERA), w.band); else if (w.art5Front) ArenaArt5.drawFront(c, art5View(CAMERA)); else w.art5.draw(c, art5View(CAMERA)); c.restore(); }
     function arenaPushWalls(list, camX, camY, hw, hh) {
       if (art5Ready()) { // the painted blocks, gates and lamps sort with the hero; the grey boxes are not used
         const its = ArenaArt5.spritesForSort();
         for (let i = 0; i < its.length; i++) { const it = its[i], w = it._w || (it._w = { wall: true, art5: it, x: it.wx, y: it.wy, ry: 0 }); w.ry = it.wx * World.sinY + it.wy * World.cosY; list.push(w); }
         list.push(art5Front);
+        if (ART_6) { const bs = ArenaArt6.sortBands(art5View(CAMERA)); for (let i = 0; i < bs.length; i++) list.push(bs[i]); }   // bridge posts/ropes as depth slices
         return;
       }
       for (let i = 0; i < sprs.length; i++) {
@@ -2009,7 +2010,7 @@ window.addEventListener('load', function () { setTimeout(function () { var s = d
       }
     }
     function arenaDrawWall(c, w) { // faces whose outward normal points down the screen, then the top
-      if (w.art5 || w.art5Front) { art5DrawItem(c, w); return; }
+      if (w.art5 || w.art5Front || w.band !== undefined) { art5DrawItem(c, w); return; }
       if (w.spr) { arenaDrawSpr(c, w); return; }
       if (w.kind === 8 && arenaGateHide && arenaGateHide[w.gy * GW + w.gx] && artImg('gate2-closed')) return; // under a gate sprite
       if (arena === 'boss' && w.kind === 2 && artImg('pillar2-0')) return; // the pillar sprite stands there
@@ -3310,7 +3311,7 @@ window.ArenaArt6 = (function () {
         // ready only when the healthy-state layers are decoded: until then the grey-box floor stays (a black map while 17 MB loaded was the bug); the other states load in the background
         var core = data.layers.filter(function (l) { return HEALTHY[l.module] === l.state; });
         data.layers.forEach(function (l) { img(l.file); });
-        return Promise.all(core.map(function (l) { return new Promise(function (r) { var im = img(l.file); if (im.complete && im.naturalWidth) r(); else { im.onload = r; im.onerror = r; } }); })).then(function () { buildWalk(); buildFeet(); ok = true; if (typeof loadOmniStrips === 'function') loadOmniStrips(); if (GFX_HD) setTimeout(loadHD, 2500); /* the quick 2x sharp art always comes first (4.4 MB); the 4x tiles refine it later */ if (GFX_ULTRA) setTimeout(loadUltra, 3000); });
+        return Promise.all(core.map(function (l) { return new Promise(function (r) { var im = img(l.file); if (im.complete && im.naturalWidth) r(); else { im.onload = r; im.onerror = r; } }); })).then(function () { buildWalk(); buildFeet(); buildBands(); ok = true; if (typeof loadOmniStrips === 'function') loadOmniStrips(); if (GFX_HD) setTimeout(loadHD, 2500); /* the quick 2x sharp art always comes first (4.4 MB); the 4x tiles refine it later */ if (GFX_ULTRA) setTimeout(loadUltra, 3000); });
       }).catch(function () { ok = false; });
   }
   function img(file) { var im = imgs[file]; if (!im) { im = imgs[file] = new Image(); im.src = base + file; } return im; }
@@ -3374,26 +3375,57 @@ window.ArenaArt6 = (function () {
       feet[l.file] = { n: n, foot: foot, h: c.height, w: c.width };
     });
   }
-  function drawStrips(ctx, v, l, above, ax, ay, hFY) { // draws the columns of a front layer that are in front of (above) or behind the hero
-    var f = feet[l.file], im = img(l.file); if (!f || !im.complete || !im.naturalWidth) return;
-    var k = data.k, sc = v.z / (k * fit.s), X0 = v.W * 0.5 + v.z * (((l.x / k) - fit.tx) / fit.s - ax), Y0 = v.H * 0.5 + v.z * (((l.y / k) - fit.ty) / fit.s - ay), j = 0, a, b;
-    if (X0 + l.w * sc < 0 || X0 > v.W || Y0 + l.h * sc < 0 || Y0 > v.H) return;
-    while (j < f.n) {
-      if (f.foot[j] < 0 || ((l.y + f.foot[j]) / k > hFY) !== above) { j++; continue; }
-      a = j; while (j < f.n && f.foot[j] >= 0 && ((l.y + f.foot[j]) / k > hFY) === above) j++; b = j; // a run of columns with the same answer = one drawImage
-      var r = im.naturalWidth / f.w, cw = Math.min((b - a) * SW, f.w - a * SW); // r = 2 once the HD image has replaced the standard one: the columns are measured on the standard size
-      ctx.drawImage(im, a * SW * r, 0, cw * r, f.h * r, X0 + a * SW * sc, Y0, cw * sc, f.h * sc);
+  // BRIDGE FRONT POSTS sorted against EVERYTHING (Matin 2026-11-25: enemies, vases and gems on the bridge were hidden by posts they stand in front of; before, only the hero was sorted).
+  // Every column of a front layer has a foot (above); columns are grouped into depth BANDS of BAND world units of 'ry' (x*sinY + y*cosY, the render pipeline's depth key); each band is one sortable
+  // item that is drawn after everything whose feet are higher up the screen and before everything lower. sortBands() returns the bands that are on screen.
+  var BAND = 24, bands = {}, bandItems = {}, bandKeys = [];
+  function buildBands() {
+    bands = {}; bandItems = {}; var tilt = (typeof World !== 'undefined' && World.tilt) || 0.75, k = data.k;
+    data.layers.forEach(function (l) {
+      var f = feet[l.file]; if (!l.above_player || !f) return; var pi = null, a = 0, j, idx;
+      for (j = 0; j <= f.n; j++) {
+        idx = (j < f.n && f.foot[j] >= 0) ? Math.floor((((l.y + f.foot[j]) / k - fit.ty) / fit.s / tilt) / BAND) : null;
+        if (idx !== pi) { if (pi !== null) (bands[pi] = bands[pi] || []).push({ l: l, a: a, b: j }); pi = idx; a = j; }
+      }
+    });
+    bandKeys = Object.keys(bands).map(Number).sort(function (x, y) { return x - y; });
+    bandKeys.forEach(function (i) { bandItems[i] = { wall: true, band: i, x: 0, y: 0, ry: (i + 0.5) * BAND }; });
+  }
+  function runBox(v, run, ax, ay) {
+    var l = run.l, k = data.k, sc = v.z / (k * fit.s), X0 = v.W * 0.5 + v.z * (((l.x / k) - fit.tx) / fit.s - ax), Y0 = v.H * 0.5 + v.z * (((l.y / k) - fit.ty) / fit.s - ay);
+    return { x: X0 + run.a * SW * sc, y: Y0, w: Math.min((run.b - run.a) * SW, feet[l.file].w - run.a * SW) * sc, h: feet[l.file].h * sc, sc: sc };
+  }
+  function viewAxAy(v) { var cosY = Math.cos(v.yaw), sinY = Math.sin(v.yaw); return [cosY * v.cx - sinY * v.cy, v.tilt * (sinY * v.cx + cosY * v.cy)]; }
+  function sortBands(v) {
+    var out = [], a = viewAxAy(v), i, r, runs, b;
+    if (!ok) return out;
+    for (i = 0; i < bandKeys.length; i++) {
+      runs = bands[bandKeys[i]];
+      for (r = 0; r < runs.length; r++) {
+        if (cur[runs[r].l.module] !== runs[r].l.state) continue; b = runBox(v, runs[r], a[0], a[1]);
+        if (b.x + b.w >= 0 && b.x <= v.W && b.y + b.h >= 0 && b.y <= v.H) { out.push(bandItems[bandKeys[i]]); break; }
+      }
+    }
+    return out;
+  }
+  function drawBand(ctx, v, idx) {
+    var runs = bands[idx], a = viewAxAy(v), r, run, f, im, b, ratio;
+    if (!runs) return;
+    for (r = 0; r < runs.length; r++) {
+      run = runs[r]; if (cur[run.l.module] !== run.l.state) continue; f = feet[run.l.file]; im = img(run.l.file); if (!f || !im.complete || !im.naturalWidth) continue;
+      b = runBox(v, run, a[0], a[1]); if (b.x + b.w < 0 || b.x > v.W || b.y + b.h < 0 || b.y > v.H) continue;
+      ratio = im.naturalWidth / f.w;   // 2 once the HD image has replaced the standard one: the columns are measured on the standard size
+      ctx.drawImage(im, run.a * SW * ratio, 0, Math.min((run.b - run.a) * SW, f.w - run.a * SW) * ratio, f.h * ratio, b.x, b.y, b.w, b.h);
     }
   }
   function drawPass(ctx, v, front) {
     if (!ok) return; tick();
     var cosY = Math.cos(v.yaw), sinY = Math.sin(v.yaw), ax = cosY * v.cx - sinY * v.cy, ay = v.tilt * (sinY * v.cx + cosY * v.cy), L = data.layers, t = nowS();
-    var hFY = v.hx === undefined ? -1e9 : fit.ty + fit.s * (v.tilt * (sinY * v.hx + cosY * v.hy)); // the hero's feet on the painting (no hero = everything counts as in front)
     ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
     for (var i = 0; i < L.length; i++) {
       var l = L[i];
       if (!front && l.module === 'boss_door' && l.state === 'locked' && cur.boss_door === 'open' && door.meta) { drawDoor(ctx, v, l, ax, ay); continue; }
-      if (l.above_player) { if (cur[l.module] === l.state && feet[l.file]) drawStrips(ctx, v, l, front, ax, ay, hFY); continue; } // front pass: columns in front of her; back pass: columns behind her
+      if (l.above_player) continue;   // the front posts and ropes are drawn as depth bands (sortBands / drawBand), sorted against the hero, enemies and vases
       if (front) continue;
       var m = l.module; if (cur[m] !== l.state) continue; // only the module's current art; the previous art is drawn under it while a fade runs
       var p = 1, pl = null;
@@ -3403,7 +3435,7 @@ window.ArenaArt6 = (function () {
     }
   }
   return { load: load, ready: function () { return ok; }, reset: reset, warn: warn, land: land, dropAll: dropAll, openCrypt: openCrypt, closeCrypt: closeCrypt, hideBossDoor: hideBossDoor, openBossDoor: openBossDoor, cellState: cellState,
-    draw: function (ctx, v) { drawPass(ctx, v, false); }, drawFront: function (ctx, v) { drawPass(ctx, v, true); }, state: function () { return Object.assign({}, want); } };
+    draw: function (ctx, v) { drawPass(ctx, v, false); }, sortBands: sortBands, drawBand: drawBand, state: function () { return Object.assign({}, want); } };
 })();
     // --- SPRITE ASSET MANAGER ---
     const SPRITES = {};
