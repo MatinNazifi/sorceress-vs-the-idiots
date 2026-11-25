@@ -3289,15 +3289,24 @@ window.ArenaArt6 = (function () {
       var c = document.createElement('canvas'); c.width = im.naturalWidth; c.height = im.naturalHeight; var x = c.getContext('2d'); x.drawImage(im, 0, 0);
       var d = x.getImageData(0, 0, c.width, c.height).data, n = Math.ceil(c.width / SW), sb = new Array(n).fill(-1), px, py, j;
       for (px = 0; px < c.width; px++) for (py = c.height - 1; py >= 0; py--) if (d[(py * c.width + px) * 4 + 3] > 128) { j = (px / SW) | 0; if (py > sb[j]) sb[j] = py; break; }
-      var foot = new Array(n).fill(-1);
-      for (j = 0; j < n; j++) if (sb[j] >= 0) { var mx = sb[j]; for (var u = Math.max(0, j - 9); u <= Math.min(n - 1, j + 9); u++) if (sb[u] > mx) mx = sb[u]; foot[j] = mx; }
+      // POST columns (an opaque vertical run of at least 28 px: a post is a thick stroke, a rope is 6-15 px) keep their OWN foot; rope columns take the foot of the nearest post column
+      // (Matin 2026-11-25: the old rule 'highest of the 9 neighbours each side' lifted a post's foot to its lower neighbour's, so the hero standing in front of a post was drawn behind it)
+      var th = new Array(n).fill(0), run, foot = new Array(n).fill(-1);
+      for (px = 0; px < c.width; px++) { run = 0; j = (px / SW) | 0; for (py = 0; py < c.height; py++) { if (d[(py * c.width + px) * 4 + 3] > 128) { run++; if (run > th[j]) th[j] = run; } else run = 0; } }
+      var post = []; for (j = 0; j < n; j++) if (sb[j] >= 0 && th[j] >= 28) post.push(j);
+      for (j = 0; j < n; j++) {
+        if (sb[j] < 0) continue;
+        if (th[j] >= 28 || !post.length) { foot[j] = sb[j]; continue; }
+        var best = post[0], bd = 1e9; for (var u = 0; u < post.length; u++) { var dd = Math.abs(post[u] - j); if (dd < bd) { bd = dd; best = post[u]; } }
+        foot[j] = sb[best];
+      }
       feet[l.file] = { n: n, foot: foot, h: c.height, w: c.width };
     });
   }
   // BRIDGE FRONT POSTS sorted against EVERYTHING (Matin 2026-11-25: enemies, vases and gems on the bridge were hidden by posts they stand in front of; before, only the hero was sorted).
   // Every column of a front layer has a foot (above); columns are grouped into depth BANDS of BAND world units of 'ry' (x*sinY + y*cosY, the render pipeline's depth key); each band is one sortable
   // item that is drawn after everything whose feet are higher up the screen and before everything lower. sortBands() returns the bands that are on screen.
-  var BAND = 24, bands = {}, bandItems = {}, bandKeys = [];
+  var BAND = 6, bands = {}, bandItems = {}, bandKeys = [];
   function buildBands() {
     bands = {}; bandItems = {}; var tilt = (typeof World !== 'undefined' && World.tilt) || 0.75, k = data.k;
     data.layers.forEach(function (l) {
