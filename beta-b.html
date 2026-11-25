@@ -8128,6 +8128,7 @@ if (metaFx.regen > 0 && hero.hp > 0) hero.hp = Math.min(hero.maxHp, hero.hp + me
       if (World.persp) applyPerspective(World.persp);
 
       // SCREEN SPACE HUD & FULLSCREEN FLASHES
+      Weather.draw(ctx, screenW, screenH);   // ambient weather under the HUD
       drawHUD();
       drawChestPointers();
       World.hud(ctx, screenW, screenH);
@@ -10757,6 +10758,8 @@ telemetryInit();
 
       updateSpawnDirector(dt);
       updateHero(dt);
+      if (!weatherInit) { weatherInit = true; const wq = new URLSearchParams(location.search).get('weather'); Weather.set(wq || Weather.random(Date.now() % 100000), 0.6, (('ontouchstart' in window) || navigator.maxTouchPoints > 0) ? 0.45 : 1); }
+      Weather.update(dt, screenW, screenH);
       updateEnemies(dt);
       updateProjectilesAndEffects(dt);
       tickGameTimers(dt);
@@ -10821,7 +10824,325 @@ telemetryInit();
       }
     };
 
-    const BUILD_ID = '1125-2331';
+    // --- WEATHER (Matin 2026-11-25): ambient overlays in screen space, a different one each run (?weather=rain|storm|fog|leaves|embers|snow|fireflies|sand|none forces one). Written by Neon high, QC by Neon high + Claude. ---
+    const Weather = (function () {
+      const TYPES = ['rain', 'storm', 'fog', 'leaves', 'embers', 'snow', 'fireflies', 'sand'];
+      const RAND_TYPES = ['rain', 'fog', 'leaves', 'fireflies', 'embers', 'sand', 'snow', 'storm'];
+      const LEAF_COLORS = ['rgb(120,90,40)', 'rgb(150,110,50)', 'rgb(80,100,50)'];
+      const EMBER_COLORS = ['rgb(255,110,30)', 'rgb(255,140,45)', 'rgb(255,170,65)', 'rgb(255,200,90)'];
+      const MAX = 220;
+      const BLOB_MAX = 10;
+
+      // Preallocate typed arrays so update/draw never trigger GC pauses.
+      const px = new Float32Array(MAX);
+      const py = new Float32Array(MAX);
+      const vx = new Float32Array(MAX);
+      const vy = new Float32Array(MAX);
+      const phase = new Float32Array(MAX);
+      const size = new Float32Array(MAX);
+      const extra = new Float32Array(MAX);
+      const bx = new Float32Array(BLOB_MAX);
+      const by = new Float32Array(BLOB_MAX);
+      const bvx = new Float32Array(BLOB_MAX);
+      const bsize = new Float32Array(BLOB_MAX);
+      const balpha = new Float32Array(BLOB_MAX);
+
+      let active = 'none';
+      let inten = 0.6;
+      let count = 0;
+      let blobCount = 0;
+      let sized = false;
+      let elapsed = 0;
+      let flashTimer = 14;
+      let flashAge = 99;
+      let flashRng = null;
+      let fogSprite = null;
+      let sandSprite = null;
+      let flySprite = null;
+
+      // Mulberry32 keeps weather seeding fast and deterministic across runs.
+      function mulberry32(a) {
+        return function () {
+          a |= 0;
+          a = (a + 0x6d2b79f5) | 0;
+          let t = Math.imul(a ^ (a >>> 15), 1 | a);
+          t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+          return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+        };
+      }
+
+      function clamp(v, lo, hi) {
+        return v < lo ? lo : v > hi ? hi : v;
+      }
+
+      // Pre-render soft radial sprites once to avoid per-frame gradient creation.
+      function makeGlow(dim, rgb, coreStop) {
+        const c = document.createElement('canvas');
+        c.width = dim;
+        c.height = dim;
+        const g = c.getContext('2d');
+        const r = dim * 0.5;
+        const grad = g.createRadialGradient(r, r, 0, r, r, r);
+        grad.addColorStop(0, 'rgba(' + rgb + ',1)');
+        grad.addColorStop(coreStop, 'rgba(' + rgb + ',0.4)');
+        grad.addColorStop(1, 'rgba(' + rgb + ',0)');
+        g.fillStyle = grad;
+        g.fillRect(0, 0, dim, dim);
+        return c;
+      }
+
+      function ensureSprites() {
+        if (fogSprite) return;
+        fogSprite = makeGlow(256, '170,190,200', 0.45);
+        sandSprite = makeGlow(256, '215,195,160', 0.45);
+        flySprite = makeGlow(32, '210,255,120', 0.28);
+      }
+
+      function initBlobs(n, rng, minA, maxA) {
+        blobCount = n;
+        for (let i = 0; i < n; i++) {
+          bx[i] = rng();
+          by[i] = rng();
+          bvx[i] = 8 + rng() * 12;
+          bsize[i] = 600 + rng() * 500;
+          balpha[i] = minA + rng() * (maxA - minA);
+        }
+      }
+
+      function set(type, intensity, quality) {
+        active = TYPES.indexOf(type) !== -1 ? type : 'none';
+        inten = clamp(intensity === undefined ? 0.6 : intensity, 0, 1);
+        const qual = clamp(quality === undefined ? 1 : quality, 0.3, 1);
+        count = 0;
+        blobCount = 0;
+        sized = false;
+        elapsed = 0;
+        flashAge = 99;
+        if (active === 'none') return;
+
+        // Seed from type + parameters so identical set() calls reproduce the exact scene.
+        let seed = (TYPES.indexOf(active) + 1) * 73856093 ^ Math.round(inten * 1000) * 19349663 ^ Math.round(qual * 1000) * 83492791;
+        const rng = mulberry32(seed);
+        flashRng = mulberry32(seed ^ 0x9e3779b9);
+        flashTimer = 10 + flashRng() * 12;
+
+        if (active === 'rain' || active === 'storm') {
+          const storm = active === 'storm';
+          count = Math.min(MAX, Math.round((storm ? 210 : 140) * inten * qual));
+          for (let i = 0; i < count; i++) {
+            px[i] = rng();
+            py[i] = rng();
+            const spd = 900 + rng() * 400;
+            const ang = (storm ? 0.28 : 0.14) + (rng() - 0.5) * 0.04;
+            vx[i] = Math.sin(ang) * spd;
+            vy[i] = Math.cos(ang) * spd;
+            size[i] = 14 + rng() * 16;
+          }
+        } else if (active === 'fog') {
+          initBlobs(9, rng, 0.10, 0.16);
+        } else if (active === 'leaves') {
+          count = Math.min(MAX, Math.round(38 * inten * qual));
+          for (let i = 0; i < count; i++) {
+            px[i] = rng();
+            py[i] = rng();
+            vx[i] = 60 + rng() * 100;
+            vy[i] = 18 + rng() * 32;
+            phase[i] = rng() * 6.283;
+            size[i] = 5 + rng() * 4;
+            extra[i] = Math.floor(rng() * 3);
+          }
+        } else if (active === 'embers') {
+          count = Math.min(MAX, Math.round(80 * inten * qual));
+          for (let i = 0; i < count; i++) {
+            px[i] = rng();
+            py[i] = rng();
+            vx[i] = (rng() - 0.5) * 18;
+            vy[i] = -(22 + rng() * 42);
+            phase[i] = rng() * 6.283;
+            size[i] = 1.5 + rng() * 2;
+            extra[i] = Math.floor(rng() * EMBER_COLORS.length);
+          }
+        } else if (active === 'snow') {
+          count = Math.min(MAX, Math.round(150 * inten * qual));
+          for (let i = 0; i < count; i++) {
+            px[i] = rng();
+            py[i] = rng();
+            vx[i] = (rng() - 0.5) * 12;
+            vy[i] = 40 + rng() * 50;
+            phase[i] = rng() * 6.283;
+            size[i] = 1 + rng() * 1.6;
+          }
+        } else if (active === 'fireflies') {
+          count = Math.min(MAX, Math.round(34 * inten * qual));
+          for (let i = 0; i < count; i++) {
+            px[i] = rng();
+            py[i] = rng();
+            vx[i] = 0.4 + rng() * 0.6;
+            vy[i] = 28 + rng() * 42;
+            phase[i] = rng() * 6.283;
+            size[i] = 3 + rng() * 2;
+            extra[i] = rng() * 6.283;
+          }
+        } else if (active === 'sand') {
+          count = Math.min(MAX, Math.round(60 * inten * qual));
+          for (let i = 0; i < count; i++) {
+            px[i] = rng();
+            py[i] = rng();
+            vx[i] = 380 + rng() * 240;
+            vy[i] = 25 + rng() * 40;
+            size[i] = 30 + rng() * 40;
+          }
+          initBlobs(6, rng, 0.08, 0.12);
+        }
+      }
+
+      function update(dt, W, H) {
+        if (active === 'none' || W <= 0 || H <= 0) return;
+        const step = dt > 0.05 ? 0.05 : dt < 0 ? 0 : dt;
+        elapsed += step;
+
+        // Defer normalized-to-pixel scaling until screen dimensions are known.
+        if (!sized) {
+          for (let i = 0; i < count; i++) { px[i] *= W; py[i] *= H; }
+          for (let i = 0; i < blobCount; i++) { bx[i] *= W; by[i] *= H; }
+          sized = true;
+        }
+
+        if (active === 'storm') {
+          flashTimer -= step;
+          flashAge += step;
+          if (flashTimer <= 0) {
+            flashAge = 0;
+            flashTimer = 10 + flashRng() * 12;
+          }
+        }
+
+        for (let i = 0; i < blobCount; i++) {
+          bx[i] += bvx[i] * step;
+          const half = bsize[i] * 0.5;
+          if (bx[i] - half > W) bx[i] = -half;
+        }
+
+        for (let i = 0; i < count; i++) {
+          if (active === 'fireflies') {
+            phase[i] += vx[i] * step;
+            px[i] += Math.cos(phase[i]) * vy[i] * step;
+            py[i] += Math.sin(phase[i] * 1.3 + extra[i]) * vy[i] * 0.65 * step;
+          } else if (active === 'embers') {
+            px[i] += (vx[i] + Math.sin(elapsed * 2.5 + phase[i]) * 24) * step;
+            py[i] += vy[i] * step;
+            if (py[i] < -8) { py[i] = H + 8; px[i] = ((px[i] + W * 0.37) % W + W) % W; }   // positive modulo: a drifted-left ember used to respawn at a negative x (QC finding)
+          } else if (active === 'snow' || active === 'leaves') {
+            const sway = active === 'leaves' ? 36 : 18;
+            px[i] += (vx[i] + Math.sin(elapsed * 1.8 + phase[i]) * sway) * step;
+            py[i] += vy[i] * step;
+          } else {
+            px[i] += vx[i] * step;
+            py[i] += vy[i] * step;
+          }
+          if (px[i] > W + 40) px[i] -= W + 80;
+          else if (px[i] < -40) px[i] += W + 80;
+          if (active !== 'embers') {   // embers leave through the top and respawn at the bottom
+            if (py[i] > H + 40) py[i] -= H + 80;
+            else if (py[i] < -40) py[i] += H + 80;
+          }
+        }
+      }
+
+      function draw(ctx, W, H) {
+        if (active === 'none' || !sized) return;
+        ensureSprites();
+        ctx.save();
+
+        if (active === 'rain' || active === 'storm') {
+          ctx.strokeStyle = 'rgba(190,215,255,0.35)';
+          ctx.lineWidth = 1.1;
+          ctx.beginPath();
+          for (let i = 0; i < count; i++) {
+            const inv = size[i] / Math.hypot(vx[i], vy[i]);
+            ctx.moveTo(px[i], py[i]);
+            ctx.lineTo(px[i] - vx[i] * inv, py[i] - vy[i] * inv);
+          }
+          ctx.stroke();
+          if (active === 'storm' && flashAge < 0.47) {
+            let a = flashAge < 0.35 ? 0.28 * (1 - flashAge / 0.35) : 0;
+            if (flashAge > 0.12 && flashAge < 0.34) a = Math.max(a, 0.16 * (1 - (flashAge - 0.12) / 0.22));
+            if (a > 0) { ctx.fillStyle = 'rgba(255,255,255,' + a.toFixed(3) + ')'; ctx.fillRect(0, 0, W, H); }
+          }
+        } else if (active === 'fog' || active === 'sand') {
+          const sprite = active === 'fog' ? fogSprite : sandSprite;
+          for (let i = 0; i < blobCount; i++) {
+            const d = bsize[i];
+            ctx.globalAlpha = balpha[i] * inten;
+            ctx.drawImage(sprite, bx[i] - d * 0.5, by[i] - d * 0.35, d, d * 0.7);
+          }
+          ctx.globalAlpha = 1;
+          if (active === 'fog') {
+            ctx.fillStyle = 'rgba(120,140,150,' + (0.05 * inten).toFixed(4) + ')';
+            ctx.fillRect(0, 0, W, H);
+          } else {
+            ctx.strokeStyle = 'rgba(225,205,165,0.28)';
+            ctx.lineWidth = 1.2;
+            ctx.beginPath();
+            for (let i = 0; i < count; i++) {
+              ctx.moveTo(px[i], py[i]);
+              ctx.lineTo(px[i] - size[i], py[i] - size[i] * 0.08);
+            }
+            ctx.stroke();
+          }
+        } else if (active === 'leaves') {
+          ctx.globalAlpha = 0.85;
+          for (let i = 0; i < count; i++) {
+            ctx.fillStyle = LEAF_COLORS[extra[i]];
+            ctx.beginPath();
+            ctx.ellipse(px[i], py[i], size[i] * 0.5, size[i] * 0.26, elapsed * 2.2 + phase[i], 0, 6.283);
+            ctx.fill();
+          }
+        } else if (active === 'embers') {
+          ctx.globalCompositeOperation = 'lighter';
+          for (let i = 0; i < count; i++) {
+            const topFade = clamp(py[i] / (H * 0.35), 0, 1);
+            const flicker = 0.55 + 0.45 * Math.sin(elapsed * 9 + phase[i]);
+            ctx.globalAlpha = topFade * flicker;
+            ctx.fillStyle = EMBER_COLORS[extra[i]];
+            ctx.beginPath();
+            ctx.arc(px[i], py[i], size[i], 0, 6.283);
+            ctx.fill();
+          }
+        } else if (active === 'snow') {
+          ctx.fillStyle = 'rgba(255,255,255,0.8)';
+          ctx.beginPath();
+          for (let i = 0; i < count; i++) {
+            ctx.moveTo(px[i] + size[i], py[i]);
+            ctx.arc(px[i], py[i], size[i], 0, 6.283);
+          }
+          ctx.fill();
+        } else if (active === 'fireflies') {
+          ctx.globalCompositeOperation = 'lighter';
+          for (let i = 0; i < count; i++) {
+            const pulse = 0.25 + 0.75 * (0.5 + 0.5 * Math.sin(elapsed * 2.6 + phase[i]));
+            const d = size[i] * 6;
+            ctx.globalAlpha = pulse;
+            ctx.drawImage(flySprite, px[i] - d * 0.5, py[i] - d * 0.5, d, d);
+          }
+        }
+
+        ctx.restore();
+      }
+
+      function current() {
+        return active;
+      }
+
+      function random(seed) {
+        const rng = mulberry32(seed === undefined ? 1337 : seed);
+        return RAND_TYPES[Math.floor(rng() * RAND_TYPES.length)];
+      }
+
+      return { TYPES: TYPES, set: set, update: update, draw: draw, current: current, random: random };
+    })();
+    let weatherInit = false;
+    const BUILD_ID = '1125-2340';
     if (/beta-b/.test(location.pathname)) { const bid = document.createElement('div'); bid.textContent = 'build ' + BUILD_ID; bid.style.cssText = 'position:fixed;right:6px;bottom:2px;font:10px monospace;color:#fff;opacity:.45;z-index:99999;pointer-events:none'; document.body.appendChild(bid); }   // which build is this? (Matin 2026-11-25: fixes were reported 'still wrong' and I could not tell if the new build was running)
     // --- ASSET CACHE (beta pages only): sw.js keeps the art / clips / sounds in the browser so every visit after the first downloads nothing. play.html and the stable index never register it. ---
     if ('serviceWorker' in navigator && /[?&]nosw=1/.test(location.search)) {   // safety switch: ?nosw=1 removes the cache worker and its files
