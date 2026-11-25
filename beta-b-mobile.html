@@ -3400,6 +3400,17 @@ window.ArenaArt6 = (function () {
     bandKeys = Object.keys(bands).map(Number).sort(function (x, y) { return x - y; });
     bandKeys.forEach(function (i) { bandItems[i] = { wall: true, band: i, x: 0, y: 0, ry: (i + 0.5) * BAND }; });
   }
+  // QA (?god=1): the post columns of the front layers with their foot as WORLD x/y (to put the hero beside a post at a chosen depth)
+  function debugPosts() {
+    var out = [], k = data.k, tilt = World.tilt, cosY = World.cosY, sinY = World.sinY;
+    data.layers.forEach(function (l) {
+      var f = feet[l.file]; if (!l.above_player || !f) return; var j = 0;
+      while (j < f.n) { if (f.foot[j] < 0) { j++; continue; } var a0 = j, fo = f.foot[j]; while (j < f.n && f.foot[j] === fo) j++;
+        var fx = (l.x + ((a0 + j) / 2) * SW) / k, fy = (l.y + fo) / k, u = (fx - fit.tx) / fit.s, ry = (fy - fit.ty) / fit.s / tilt;
+        if (j - a0 >= 4) out.push({ layer: l.module, cols: [a0, j], footCanvasY: l.y + fo, ry: Math.round(ry), x: Math.round(cosY * u + sinY * ry), y: Math.round(-sinY * u + cosY * ry) }); }
+    });
+    return out;
+  }
   function runBox(v, run, ax, ay) {
     var l = run.l, k = data.k, sc = v.z / (k * fit.s), X0 = v.W * 0.5 + v.z * (((l.x / k) - fit.tx) / fit.s - ax), Y0 = v.H * 0.5 + v.z * (((l.y / k) - fit.ty) / fit.s - ay);
     return { x: X0 + run.a * SW * sc, y: Y0, w: Math.min((run.b - run.a) * SW, feet[l.file].w - run.a * SW) * sc, h: feet[l.file].h * sc, sc: sc };
@@ -3444,7 +3455,7 @@ window.ArenaArt6 = (function () {
     }
   }
   return { load: load, ready: function () { return ok; }, reset: reset, warn: warn, land: land, dropAll: dropAll, openCrypt: openCrypt, closeCrypt: closeCrypt, hideBossDoor: hideBossDoor, openBossDoor: openBossDoor, cellState: cellState,
-    draw: function (ctx, v) { drawPass(ctx, v, false); }, sortBands: sortBands, drawBand: drawBand, state: function () { return Object.assign({}, want); } };
+    draw: function (ctx, v) { drawPass(ctx, v, false); }, sortBands: sortBands, drawBand: drawBand, debugPosts: debugPosts, state: function () { return Object.assign({}, want); } };
 })();
     // --- SPRITE ASSET MANAGER ---
     const SPRITES = {};
@@ -10972,6 +10983,7 @@ telemetryInit();
       end: v => triggerGameOver(!!v), // leaderboard test: end the run
       spawn: (type, dx = 200, dy = 0, elite = false) => spawnEnemy(type, hero.x + dx, hero.y + dy, elite), // e.g. 'mootaur'
       passive: id => { if (PASSIVE_REGISTRY[id] && hero.passives[id] < MAX_LEVEL) PASSIVE_REGISTRY[id].apply(); return hero.passives[id]; },
+      heroAt: (x, y) => { hero.x = x; hero.y = y; hero.iFrames = 999; }, // QA: exact hero position (layer tests)
       chestAt: (dx, dy) => { chests.push({ x: hero.x + dx, y: hero.y + dy, radius: 32, isRelicChest: true, bounceY: 0, vy: 0, landed: true, life: 600 }); return chests.length; }, // QA: a landed chest at an offset (chest badge test)
       hurt: n => { hero.hp = Math.max(1, hero.hp - n); return hero.hp; }, // HUD juice QA: god mode skips hitHero
       heal: n => { hero.hp = Math.min(hero.maxHp, hero.hp + n); return hero.hp; },
