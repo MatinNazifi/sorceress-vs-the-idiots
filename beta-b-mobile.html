@@ -6471,7 +6471,7 @@ if (metaFx.regen > 0 && hero.hp > 0) hero.hp = Math.min(hero.maxHp, hero.hp + me
       // 1. Frozen enemies shatter with frost at 0.7 instead of poof
       // 2. Normal deaths play poof
       // 3. Funny Omni death clip (goblin pops his pot and flips, fish flops, frog inflates and pops, minotaur topples dizzy): played where she died, instead of the poof, once its strip has loaded
-      const V2 = OMNI_ENEMY[e.type + '_death2'] && SPRITES['enemy-omni-' + e.type + '_death2'] && SPRITES['enemy-omni-' + e.type + '_death2'].complete && Math.random() < 0.5;   // second funny death when this enemy has one (50 / 50)
+      const V2 = OMNI_ENEMY[e.type + '_death2'] && SPRITES['enemy-omni-' + e.type + '_death2'] && SPRITES['enemy-omni-' + e.type + '_death2'].complete && Math.random() < 0.5 && false;   // OFF 2026-11-25: Matin: second deaths too long, weird, not funny (files kept)   // second funny death when this enemy has one (50 / 50)
       const DN = e.type + (V2 ? '_death2' : '_death'), DD = OMNI_ENEMY[DN], DK = 'enemy-omni-' + DN, DI = SPRITES[DK];
       const deathClip = !e.isBoss && !(e.slowTimer > 0) && DD && DI && DI.complete && DI.naturalWidth > 0;
       if (e.slowTimer > 0) {
