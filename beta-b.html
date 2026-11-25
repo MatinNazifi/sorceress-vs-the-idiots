@@ -1559,6 +1559,7 @@ window.addEventListener('load', function () { setTimeout(function () { var s = d
       [[mid.x + 1.5, mid.y + 1.5], [mid.x + mid.w - 1.5, mid.y + 1.5], [mid.x + 1.5, mid.y + mid.h - 1.5], [mid.x + mid.w - 1.5, mid.y + mid.h - 1.5]].forEach(q => arenaDeco.push({ k: 'lamp', x: q[0] * CS, y: q[1] * CS, w: 56, h: 150 }));
       { const c = cc(shrineS); arenaDeco.push({ k: 'fountain', x: c.x, y: c.y + 40, w: 190, h: 125 }); }
       arenaGateSprs.forEach(s => { arenaDeco.push({ k: 'brazier-0', x: s.x - 190, y: s.y + 10, w: 62, h: 100, gate: s }); arenaDeco.push({ k: 'brazier-0', x: s.x + 190, y: s.y + 10, w: 62, h: 100, gate: s }); });
+      if (ART_6) arenaDeco = [];   // Matin 2026-11-25: the grey-box lamp posts, fountain and gate braziers are not in his painted level (the level pack has its own torches): none under art=6
       arenaDecals = [{ k: 'decal-hub', s: 400, ...cc(mid) }, { k: 'decal-shrine0', s: 250, ...cc(wingW) }, { k: 'decal-shrine1', s: 250, ...cc(wingE) }, { k: 'decal-vault', s: 300, ...cc(vault) }];
       const st = cc(mid), cellOf = p => Math.floor(p.y / CS) * GW + Math.floor(p.x / CS);
       arenaRoots = [cellOf(st), cellOf(cc(vault))]; // what stays supported: the hub and the crypt
@@ -9651,49 +9652,21 @@ function drawEnemy0(e) {
           let vy = sy - halfH;
           if (vx === 0 && vy === 0) vy = -1; // ponytail: handle exact centre overlap
 
-          const tx = vx !== 0 ? Math.abs(limX / vx) : Infinity;
-          const ty = vy !== 0 ? Math.abs(limY / vy) : Infinity;
-          const t = tx < ty ? tx : ty;
-
-          const px = halfW + vx * t;
-          const py = halfH + vy * t;
-          const angle = Math.atan2(vy, vx);
-          const pulse = 1.075 + 0.075 * Math.sin(gameTime * 5);
-
-          // Draw unrotated chest sprite inward from arrow base
-          if (hasSprite) {
-            const sprX = px - Math.cos(angle) * 26;
-            const sprY = py - Math.sin(angle) * 26;
-            ctx.drawImage(spr, sprX - 11, sprY - 11, 22, 22);
-          }
-
-          // Draw rotated indicator arrow
+          // BIG chest badge (Matin 2026-11-25): a gold-ringed circle with the chest inside at the screen edge, scaled with the screen, plus an arrow on its outer side, so the player runs straight there
+          const U = Math.max(1, screenH / 1000), R = 38 * U, px = halfW + vx * Math.min(Math.abs((limX - R) / (vx || 1e-9)), Math.abs((limY - R) / (vy || 1e-9)));
+          const py = halfH + vy * Math.min(Math.abs((limX - R) / (vx || 1e-9)), Math.abs((limY - R) / (vy || 1e-9)));
+          const angle = Math.atan2(vy, vx), pulse = 1 + 0.08 * Math.sin(gameTime * 5);
           ctx.save();
-          ctx.translate(px, py);
-          ctx.rotate(angle);
-          ctx.scale(pulse, pulse);
-
-          ctx.lineWidth = 4;
-          ctx.strokeStyle = '#2a1208';
-          ctx.lineJoin = 'round';
-          ctx.fillStyle = '#f5c542';
-
-          ctx.beginPath();
-          ctx.moveTo(14, 0);
-          ctx.lineTo(-8, -11);
-          ctx.lineTo(-3, 0);
-          ctx.lineTo(-8, 11);
-          ctx.closePath();
-          ctx.fill();
-          ctx.stroke();
-
-          // Highlight on leading edge
-          ctx.beginPath();
-          ctx.moveTo(-6, -9);
-          ctx.lineTo(12, 0);
-          ctx.strokeStyle = '#ffe58a';
-          ctx.lineWidth = 1.5;
-          ctx.stroke();
+          ctx.globalAlpha = 0.35 + 0.25 * (0.5 + 0.5 * Math.sin(gameTime * 5));            // pulsing halo
+          ctx.beginPath(); ctx.arc(px, py, R * pulse + 10 * U, 0, 6.2831853); ctx.fillStyle = '#f5c542'; ctx.fill();
+          ctx.globalAlpha = 1;
+          ctx.beginPath(); ctx.arc(px, py, R, 0, 6.2831853); ctx.fillStyle = 'rgba(24,12,6,0.92)'; ctx.fill();
+          ctx.lineWidth = 5 * U; ctx.strokeStyle = '#f5c542'; ctx.stroke();
+          ctx.lineWidth = 2 * U; ctx.strokeStyle = '#2a1208'; ctx.beginPath(); ctx.arc(px, py, R + 3 * U, 0, 6.2831853); ctx.stroke();
+          if (hasSprite) ctx.drawImage(spr, px - R * 0.62, py - R * 0.62, R * 1.24, R * 1.24);
+          ctx.translate(px + Math.cos(angle) * (R + 8 * U), py + Math.sin(angle) * (R + 8 * U)); ctx.rotate(angle); ctx.scale(pulse * U, pulse * U);   // arrow outside the circle, pointing at the chest
+          ctx.lineWidth = 4; ctx.strokeStyle = '#2a1208'; ctx.lineJoin = 'round'; ctx.fillStyle = '#f5c542';
+          ctx.beginPath(); ctx.moveTo(18, 0); ctx.lineTo(-6, -14); ctx.lineTo(-1, 0); ctx.lineTo(-6, 14); ctx.closePath(); ctx.fill(); ctx.stroke();
           ctx.restore();
         }
       }
