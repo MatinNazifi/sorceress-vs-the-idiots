@@ -3387,13 +3387,13 @@ window.ArenaArt6 = (function () {
   // BRIDGE FRONT POSTS sorted against EVERYTHING (Matin 2026-11-25: enemies, vases and gems on the bridge were hidden by posts they stand in front of; before, only the hero was sorted).
   // Every column of a front layer has a foot (above); columns are grouped into depth BANDS of BAND world units of 'ry' (x*sinY + y*cosY, the render pipeline's depth key); each band is one sortable
   // item that is drawn after everything whose feet are higher up the screen and before everything lower. sortBands() returns the bands that are on screen.
-  var BIAS = 18, BAND = 6, bands = {}, bandItems = {}, bandKeys = [];
+  var DECK = 62, BIAS = 10, BAND = 6, bands = {}, bandItems = {}, bandKeys = [];
   function buildBands() {
     bands = {}; bandItems = {}; var tilt = (typeof World !== 'undefined' && World.tilt) || 0.75, k = data.k;
     data.layers.forEach(function (l) {
       var f = feet[l.file]; if (!l.above_player || !f) return; var pi = null, a = 0, j, idx;
       for (j = 0; j <= f.n; j++) {
-        idx = (j < f.n && f.foot[j] >= 0) ? Math.floor((((l.y + f.foot[j]) / k - fit.ty) / fit.s / tilt) / BAND) : null;
+        idx = (j < f.n && f.foot[j] >= 0) ? Math.floor((((l.y + f.foot[j] - DECK) / k - fit.ty) / fit.s / tilt) / BAND) : null;
         if (idx !== pi) { if (pi !== null) (bands[pi] = bands[pi] || []).push({ l: l, a: a, b: j }); pi = idx; a = j; }
       }
     });
