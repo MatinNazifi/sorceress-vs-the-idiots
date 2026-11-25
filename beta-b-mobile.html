@@ -2330,6 +2330,101 @@ window.addEventListener('load', function () { setTimeout(function () { var s = d
         c.globalAlpha = 0.92; c.drawImage(im, d.x - d.s / 2, d.y - d.s / 2, d.s, d.s); c.globalAlpha = 1;
       }
     }
+    // WARNING MARKER (art=6, Matin 2026-11-25): molten cracks over the doomed cells + a glowing rune border; written by Neon high (QC by Claude), art from Flow (sprites/arena/warn-*.jpg, drawn additively on black)
+    const WARN_IMG = {};
+    function warnArt(n) { let im = WARN_IMG[n]; if (!im) { im = WARN_IMG[n] = new Image(); im.src = 'sprites/arena/' + n; } return im.complete && im.naturalWidth ? im : null; }
+    const WARN_DASH = [18, 12]; // Reused dash pattern to avoid per-frame allocations
+
+    function warnBuild(e, GW, CS) {
+    if (e._wb) return e._wb;
+    const set = new Set(e.cells);
+    const sorted = e.cells.slice().sort((a, b) => a - b); // Sort so row runs are contiguous
+    const path = new Path2D();
+    const edges = [];
+    const marks = [];
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    for (let i = 0; i < sorted.length;) {
+    const j0 = sorted[i];
+    const cy = Math.floor(j0 / GW);
+    const cx0 = j0 % GW;
+    let cx1 = cx0 + 1;
+    while (++i < sorted.length && Math.floor(sorted[i] / GW) === cy && sorted[i] % GW === cx1) cx1++;
+    const x0 = cx0 * CS, y0 = cy * CS, x1 = cx1 * CS, y1 = y0 + CS;
+    path.rect(x0, y0, x1 - x0, CS); // Merge horizontal run to keep Path2D small
+    if (x0 < minX) minX = x0;
+    if (y0 < minY) minY = y0;
+    if (x1 > maxX) maxX = x1;
+    if (y1 > maxY) maxY = y1;
+    }
+    for (let i = 0; i < e.cells.length; i++) {
+    const j = e.cells[i];
+    const cx = j % GW, cy = Math.floor(j / GW);
+    const x = cx * CS, y = cy * CS;
+    if (cy === 0 || !set.has(j - GW)) edges.push([x, y, x + CS, y]);
+    if (!set.has(j + GW)) edges.push([x, y + CS, x + CS, y + CS]);
+    if (cx === 0 || !set.has(j - 1)) edges.push([x, y, x, y + CS]);
+    if (cx === GW - 1 || !set.has(j + 1)) edges.push([x + CS, y, x + CS, y + CS]);
+    }
+    for (let i = 0; i < edges.length; i++) {
+    const g = edges[i];
+    const mx = (g[0] + g[2]) * 0.5, my = (g[1] + g[3]) * 0.5;
+    let near = false;
+    for (let m = 0; m < marks.length; m++) { // Enforce ~96 px spacing along boundary
+    const dx = marks[m].x - mx, dy = marks[m].y - my;
+    if (dx * dx + dy * dy < 9216) { near = true; break; }
+    }
+    if (!near) {
+    const k = (Math.imul((mx | 0) * 73856093 ^ (my | 0) * 19349663, 2654435761) >>> 0) % 6;
+    marks.push({ x: mx, y: my, k }); // Stable position hash avoids flickering runes
+    }
+    }
+    return (e._wb = { path, edges, marks, minX, minY, maxX, maxY });
+    }
+
+    function warnDraw(c, e, p, pulse, GW, CS) {
+    const wb = e._wb || warnBuild(e, GW, CS);
+    c.save();
+    c.globalCompositeOperation = 'lighter';
+    const cracks = warnArt('warn-cracks.jpg');
+    if (cracks) {
+    c.save(); // Isolate clip so border and runes draw outside the zone
+    c.clip(wb.path);
+    c.globalAlpha = Math.min(0.95, 0.28 + 0.67 * p) * (0.72 + 0.28 * pulse);
+    const ts = CS * 5;
+    const x0 = Math.floor(wb.minX / ts) * ts; // Snap to world grid so texture never swims
+    const y0 = Math.floor(wb.minY / ts) * ts;
+    for (let y = y0; y < wb.maxY; y += ts) {
+    for (let x = x0; x < wb.maxX; x += ts) c.drawImage(cracks, x, y, ts, ts);
+    }
+    c.restore();
+    }
+    c.strokeStyle = 'rgb(255,150,40)';
+    c.lineWidth = 4;
+    c.globalAlpha = 0.55 + 0.4 * p;
+    c.shadowColor = 'rgb(255,120,20)';
+    c.shadowBlur = 14;
+    c.setLineDash(WARN_DASH);
+    c.lineDashOffset = -gameTime * 40;
+    c.beginPath();
+    for (let i = 0; i < wb.edges.length; i++) {
+    const g = wb.edges[i];
+    c.moveTo(g[0], g[1]);
+    c.lineTo(g[2], g[3]);
+    }
+    c.stroke();
+    c.shadowBlur = 0; // Avoid expensive shadow pass on rune sprites
+    const runes = warnArt('warn-runes.jpg');
+    if (runes) {
+    const rw = runes.width / 6, rh = runes.height;
+    const sz = 42 * (1 + 0.12 * pulse), half = sz * 0.5;
+    c.globalAlpha = (0.35 + 0.6 * p) * (0.6 + 0.4 * pulse);
+    for (let i = 0; i < wb.marks.length; i++) {
+    const m = wb.marks[i];
+    c.drawImage(runes, m.k * rw, 0, rw, rh, m.x - half, m.y - half, sz, sz);
+    }
+    }
+    c.restore();
+    }
     function arenaDrawEvents(c) { // floor marking while a collapse / the gates are about to go, and the red traps
       arenaDrawDecals(c);
       if (!arenaEvents) return;
@@ -2337,6 +2432,7 @@ window.addEventListener('load', function () { setTimeout(function () { var s = d
         const e = arenaEvents[i];
         if (e.state !== 'warn') continue;
         const warn = warnOf(e), p = 1 - Math.max(0, e.t - gameTime) / warn, pulse = 0.5 + 0.5 * Math.sin(gameTime * (6 + 10 * p));
+        if (ART_6 && e.kind === 'collapse' && e.cells) { warnArt('warn-cracks.jpg'); warnArt('warn-runes.jpg'); warnDraw(c, e, p, pulse, GW, CS); continue; }   // the new marker replaces the amber fill, dashed box and old stamp
         const purple = e.kind === 'gates' || e.kind === 'vault', col = purple ? '190,130,255' : '245,158,11';
         c.fillStyle = `rgba(${col},${0.10 + 0.24 * pulse * (0.35 + p)})`;
         c.beginPath();
@@ -2346,7 +2442,7 @@ window.addEventListener('load', function () { setTimeout(function () { var s = d
         if (e.rects) { c.strokeStyle = `rgba(${col},0.95)`; c.lineWidth = 5; c.setLineDash([22, 14]); c.lineDashOffset = -gameTime * 50; e.rects.forEach(r => c.strokeRect(r[0] * CS, r[1] * CS, (r[2] - r[0]) * CS, (r[3] - r[1]) * CS)); c.setLineDash([]); }
       }
       const warnImg = artImg('collapse-2'); // collapse warning: the glowing cracked slab stamped over the floor that is about to fall
-      if (warnImg) for (let i = 0; i < arenaEvents.length; i++) {
+      if (warnImg && !ART_6) for (let i = 0; i < arenaEvents.length; i++) {
         const e = arenaEvents[i]; if (e.state !== 'warn' || !e.cells || e.kind !== 'collapse') continue;
         const p = 1 - Math.max(0, e.t - gameTime) / warnOf(e);
         c.globalAlpha = Math.min(0.9, 0.25 + 0.7 * p);
@@ -11033,7 +11129,7 @@ telemetryInit();
       }
     };
 
-    const BUILD_ID = '1125-2221';
+    const BUILD_ID = '1125-2229';
     if (/beta-b/.test(location.pathname)) { const bid = document.createElement('div'); bid.textContent = 'build ' + BUILD_ID; bid.style.cssText = 'position:fixed;right:6px;bottom:2px;font:10px monospace;color:#fff;opacity:.45;z-index:99999;pointer-events:none'; document.body.appendChild(bid); }   // which build is this? (Matin 2026-11-25: fixes were reported 'still wrong' and I could not tell if the new build was running)
     // --- ASSET CACHE (beta pages only): sw.js keeps the art / clips / sounds in the browser so every visit after the first downloads nothing. play.html and the stable index never register it. ---
     if ('serviceWorker' in navigator && /[?&]nosw=1/.test(location.search)) {   // safety switch: ?nosw=1 removes the cache worker and its files
