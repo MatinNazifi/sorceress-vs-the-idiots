@@ -2548,11 +2548,11 @@ window.addEventListener('load', function () { setTimeout(function () { var s = d
       },
 
       randomFreeSpot(hero) {
-        for (let i = 0; i < 50; i++) {
-          const pool = lanes ? rooms.concat(lanes) : rooms; // arena: vases anywhere on standing floor, bridges are just one more rect
-          const rx = pool[Math.floor(Math.random() * pool.length)];
-          const x = (rx.x + rx.w * (0.25 + Math.random() * 0.5)) * CS;
-          const y = (rx.y + rx.h * (0.25 + Math.random() * 0.5)) * CS;
+        for (let i = 0; i < 90; i++) {
+          // arena (Matin 2026-11-25): vases everywhere on standing floor, not mostly on the bridges: a random point of the whole grid, kept only if it is walkable floor
+          const pool = lanes ? null : rooms, rx = pool ? pool[Math.floor(Math.random() * pool.length)] : null;
+          const x = rx ? (rx.x + rx.w * (0.25 + Math.random() * 0.5)) * CS : Math.random() * GW * CS;
+          const y = rx ? (rx.y + rx.h * (0.25 + Math.random() * 0.5)) * CS : Math.random() * GH * CS;
           if (!this.isWalkable(x, y, 24) || !arenaReachAt(x, y) || (arenaTopLocked && y < topPx) || (arenaStage < 3 && inVault(x, y))) continue;
           if (hero && Math.hypot(x - hero.x, y - hero.y) < 150) continue;
           return { x, y };
@@ -3228,13 +3228,14 @@ window.ArenaArt6 = (function () {
         // ready only when the healthy-state layers are decoded: until then the grey-box floor stays (a black map while 17 MB loaded was the bug); the other states load in the background
         var core = data.layers.filter(function (l) { return HEALTHY[l.module] === l.state; });
         data.layers.forEach(function (l) { img(l.file); });
-        return Promise.all(core.map(function (l) { return new Promise(function (r) { var im = img(l.file); if (im.complete && im.naturalWidth) r(); else { im.onload = r; im.onerror = r; } }); })).then(function () { buildWalk(); buildFeet(); ok = true; if (typeof loadOmniStrips === 'function') loadOmniStrips(); if (GFX_HD) setTimeout(loadHD, 2500); if (GFX_ULTRA) setTimeout(loadUltra, 3000); });
+        return Promise.all(core.map(function (l) { return new Promise(function (r) { var im = img(l.file); if (im.complete && im.naturalWidth) r(); else { im.onload = r; im.onerror = r; } }); })).then(function () { buildWalk(); buildFeet(); ok = true; if (typeof loadOmniStrips === 'function') loadOmniStrips(); if (GFX_HD && !GFX_ULTRA) setTimeout(loadHD, 2500); if (GFX_ULTRA) setTimeout(loadUltra, 3000); });
       }).catch(function () { ok = false; });
   }
   function img(file) { var im = imgs[file]; if (!im) { im = imgs[file] = new Image(); im.src = base + file; } return im; }
   // ULTRA TILES (4K): each layer is cut into 1024 px tiles at 4x (build_art6_ultra.py); only the tiles on screen are fetched/decoded (LRU, max TILE_CAP). While a tile is missing the 2x/standard image fills in.
   var ultra = null, tiles = {}, tileQ = [], tileBusy = 0, tileTick = 0, TILE_CAP = 150;
   function loadUltra() {
+    ultraT0 = nowS();
     fetch('sprites/arena/v6u/art6u.json?v=1').then(function (r) { return r.json(); }).then(function (u) { ultra = u; }).catch(function () { ultra = null; });
   }
   function tileImg(name) {
@@ -3242,11 +3243,16 @@ window.ArenaArt6 = (function () {
     if (!e) { e = tiles[name] = { im: null, ok: false, used: tileTick }; tileQ.push(name); pumpTiles(); }
     e.used = tileTick; return e.ok ? e.im : null;
   }
+  var ultraT0 = 0, evictT = 0;
+  // the 4x tiles wait for the animations and icons (every Omni strip) so they never starve them (Matin 2026-11-25: animations and level-up icons did not load at 4K); after 40 s they go anyway
+  function tilesMayLoad() { return typeof omniAllLoaded !== 'function' || omniAllLoaded() || nowS() - ultraT0 > 40; }
   function pumpTiles() {
-    while (tileBusy < 6 && tileQ.length) {
+    if (!tilesMayLoad()) return;
+    while (tileBusy < 3 && tileQ.length) {
       var name = tileQ.shift(), e = tiles[name]; if (!e) continue; tileBusy++;
       (function (e) { var im = new Image(); im.onload = function () { e.im = im; e.ok = true; tileBusy--; pumpTiles(); }; im.onerror = function () { tileBusy--; pumpTiles(); }; im.src = 'sprites/arena/v6u/' + name; })(e);
     }
+    if (nowS() - evictT < 1) return; evictT = nowS();
     var keys = Object.keys(tiles); if (keys.length > TILE_CAP) { keys.sort(function (a, b) { return tiles[a].used - tiles[b].used; }); for (var i = 0; i < keys.length - TILE_CAP; i++) if (tiles[keys[i]].used < nowS() - 1.5) delete tiles[keys[i]]; }
   }
   function drawTiles(ctx, v, U, X, Y, sw, alpha, fallback) {
@@ -3257,6 +3263,7 @@ window.ArenaArt6 = (function () {
       if (x + w < 0 || x > v.W || y + h < 0 || y > v.H) continue;
       im = tileImg(t[2]); if (im) hit.push([im, x, y, w, h]); else miss.push(1);
     }
+    if (miss.length) pumpTiles();
     if (miss.length && fallback) ctx.drawImage(fallback.im, fallback.X, fallback.Y, fallback.w, fallback.h);   // some tiles still loading: the 2x image under the ones that are ready
     if (alpha < 1) ctx.globalAlpha = alpha;
     for (i = 0; i < hit.length; i++) ctx.drawImage(hit[i][0], hit[i][1], hit[i][2], hit[i][3], hit[i][4]);
@@ -4560,21 +4567,16 @@ window.ArenaArt6 = (function () {
       return World.randomFreeSpot(hero);
     }
 
-    function spawnInitialVases() {
-      for (let i = 0; i < 8; i++) {
-        const pos = getRandomVasePos();
-        const types = ['a', 'b', 'c'];
-        vases.push({
-          type: types[Math.floor(Math.random() * types.length)],
-          x: pos.x,
-          y: pos.y,
-          broken: false,
-          brokenTimer: 4.0,
-          radius: 18,
-          height: 55
-        });
+    // Matin 2026-11-25: vases come in PACKS of 2-4 that sit together like decoration, spread over the whole floor (not mostly on the bridges)
+    function spawnVasePack() {
+      const c = getRandomVasePos(), n = 2 + Math.floor(Math.random() * 3), types = ['a', 'b', 'c'];
+      for (let k = 0; k < n; k++) {
+        const a = Math.random() * 6.283, r = k === 0 ? 0 : 34 + Math.random() * 30, x = c.x + Math.cos(a) * r, y = c.y + Math.sin(a) * r * 0.7;
+        if (k > 0 && (!World.isWalkable(x, y, 20) || vases.some(v => !v.broken && Math.hypot(v.x - x, v.y - y) < 30))) continue;
+        vases.push({ type: types[Math.floor(Math.random() * types.length)], x, y, broken: false, brokenTimer: 4.0, radius: 18, height: 55 });
       }
     }
+    function spawnInitialVases() { for (let i = 0; i < 5; i++) spawnVasePack(); }
     spawnInitialVases();
 
     function breakVase(v) {
@@ -4695,24 +4697,11 @@ window.ArenaArt6 = (function () {
         }
       }
 
-      // Vase Resupply: Keep about 8 on the map; a new one appears every 18 s, up to 10.
+      // Vase Resupply (Matin 2026-11-25: packs of 2-4 together, everywhere): a new pack every 22 s while fewer than 14 stand.
       vaseSpawnTimer += dt;
-      if (vaseSpawnTimer >= 18.0) {
+      if (vaseSpawnTimer >= 22.0) {
         vaseSpawnTimer = 0;
-        const activeVases = vases.filter(v => !v.broken).length;
-        if (activeVases < 10) {
-          const pos = getRandomVasePos();
-          const types = ['a', 'b', 'c'];
-          vases.push({
-            type: types[Math.floor(Math.random() * types.length)],
-            x: pos.x,
-            y: pos.y,
-            broken: false,
-            brokenTimer: 4.0,
-            radius: 18,
-            height: 55
-          });
-        }
+        if (vases.filter(v => !v.broken).length < 14) spawnVasePack();
       }
 
       const hasBoss = enemies.some(e => e.isBoss && e.hp > 0);
@@ -4897,6 +4886,7 @@ window.ArenaArt6 = (function () {
       for (const k in OMNI_URLS) get(k);
       if (typeof clipSfxPreload === 'function') clipSfxPreload();
     }
+    function omniAllLoaded() { for (const k in OMNI_URLS) { const i = SPRITES[k]; if (!i || !i.complete) return false; } return true; }
     if (typeof setTimeout !== 'undefined') setTimeout(loadOmniStrips, 6000);
     function omniOn() { const a = SPRITES['hero-omni-walk'], b = SPRITES['hero-omni-run']; return OMNI_ANIM.on && !!a && !!b && a.complete && b.complete && a.naturalWidth > 0 && b.naturalWidth > 0; }
     // Screen-side (+ = right of the screen) of a WORLD offset: the camera is yawed, so "target.x >= hero.x" (world) put the sprite on the wrong side for enemies to her screen right/left (Matin 2026-11-25: the hand was on the other side).
