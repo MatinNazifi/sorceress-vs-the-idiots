@@ -2081,7 +2081,7 @@ window.addEventListener('load', function () { setTimeout(function () { var s = d
     function arenaOpenVault(e) { // inner gate bursts open: short cutscene, the hero walks in
       e.state = 'done'; arenaStage = 3; arenaCutEnd = gameTime + 3.5;
       arenaVaultCells.forEach(i => { grid[i] = 1; deco[i] = 0; });
-      arenaRebuild(arenaVaultCells); if (art5Ready()) { ArenaArt5.setHidden('gatehouse', true); if (ART_6) ArenaArt6.hideBossDoor(); }
+      arenaRebuild(arenaVaultCells); if (art5Ready()) { ArenaArt5.setHidden('gatehouse', true); if (ART_6) ArenaArt6.openBossDoor(); }
       for (let k = 0; k < 4; k++) { const i = arenaVaultCells[Math.floor(arenaVaultCells.length * (k + 0.5) / 4)]; playVFX('explosion', (i % GW) * CS + CS / 2, ((i / GW) | 0) * CS + CS / 2, { scale: 2.8, fps: 16 }); }
       addShake(28); screenFlash = 0.3; hero.iFrames = Math.max(hero.iFrames, 3.5);
     }
@@ -3170,6 +3170,22 @@ window.ArenaArt6 = (function () {
   function openCrypt() { setWant('crypt_floor_walls', 'open', GATE_FADE); setWant('crypt_wall_front', 'open', GATE_FADE); }
   function closeCrypt() { setWant('crypt_floor_walls', 'closed', GATE_FADE); setWant('crypt_wall_front', 'closed', GATE_FADE); } // after the great drop the gates shut again
   function hideBossDoor() { setWant('boss_door', 'hidden', 0.01); }
+  // BOSS DOOR OPENS (Omni clip, 40 frames over 4 s: padlock drops, chains fall, doors swing in, golden light); the last frame stays. Falls back to hiding the door if the strip is not loaded.
+  var door = { img: null, meta: null, t0: 0 };
+  function loadDoor() {
+    door.img = new Image(); door.img.src = 'sprites/boss-door-open.webp?v=1';
+    fetch('sprites/boss-door-open.json?v=1').then(function (r) { return r.json(); }).then(function (m) { door.meta = m; }).catch(function () {});
+  }
+  function openBossDoor() {
+    if (door.meta && door.img && door.img.complete && door.img.naturalWidth) { door.t0 = nowS(); setWant('boss_door', 'open', 0.01); } else hideBossDoor();
+  }
+  function drawDoor(ctx, v, l, ax, ay) {
+    var m = door.meta, k = data.k, fi = Math.min(m.frames - 1, Math.floor((nowS() - door.t0) / m.dur * m.frames));
+    var sc = v.z * (l.w / k) / fit.s / 435;                                   // screen px per door-sprite px
+    var X = v.W * 0.5 + v.z * (((l.x / k) - fit.tx) / fit.s - ax) - m.mL * sc, Y = v.H * 0.5 + v.z * (((l.y / k) - fit.ty) / fit.s - ay) - m.mT * sc;
+    if (X + m.fw / m.q * sc < 0 || X > v.W || Y + m.fh / m.q * sc < 0 || Y > v.H) return;
+    ctx.drawImage(door.img, fi * m.fw, 0, m.fw, m.fh, X, Y, m.fw / m.q * sc, m.fh / m.q * sc);
+  }
   function tick() { // a module whose shown art changed starts a fade from the old art
     var t = nowS();
     for (var m in want) { var s = shown(m); if (cur[m] !== s) { prev[m] = cur[m]; cur[m] = s; t0[m] = t; dur[m] = pend[m] || 0.8; } }
@@ -3205,7 +3221,7 @@ window.ArenaArt6 = (function () {
     base = baseUrl.endsWith('/') ? baseUrl : baseUrl + '/';
     return Promise.all([fetch(base + 'art6.json').then(function (r) { return r.json(); }), fetch('sprites/arena/v5/art5.json').then(function (r) { return r.json(); })])
       .then(function (a) {
-        data = a[0]; data.layers.sort(function (p, q) { return p.z - q.z; }); fit = a[1].fit; reset(); // back to front by z: the crypt front wall (z 15) sits BEHIND the platform
+        loadDoor(); data = a[0]; data.layers.sort(function (p, q) { return p.z - q.z; }); fit = a[1].fit; reset(); // back to front by z: the crypt front wall (z 15) sits BEHIND the platform
         data.layers.forEach(function (l) { byKey[l.module + '|' + l.state] = l; });
         // ready only when the healthy-state layers are decoded: until then the grey-box floor stays (a black map while 17 MB loaded was the bug); the other states load in the background
         var core = data.layers.filter(function (l) { return HEALTHY[l.module] === l.state; });
@@ -3253,6 +3269,7 @@ window.ArenaArt6 = (function () {
     ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
     for (var i = 0; i < L.length; i++) {
       var l = L[i];
+      if (!front && l.module === 'boss_door' && l.state === 'locked' && cur.boss_door === 'open' && door.meta) { drawDoor(ctx, v, l, ax, ay); continue; }
       if (l.above_player) { if (cur[l.module] === l.state && feet[l.file]) drawStrips(ctx, v, l, front, ax, ay, hFY); continue; } // front pass: columns in front of her; back pass: columns behind her
       if (front) continue;
       var m = l.module; if (cur[m] !== l.state) continue; // only the module's current art; the previous art is drawn under it while a fade runs
@@ -3262,7 +3279,7 @@ window.ArenaArt6 = (function () {
       drawLayer(ctx, v, l, p, ax, ay);
     }
   }
-  return { load: load, ready: function () { return ok; }, reset: reset, warn: warn, land: land, dropAll: dropAll, openCrypt: openCrypt, closeCrypt: closeCrypt, hideBossDoor: hideBossDoor, cellState: cellState,
+  return { load: load, ready: function () { return ok; }, reset: reset, warn: warn, land: land, dropAll: dropAll, openCrypt: openCrypt, closeCrypt: closeCrypt, hideBossDoor: hideBossDoor, openBossDoor: openBossDoor, cellState: cellState,
     draw: function (ctx, v) { drawPass(ctx, v, false); }, drawFront: function (ctx, v) { drawPass(ctx, v, true); }, state: function () { return Object.assign({}, want); } };
 })();
     // --- SPRITE ASSET MANAGER ---
