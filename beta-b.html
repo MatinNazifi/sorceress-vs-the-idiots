@@ -4780,7 +4780,7 @@ window.ArenaArt6 = (function () {
       for (const [k, n] of [['atk', 'atk'], ['cast', 'cast']]) OMNI_URLS['hero-omni-' + k + d] = 'sprites/hero-omni-' + n + d + (GFX_HD ? '-hd' : '') + '.webp?v=1'; }
     // Standing attack (anim_test/make_stand_atk.py): she stands, staff and free hand cast together (one clip made from the real idle sprite). Same lead / speed / cooldown as the run attacks; plays once per cast, then the idle pose returns.
     const OMNI_STAND = Object.assign({ key: 'hero-omni-stand', frames: 24 }, OMNI_STAND_DATA);
-    OMNI_URLS['hero-omni-stand'] = 'sprites/hero-omni-stand' + (GFX_HD ? '-hd' : '') + '.webp?v=1';
+    OMNI_URLS['hero-omni-stand'] = 'sprites/hero-omni-stand' + (GFX_HD ? '-hd' : '') + '.webp?v=2';   // v2 = flipped to match the idle sprite
     function omniStandFrame(h) { return h.stT >= 0 ? Math.min(OMNI_STAND.frames - 1, Math.floor(h.stT / OMNI_STAND.dur * OMNI_STAND.frames)) : -1; }
     function omniStandStep(h, dt) {                                                                       // every update while she is NOT moving
       loadOmniStrips();
