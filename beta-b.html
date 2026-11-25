@@ -1618,7 +1618,7 @@ window.addEventListener('load', function () { setTimeout(function () { var s = d
       const shuf = a => a.map(x => ({ x, k: rand() })).sort((p, q) => p.k - q.k).map(o => o.x);
       const order = shuf([0, 1]).concat(shuf([2, 3, 4]));
       arenaZones = ZONES.map(z => ({ name: z[0], done: false, rects: z[1].map(r => [sc(r[0]), sc(r[1]), sc(r[0] + r[2]), sc(r[1] + r[3])]) }));
-      const events = order.map((zi, i) => ({ id: i, kind: 'collapse', zi, name: ZONES[zi][0], t: 130 + i * 85 + Math.floor(rand() * 21) - 10, state: 'wait', cells: null, rects: arenaZones[zi].rects }));
+      const events = order.map((zi, i) => ({ id: i, kind: 'collapse', zi, name: ZONES[zi][0], t: 90 * (i + 1), state: 'wait', cells: null, rects: arenaZones[zi].rects }));
       GATES_AT = 570 + Math.floor(rand() * 21); DROP_AT = 600; VAULT_AT = 780; arenaCryptChests = 0; // Matin 2026-11-25: gates open at a random time 9:30-9:50, the whole map collapses at exactly 10:00 (only the crypt stays), the inner door opens at 13:00
       events.push({ id: 5, kind: 'gates', name: 'the crypt gates', t: GATES_AT, state: 'wait' }, { id: 6, kind: 'drop', name: 'the lower realm', t: DROP_AT, state: 'wait', cells: null }, { id: 7, kind: 'vault', name: 'the inner gate', t: VAULT_AT, state: 'wait' });
       let lower = 0; for (let i = topPx / CS * GW; i < GW * GH; i++) if (grid[i] === 1) lower++;
@@ -2205,9 +2205,9 @@ window.addEventListener('load', function () { setTimeout(function () { var s = d
       for (let i = 0; i < arenaEvents.length; i++) {
         const e = arenaEvents[i], warn = warnOf(e);
         // art=6: the piece shows its DAMAGED art from half the time between collapses before it falls (about 42 s), long before the 10 s warning, so the player sees the art first.
-        // The hub (middle slab) turns damaged right after the fifth collapse lands (Matin 2026-11-25) and only collapses with the great drop at 10:00.
+        // The hub (middle slab) turns damaged at 8:30 (Matin 2026-11-25) and only collapses with the great drop at 10:00. Collapses: 1:30, 3:00, 4:30, 6:00, 7:30; each piece damaged 45 s (half an interval) before it falls.
         const dmgLead = e.kind === 'collapse' ? DMG_LEAD : e.kind === 'gates' ? 30 : 0; // the drop and the inner gate have no damaged art of their own
-        if (ART_6 && dmgLead > 0 && e.state === 'wait' && !e.dmg && art5Ready() && gameTime >= (e.kind === 'gates' ? arenaEvents[4].t + 5 : e.t - dmgLead)) { e.dmg = true; ArenaArt6.warn(e.kind === 'collapse' ? e.name : 'the west side of the hub'); }
+        if (ART_6 && dmgLead > 0 && e.state === 'wait' && !e.dmg && art5Ready() && gameTime >= (e.kind === 'gates' ? 510 : e.t - dmgLead)) { e.dmg = true; ArenaArt6.warn(e.kind === 'collapse' ? e.name : 'the west side of the hub'); }
         if (e.state === 'wait' && gameTime >= e.t - warn) arenaWarn(e);
         if (e.state === 'warn') {
           const p = 1 - Math.max(0, e.t - gameTime) / warn;
