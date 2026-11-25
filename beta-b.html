@@ -3706,10 +3706,11 @@ window.ArenaArt6 = (function () {
       }
     }
     function playClipSfx(name, vol = 1, gap = 0.1) {
-      if (!audioCtx || !clipBuf[name]) return;
+      if (!audioCtx) return; if (!clipBuf[name]) { clipSfxPreload(); return; }
       const now = audioCtx.currentTime; if (clipLast[name] && now - clipLast[name] < gap) return; clipLast[name] = now;
       try { const src = audioCtx.createBufferSource(); src.buffer = clipBuf[name]; src.playbackRate.value = 1 + (Math.random() * 2 - 1) * 0.04; const g = audioCtx.createGain(); g.gain.value = vol * CLIP_SFX_VOL; src.connect(g); g.connect(sfxBus); src.start(); } catch (e) {}
     }
+    setInterval(clipSfxPreload, 4000);   // starts fetching once the audio context exists (first gesture) and the clip data is defined; each file is requested once
     const CLIP_SFX_VOL = 1.6;   // the clip sounds are normalised to -20 LUFS; the CC0 samples sit lower on this bus: raise / lower here after listening
 
     // Same method names the game already calls, now backed by the Flow samples
@@ -3764,7 +3765,7 @@ window.ArenaArt6 = (function () {
       if (nx < MUSIC_PHASES.length && !music.p[nx] && gameTime >= MUSIC_PHASES[nx].from - 20) music.p[nx] = makeTrack(MUSIC_PHASES[nx].srcs);
     }
     window.__sfx = n => { sfxLast[n] = 0; playSample(n); }
-    window.__audio = () => ({ ctx: audioCtx && audioCtx.state, loaded: Object.values(sfxBuffers).reduce((a, v) => a + v.length, 0),
+    window.__audio = () => ({ clips: Object.keys(clipBuf).length, ctx: audioCtx && audioCtx.state, loaded: Object.values(sfxBuffers).reduce((a, v) => a + v.length, 0),
       dungeon: music.a && { t: +music.a.el.currentTime.toFixed(1), paused: music.a.el.paused, src: music.a.el.src.split('/').pop() },
       boss: music.b && { t: +music.b.el.currentTime.toFixed(1), paused: music.b.el.paused }, bossOn: music.boss, played: Object.keys(sfxLast),
       sfxPeak: sfxMeter ? (() => { const d = new Float32Array(sfxMeter.fftSize); sfxMeter.getFloatTimeDomainData(d); return Math.max(...d.map(Math.abs)); })() : null });
