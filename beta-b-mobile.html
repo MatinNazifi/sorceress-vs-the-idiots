@@ -8361,6 +8361,7 @@ if (metaFx.regen > 0 && hero.hp > 0) hero.hp = Math.min(hero.maxHp, hero.hp + me
 
       // SCREEN SPACE HUD & FULLSCREEN FLASHES
       Weather.draw(ctx, screenW, screenH);   // ambient weather under the HUD
+      Ambient.drawNow(ctx);                   // level ambient (spores, embers, rain/mist/leaves events)
       drawHUD();
       drawChestPointers();
       World.hud(ctx, screenW, screenH);
@@ -11108,8 +11109,10 @@ telemetryInit();
       if (!weatherInit) { weatherInit = true; const wq = new URLSearchParams(location.search).get('weather'); if (wq === 'cycle') { // ?weather=cycle: all eight types one after another, 5 s each, the name shown on top (to look at them fast)
           let ci = 0; const lab = document.createElement('div'); lab.style.cssText = 'position:fixed;left:50%;top:8px;transform:translateX(-50%);font:700 18px sans-serif;color:#fff;background:rgba(0,0,0,.55);padding:4px 14px;border-radius:12px;z-index:99999;pointer-events:none'; document.body.appendChild(lab);
           const stepW = () => { const ty = Weather.TYPES[ci++ % Weather.TYPES.length]; Weather.set(ty, 0.9, 1); lab.textContent = ty; }; stepW(); setInterval(stepW, 5000);
-        } else Weather.set(wq || Weather.random(Date.now() % 100000), 0.6, (('ontouchstart' in window) || navigator.maxTouchPoints > 0) ? 0.45 : 1); }
+        } else if (!wq && /[?&]art=6/.test(location.search)) Ambient.init((('ontouchstart' in window) || navigator.maxTouchPoints > 0) ? 0.5 : 1);   // this level: spores on the swamp, embers on the island, rain/mist/leaves now and then (44x-ambient.js)
+        else Weather.set(wq || Weather.random(Date.now() % 100000), 0.6, (('ontouchstart' in window) || navigator.maxTouchPoints > 0) ? 0.45 : 1); }
       Weather.update(dt, screenW, screenH);
+      if (Ambient.active()) Ambient.tick(dt, CAMERA, World, screenW, screenH);
       updateEnemies(dt);
       updateProjectilesAndEffects(dt);
       tickGameTimers(dt);
@@ -11492,7 +11495,98 @@ telemetryInit();
       return { TYPES: TYPES, set: set, update: update, draw: draw, current: current, random: random };
     })();
     let weatherInit = false;
-    const BUILD_ID = '1125-2345';
+    // --- LEVEL AMBIENT (Matin 2026-11-26): painted Flow particles tied to the MAP. Spores float over the swamp (where there is no floor), small embers rise off the island floor, and every ~minute
+    // one event comes and goes: rain, mist or falling leaves. Sprites: sprites/fx/pt-*.png (anim_test/cut_particles.py). Glow sheets are drawn additively, leaves normally.
+    // World-space particles keep their spot on the map while the camera moves; events are screen-space. No allocation per frame (typed pools). ?weather=<type> still forces the old Weather module. ---
+    const Ambient = (function () {
+      const FX = {}, N_EMB = 36, N_SPO = 34, N_RAIN = 70, N_SPL = 24, N_MIST = 8, N_LEAF = 30;
+      const eX = new Float32Array(N_EMB), eY = new Float32Array(N_EMB), eH = new Float32Array(N_EMB), eV = new Float32Array(N_EMB), eA = new Float32Array(N_EMB), eL = new Float32Array(N_EMB), eS = new Float32Array(N_EMB), eC = new Int16Array(N_EMB);
+      const sX = new Float32Array(N_SPO), sY = new Float32Array(N_SPO), sVx = new Float32Array(N_SPO), sVy = new Float32Array(N_SPO), sA = new Float32Array(N_SPO), sL = new Float32Array(N_SPO), sS = new Float32Array(N_SPO), sC = new Int16Array(N_SPO);
+      const rX = new Float32Array(N_RAIN), rY = new Float32Array(N_RAIN), rV = new Float32Array(N_RAIN), rC = new Int16Array(N_RAIN);
+      const pX = new Float32Array(N_SPL), pY = new Float32Array(N_SPL), pA = new Float32Array(N_SPL), pC = new Int16Array(N_SPL);
+      const mX = new Float32Array(N_MIST), mY = new Float32Array(N_MIST), mV = new Float32Array(N_MIST), mS = new Float32Array(N_MIST), mC = new Int16Array(N_MIST);
+      const lX = new Float32Array(N_LEAF), lY = new Float32Array(N_LEAF), lVx = new Float32Array(N_LEAF), lVy = new Float32Array(N_LEAF), lR = new Float32Array(N_LEAF), lVr = new Float32Array(N_LEAF), lP = new Float32Array(N_LEAF), lC = new Int16Array(N_LEAF);
+      let q = 1, started = false, clock = 0, nextAt = 0, ev = null, lastType = '', W = 1, H = 1, sized = false;
+      const R = (a, b) => a + Math.random() * (b - a);
+
+      function load(name) {
+        const o = FX[name] = { img: new Image(), cells: null, kinds: null }; o.img.src = 'sprites/fx/pt-' + name + '.png?v=1';
+        fetch('sprites/fx/pt-' + name + '.json?v=1').then(r => r.json()).then(j => { o.cells = j.cells; o.kinds = j.kinds || []; }).catch(() => {});
+      }
+      const ready = o => o && o.cells && o.img.complete && o.img.naturalWidth > 0;
+      function pickCell(o, kind) { // a random cell of the wanted kind ('streak' / 'splash'), ignoring specks
+        for (let t = 0; t < 12; t++) { const i = (Math.random() * o.cells.length) | 0, c = o.cells[i]; if (c[2] < 10 || c[3] < 10) continue; if (!kind || o.kinds[i] === kind) return i; }
+        return 0;
+      }
+      function init(quality) { q = quality || 1; ['embers', 'spores', 'rain', 'mist', 'leaves'].forEach(load); started = true; nextAt = R(25, 40); }
+
+      // screen point <-> world point for the camera (the same maths as the chest badge and staffTip)
+      function toWorld(c, sx, sy, out) { const u = (sx - c.W / 2) / c.zoom, v = (sy - c.H / 2) / (c.zoom * c.tilt); out.x = c.x + u * c.cos + v * c.sin; out.y = c.y - u * c.sin + v * c.cos; }
+      const P = { x: 0, y: 0 };
+      function spawnE(i, c, inside) {
+        for (let t = 0; t < 5; t++) { toWorld(c, R(-40, c.W + 40), R(0, c.H + 80), P); if (inside(P.x, P.y)) { eX[i] = P.x; eY[i] = P.y; eH[i] = R(0, 14); eV[i] = R(14, 30); eA[i] = 0; eL[i] = R(3.5, 6.5); eS[i] = R(0, 6.28); eC[i] = pickCell(FX.embers); return; } }
+        eA[i] = 0; eL[i] = 0.2; eX[i] = 1e9;   // no floor found in view this time: try again shortly
+      }
+      function spawnS(i, c, inside) {
+        for (let t = 0; t < 5; t++) { toWorld(c, R(-60, c.W + 60), R(-40, c.H + 60), P); if (!inside(P.x, P.y)) { sX[i] = P.x; sY[i] = P.y; sVx[i] = R(-7, 7); sVy[i] = R(-7, 7); sA[i] = 0; sL[i] = R(6, 11); sS[i] = R(0, 6.28); sC[i] = pickCell(FX.spores); return; } }
+        sA[i] = 0; sL[i] = 0.2; sX[i] = 1e9;
+      }
+      function startEvent(forced) {
+        const types = ['rain', 'mist', 'leaves'].filter(t => t !== lastType); const type = forced || types[(Math.random() * types.length) | 0]; lastType = type;
+        ev = { type, t: 0, dur: R(25, 40) };
+        if (type === 'rain') { for (let i = 0; i < N_RAIN; i++) { rX[i] = R(0, W); rY[i] = R(-H, H); rV[i] = R(950, 1300); rC[i] = pickCell(FX.rain, 'streak'); } for (let i = 0; i < N_SPL; i++) { pX[i] = R(0, W); pY[i] = R(H * 0.15, H); pA[i] = R(-1, 0); pC[i] = pickCell(FX.rain, 'splash'); } }
+        else if (type === 'mist') for (let i = 0; i < N_MIST; i++) { mX[i] = R(-300, W); mY[i] = R(-100, H - 100); mV[i] = R(9, 24); mS[i] = R(520, 900); mC[i] = (Math.random() * 6) | 0; }
+        else for (let i = 0; i < N_LEAF; i++) { lX[i] = R(-100, W); lY[i] = R(-60, H); lVx[i] = R(90, 170); lVy[i] = R(25, 70); lR[i] = R(0, 6.28); lVr[i] = R(-2.4, 2.4); lP[i] = R(0, 6.28); lC[i] = (Math.random() * 8) | 0; }
+      }
+      // c = {x, y, zoom, cos, sin, tilt, W, H} (camera and screen), inside(wx, wy) = is there floor
+      function update(dt, c, inside) {
+        if (!started) return; if (dt > 0.05) dt = 0.05; W = c.W; H = c.H; clock += dt;
+        if (!ready(FX.embers) || !ready(FX.spores)) return;
+        if (!sized) { sized = true; for (let i = 0; i < N_EMB * q; i++) { spawnE(i, c, inside); eA[i] = R(0, eL[i]); } for (let i = 0; i < N_SPO * q; i++) { spawnS(i, c, inside); sA[i] = R(0, sL[i]); } }
+        for (let i = 0; i < N_EMB * q; i++) {
+          eA[i] += dt; eH[i] += eV[i] * dt; const dx = Math.sin(eA[i] * 1.7 + eS[i]) * 9 * dt; eX[i] += c.cos * dx; eY[i] -= c.sin * dx;
+          if (eA[i] > eL[i]) spawnE(i, c, inside);
+        }
+        for (let i = 0; i < N_SPO * q; i++) { sA[i] += dt; sX[i] += sVx[i] * dt; sY[i] += sVy[i] * dt; if (sA[i] > sL[i]) spawnS(i, c, inside); }
+        if (!ev) { if (clock >= nextAt) startEvent(); return; }
+        ev.t += dt;
+        if (ev.type === 'rain') { for (let i = 0; i < N_RAIN * q; i++) { rY[i] += rV[i] * dt; if (rY[i] > H + 50) { rY[i] = R(-300, -40); rX[i] = R(0, W); } } for (let i = 0; i < N_SPL * q; i++) { pA[i] += dt * 3.2; if (pA[i] > 1) { pA[i] = 0; pX[i] = R(0, W); pY[i] = R(H * 0.15, H); } } }
+        else if (ev.type === 'mist') for (let i = 0; i < N_MIST; i++) { mX[i] += mV[i] * dt; if (mX[i] > W + 100) mX[i] = -mS[i]; }
+        else for (let i = 0; i < N_LEAF * q; i++) { lP[i] += dt * 2.1; lX[i] += (lVx[i] + Math.sin(lP[i]) * 40) * dt; lY[i] += (lVy[i] + Math.cos(lP[i] * 1.3) * 25) * dt; lR[i] += lVr[i] * dt; if (lX[i] > W + 60 || lY[i] > H + 60) { lX[i] = R(-120, -20); lY[i] = R(-40, H); } }
+        if (ev.t > ev.dur) { ev = null; nextAt = clock + R(50, 100); }
+      }
+      const cam = { x: 0, y: 0, zoom: 1, cos: 1, sin: 0, tilt: 1, W: 1, H: 1 }; let insideFn = null;
+      function tick(dt, C, Wd, sw, sh) { // called every frame by the main loop
+        cam.x = C.x; cam.y = C.y; cam.zoom = C.zoom || 0.9; cam.cos = Wd.cosY; cam.sin = Wd.sinY; cam.tilt = Wd.tilt; cam.W = sw; cam.H = sh;
+        if (!insideFn) insideFn = (x, y) => Wd.inside(x, y); update(dt, cam, insideFn);
+      }
+      function drawNow(ctx) { draw(ctx, cam); }
+      function cellDraw(ctx, o, i, x, y, w, rot) { const c = o.cells[i], h = w * c[3] / c[2]; if (rot) { ctx.save(); ctx.translate(x, y); ctx.rotate(rot); ctx.drawImage(o.img, c[0], c[1], c[2], c[3], -w / 2, -h / 2, w, h); ctx.restore(); } else ctx.drawImage(o.img, c[0], c[1], c[2], c[3], x - w / 2, y - h / 2, w, h); }
+      function draw(ctx, c) {
+        if (!started || !ready(FX.embers) || !ready(FX.spores) || !sized) return;
+        ctx.save(); ctx.globalCompositeOperation = 'lighter';
+        for (let i = 0; i < N_SPO * q; i++) { // spores: pulse in and out, bob a little
+          if (sX[i] > 1e8) continue; const f = Math.sin(Math.PI * Math.min(1, sA[i] / sL[i])), pulse = 0.55 + 0.45 * Math.sin(sA[i] * 1.6 + sS[i]), dx = sX[i] - c.x, dy = sY[i] - c.y;
+          ctx.globalAlpha = 0.9 * f * pulse; cellDraw(ctx, FX.spores, sC[i], c.W / 2 + (dx * c.cos - dy * c.sin) * c.zoom, c.H / 2 + (dx * c.sin + dy * c.cos) * c.zoom * c.tilt - (12 + 8 * Math.sin(sA[i] * 0.9 + sS[i])) * c.zoom, (16 + (sS[i] % 3) * 9) * c.zoom);
+        }
+        for (let i = 0; i < N_EMB * q; i++) { // embers: rise off the floor, fade in and out
+          if (eX[i] > 1e8) continue; const f = Math.sin(Math.PI * Math.min(1, eA[i] / eL[i])), dx = eX[i] - c.x, dy = eY[i] - c.y;
+          ctx.globalAlpha = 0.95 * f; cellDraw(ctx, FX.embers, eC[i], c.W / 2 + (dx * c.cos - dy * c.sin) * c.zoom, c.H / 2 + (dx * c.sin + dy * c.cos) * c.zoom * c.tilt - eH[i] * c.zoom, (11 + (eS[i] % 3) * 5) * c.zoom);
+        }
+        if (ev && ready(FX[ev.type === 'leaves' ? 'leaves' : ev.type])) {
+          const fade = Math.min(1, ev.t / 4, (ev.dur - ev.t) / 4);
+          if (ev.type === 'rain') {
+            ctx.globalAlpha = 0.7 * fade; for (let i = 0; i < N_RAIN * q; i++) cellDraw(ctx, FX.rain, rC[i], rX[i], rY[i], 7 + (rC[i] % 4) * 2, 0);
+            for (let i = 0; i < N_SPL * q; i++) { if (pA[i] < 0) continue; ctx.globalAlpha = 0.8 * fade * (1 - pA[i]); cellDraw(ctx, FX.rain, pC[i], pX[i], pY[i], 18 + 26 * pA[i], 0); }
+          } else if (ev.type === 'mist') {
+            ctx.globalAlpha = 0.17 * fade; for (let i = 0; i < N_MIST; i++) cellDraw(ctx, FX.mist, mC[i], mX[i] + mS[i] / 2, mY[i] + mS[i] / 3, mS[i], 0);
+          } else { ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 0.95 * fade; for (let i = 0; i < N_LEAF * q; i++) cellDraw(ctx, FX.leaves, lC[i], lX[i], lY[i], 26 + (lC[i] % 3) * 6, lR[i]); }
+        }
+        ctx.restore();
+      }
+      return { init, update, draw, active: () => started, event: () => (ev ? ev.type : null), force: type => { ev = null; startEvent(type); }, tick, drawNow };
+    })();
+    const BUILD_ID = '1126-0030';
     if (/beta-b/.test(location.pathname)) { const bid = document.createElement('div'); bid.textContent = 'build ' + BUILD_ID; bid.style.cssText = 'position:fixed;right:6px;bottom:2px;font:10px monospace;color:#fff;opacity:.45;z-index:99999;pointer-events:none'; document.body.appendChild(bid); }   // which build is this? (Matin 2026-11-25: fixes were reported 'still wrong' and I could not tell if the new build was running)
     // --- ASSET CACHE (beta pages only): sw.js keeps the art / clips / sounds in the browser so every visit after the first downloads nothing. play.html and the stable index never register it. ---
     if ('serviceWorker' in navigator && /[?&]nosw=1/.test(location.search)) {   // safety switch: ?nosw=1 removes the cache worker and its files
