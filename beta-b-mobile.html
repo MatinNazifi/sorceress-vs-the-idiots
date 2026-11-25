@@ -2189,7 +2189,7 @@ window.addEventListener('load', function () { setTimeout(function () { var s = d
       let cells = arenaCollapseApply(e, false);
       e.why = arenaWhy; // first try
       if (!cells) { // its zone is already gone or unsafe: take another that still stands (rotated by the event id, so the seed still decides)
-        const others = arenaZones.map((z, i) => i).filter(i => i !== e.zi && !arenaZones[i].done);
+        const others = arenaZones.map((z, i) => i).filter(i => i < 5 && i !== e.zi && !arenaZones[i].done);   // Matin 2026-11-25: ONLY the five outer pieces (bridges, wings, shrine) may ever fall; the hub strips (zones 5-7, his cyan ones) never fall before 10:00
         for (let k = 0; k < others.length && !cells; k++) {
           const zi = others[(k + e.id) % others.length], z = arenaZones[zi];
           cells = arenaCollapseApply({ rects: z.rects }, false);
