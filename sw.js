@@ -4,7 +4,8 @@
 const CACHE = 'sorceress-assets-v1', MANI = 'sprites-manifest.json', STORED = '/__stored_manifest__';
 let manifestReady = null;
 function syncManifest() {
-  return fetch(MANI, { cache: 'no-cache' }).then(r => r.ok ? r.json() : null).then(async m => {
+  const ac = new AbortController(); setTimeout(() => ac.abort(), 4000);   // never hang on a slow link
+  return fetch(MANI, { cache: 'no-cache', signal: ac.signal }).then(r => r.ok ? r.json() : null).then(async m => {
     if (!m) return;
     const c = await caches.open(CACHE), old = await c.match(STORED).then(r => r ? r.json() : {}).catch(() => ({}));
     for (const p in old) if (old[p] !== m[p]) await c.delete(new URL(p, self.registration.scope).href, { ignoreSearch: true });
@@ -17,7 +18,7 @@ self.addEventListener('message', e => { if (e.data === 'sync') manifestReady = s
 self.addEventListener('fetch', e => {
   const req = e.request, u = new URL(req.url);
   if (req.method !== 'GET' || u.origin !== location.origin || !/\/(sprites|audio)\//.test(u.pathname) || req.headers.has('range')) return;
-  e.respondWith((async () => {
+  e.respondWith((async () => { try {
     if (!manifestReady) manifestReady = syncManifest();
     await Promise.race([manifestReady, new Promise(r => setTimeout(r, 1500))]);   // a slow link must not stall the art: after 1.5 s serve what is cached
     const c = await caches.open(CACHE), hit = await c.match(req, { ignoreSearch: true });
@@ -25,5 +26,5 @@ self.addEventListener('fetch', e => {
     const r = await fetch(req);
     if (r.status === 200) c.put(req, r.clone()).catch(() => {});
     return r;
-  })());
+  } catch (err) { return fetch(req); } })());   // any cache problem: just go to the network
 });
