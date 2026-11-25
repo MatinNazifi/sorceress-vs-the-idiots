@@ -10465,7 +10465,7 @@ telemetryInit();
       tip: () => ({ ...staffTip() }),
       // QA: hero bolts and enemies (world coordinates) so a bolt that misses can be measured instead of guessed
       probe: () => ({ hero: { x: Math.round(hero.x), y: Math.round(hero.y) }, projs: heroProjectiles.map(p => ({ x: Math.round(p.x), y: Math.round(p.y), vx: Math.round(p.vx), vy: Math.round(p.vy) })), enemies: enemies.slice(0, 40).map(e => ({ x: Math.round(e.x), y: Math.round(e.y), r: e.radius, vx: Math.round(e.vx || 0), vy: Math.round(e.vy || 0), hp: Math.round(e.hp) })) }),
-      pose: () => ({ ...heroPose, anim: hero.anim, animT: hero.animT, facing: hero.facing, omniDir: hero.omniDir || null, omniZ: hero.omniZ, atkSet: hero.atkSet, atkT: hero.atkT, atkV: hero.atkV, stT: hero.stT, vx: hero.vx, vy: hero.vy, x: hero.x, y: hero.y, beam: !!activeBeam }),
+      pose: () => ({ ...heroPose, anim: hero.anim, animT: hero.animT, facing: hero.facing, omniDir: hero.omniDir || null, omniZ: hero.omniZ, atkSet: hero.atkSet, atkT: hero.atkT, atkV: hero.atkV, stT: hero.stT, omniOn: omniOn(), hd: GFX_HD, strips: ['hero-omni-walk', 'hero-omni-run', 'hero-omni-dirS', 'hero-omni-dirN', 'hero-omni-atk', 'hero-omni-atkS', 'hero-omni-stand'].map(k => { const i = SPRITES[k]; return k.slice(11) + ':' + (i ? (i.complete ? i.naturalWidth : 'loading') : 'none'); }), vx: hero.vx, vy: hero.vy, x: hero.x, y: hero.y, beam: !!activeBeam }),
       face: f => { hero.facing = f; },
       end: v => triggerGameOver(!!v), // leaderboard test: end the run
       spawn: (type, dx = 200, dy = 0, elite = false) => spawnEnemy(type, hero.x + dx, hero.y + dy, elite), // e.g. 'mootaur'
