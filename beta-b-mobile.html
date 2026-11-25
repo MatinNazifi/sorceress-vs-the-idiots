@@ -3387,7 +3387,7 @@ window.ArenaArt6 = (function () {
   // BRIDGE FRONT POSTS sorted against EVERYTHING (Matin 2026-11-25: enemies, vases and gems on the bridge were hidden by posts they stand in front of; before, only the hero was sorted).
   // Every column of a front layer has a foot (above); columns are grouped into depth BANDS of BAND world units of 'ry' (x*sinY + y*cosY, the render pipeline's depth key); each band is one sortable
   // item that is drawn after everything whose feet are higher up the screen and before everything lower. sortBands() returns the bands that are on screen.
-  var BAND = 6, bands = {}, bandItems = {}, bandKeys = [];
+  var BIAS = 18, BAND = 6, bands = {}, bandItems = {}, bandKeys = [];
   function buildBands() {
     bands = {}; bandItems = {}; var tilt = (typeof World !== 'undefined' && World.tilt) || 0.75, k = data.k;
     data.layers.forEach(function (l) {
@@ -3398,7 +3398,7 @@ window.ArenaArt6 = (function () {
       }
     });
     bandKeys = Object.keys(bands).map(Number).sort(function (x, y) { return x - y; });
-    bandKeys.forEach(function (i) { bandItems[i] = { wall: true, band: i, x: 0, y: 0, ry: (i + 0.5) * BAND }; });
+    bandKeys.forEach(function (i) { bandItems[i] = { wall: true, band: i, x: 0, y: 0, ry: (i + 0.5) * BAND - BIAS }; });   // BIAS: a post only covers someone whose feet are clearly ABOVE its foot (Matin 2026-11-25: she stood in front, 10 px below the foot, and was still drawn behind)
   }
   // QA (?god=1): the post columns of the front layers with their foot as WORLD x/y (to put the hero beside a post at a chosen depth)
   function debugPosts() {
