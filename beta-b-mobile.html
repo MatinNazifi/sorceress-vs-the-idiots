@@ -10975,6 +10975,10 @@ telemetryInit();
       }
     };
 
+    // --- ASSET CACHE (beta pages only): sw.js keeps the art / clips / sounds in the browser so every visit after the first downloads nothing. play.html and the stable index never register it. ---
+    if ('serviceWorker' in navigator && location.protocol === 'https:' && /beta-b/.test(location.pathname)) {
+      navigator.serviceWorker.register('sw.js').then(() => { if (navigator.serviceWorker.controller) navigator.serviceWorker.controller.postMessage('sync'); }).catch(() => {});
+    }
   })();
   </script>
 <div id="iab-gate" style="display:none;position:fixed;inset:0;z-index:100000;background:#0d0818;color:#fff;font-family:'Trebuchet MS',system-ui,sans-serif;text-align:center;padding:28px 22px;overflow:auto">

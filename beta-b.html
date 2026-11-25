@@ -10628,6 +10628,10 @@ telemetryInit();
       }
     };
 
+    // --- ASSET CACHE (beta pages only): sw.js keeps the art / clips / sounds in the browser so every visit after the first downloads nothing. play.html and the stable index never register it. ---
+    if ('serviceWorker' in navigator && location.protocol === 'https:' && /beta-b/.test(location.pathname)) {
+      navigator.serviceWorker.register('sw.js').then(() => { if (navigator.serviceWorker.controller) navigator.serviceWorker.controller.postMessage('sync'); }).catch(() => {});
+    }
   })();
   </script>
 </body>
