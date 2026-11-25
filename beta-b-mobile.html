@@ -6792,6 +6792,10 @@ if (metaFx.regen > 0 && hero.hp > 0) hero.hp = Math.min(hero.maxHp, hero.hp + me
     }
 
     // --- PROJECTILES, PARTICLES & SOUL GEMS ---
+    // the enemy's body centre in world coords: its feet moved up the SCREEN by about half its height (undo the camera squash and turn, as staffTip does)
+    function bodyH(e) { return 28 + e.radius * 1.4; }
+    function bodyX(e) { return e.x - (bodyH(e) / World.tilt) * World.sinY; }
+    function bodyY(e) { return e.y - (bodyH(e) / World.tilt) * World.cosY; }
     const BOLT_TURN = 5.5; // rad/s a homing hero bolt may turn (a 620 px/s bolt then curves onto a target that walked ~60 px sideways)
     function updateProjectilesAndEffects(dt) {
       updateVFX(dt);
@@ -6804,9 +6808,9 @@ if (metaFx.regen > 0 && hero.hp > 0) hero.hp = Math.min(hero.maxHp, hero.hp + me
         if (p.trail.length > 3) p.trail.shift();
 
         // Light homing (Matin 2026-11-25: bolts passed enemies): steer toward the target's CURRENT ground position, at most BOLT_TURN rad/s, while it is alive and ahead
-        const bt = p.target;
+        const bt = p.target, isB = p.type === 'bolt';
         if (bt && bt.hp > 0 && !bt.dead) {
-          const want = Math.atan2(bt.y - p.y, bt.x - p.x), have = Math.atan2(p.vy, p.vx);
+          const want = isB ? Math.atan2(bodyY(bt) - p.y, bodyX(bt) - p.x) : Math.atan2(bt.y - p.y, bt.x - p.x), have = Math.atan2(p.vy, p.vx);
           let dA = want - have; dA -= Math.round(dA / (Math.PI * 2)) * Math.PI * 2;                        // shortest signed turn
           if (Math.abs(dA) < 2.2) { const turn = Math.max(-BOLT_TURN * dt, Math.min(BOLT_TURN * dt, dA)), sp = Math.hypot(p.vx, p.vy), na = have + turn; p.vx = Math.cos(na) * sp; p.vy = Math.sin(na) * sp; } // not once it has flown past (> ~126 deg off)
         }
@@ -6820,10 +6824,11 @@ if (metaFx.regen > 0 && hero.hp > 0) hero.hp = Math.min(hero.maxHp, hero.hp + me
         }
 
         // Hit enemies
-        const near = getNearbyEnemies(p.x, p.y, 35 * (p.size || 1));
+        const near = getNearbyEnemies(p.x, p.y, (isB ? 130 : 35) * (p.size || 1));
         for (let j = 0; j < near.length; j++) {
-          const e = near[j];
-          if (Math.hypot(e.x - p.x, e.y - p.y) < (e.radius + 12 * (p.size || 1))) {
+          const e = near[j], hr = e.radius + 12 * (p.size || 1);
+          // a bolt is drawn at the staff gem (high on screen) and flies over the ground, so it passes the enemy's BODY long before its feet: bolts hit the body (screen-up from the feet) as well as the feet (Matin 2026-11-25)
+          if (Math.hypot(e.x - p.x, e.y - p.y) < hr || (isB && Math.hypot(bodyX(e) - p.x, bodyY(e) - p.y) < hr)) {
             if (p.hitSet) {
               // Piercing Lance: each enemy is hit once, the lance never stops
               if (p.hitSet.has(e)) continue;
@@ -11141,7 +11146,7 @@ telemetryInit();
       }
     };
 
-    const BUILD_ID = '1125-2301';
+    const BUILD_ID = '1125-2319';
     if (/beta-b/.test(location.pathname)) { const bid = document.createElement('div'); bid.textContent = 'build ' + BUILD_ID; bid.style.cssText = 'position:fixed;right:6px;bottom:2px;font:10px monospace;color:#fff;opacity:.45;z-index:99999;pointer-events:none'; document.body.appendChild(bid); }   // which build is this? (Matin 2026-11-25: fixes were reported 'still wrong' and I could not tell if the new build was running)
     // --- ASSET CACHE (beta pages only): sw.js keeps the art / clips / sounds in the browser so every visit after the first downloads nothing. play.html and the stable index never register it. ---
     if ('serviceWorker' in navigator && /[?&]nosw=1/.test(location.search)) {   // safety switch: ?nosw=1 removes the cache worker and its files
