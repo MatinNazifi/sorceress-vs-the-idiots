@@ -3387,7 +3387,7 @@ window.ArenaArt6 = (function () {
   // BRIDGE FRONT POSTS sorted against EVERYTHING (Matin 2026-11-25: enemies, vases and gems on the bridge were hidden by posts they stand in front of; before, only the hero was sorted).
   // Every column of a front layer has a foot (above); columns are grouped into depth BANDS of BAND world units of 'ry' (x*sinY + y*cosY, the render pipeline's depth key); each band is one sortable
   // item that is drawn after everything whose feet are higher up the screen and before everything lower. sortBands() returns the bands that are on screen.
-  var DBGPOSTS = /[?&]posts=1/.test(location.search), DECK = 62, BIAS = 10, BAND = 6, bands = {}, bandItems = {}, bandKeys = [];
+  var DBGPOSTS = /[?&]posts=1/.test(location.search), DECK = 84, BIAS = 10, BAND = 6, bands = {}, bandItems = {}, bandKeys = [];
   function buildBands() {
     bands = {}; bandItems = {}; var tilt = (typeof World !== 'undefined' && World.tilt) || 0.75, k = data.k;
     data.layers.forEach(function (l) {
@@ -11003,7 +11003,7 @@ telemetryInit();
       }
     };
 
-    const BUILD_ID = '1125-2213';
+    const BUILD_ID = '1125-2217';
     if (/beta-b/.test(location.pathname)) { const bid = document.createElement('div'); bid.textContent = 'build ' + BUILD_ID; bid.style.cssText = 'position:fixed;right:6px;bottom:2px;font:10px monospace;color:#fff;opacity:.45;z-index:99999;pointer-events:none'; document.body.appendChild(bid); }   // which build is this? (Matin 2026-11-25: fixes were reported 'still wrong' and I could not tell if the new build was running)
     // --- ASSET CACHE (beta pages only): sw.js keeps the art / clips / sounds in the browser so every visit after the first downloads nothing. play.html and the stable index never register it. ---
     if ('serviceWorker' in navigator && /[?&]nosw=1/.test(location.search)) {   // safety switch: ?nosw=1 removes the cache worker and its files
