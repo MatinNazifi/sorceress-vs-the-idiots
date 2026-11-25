@@ -2213,6 +2213,14 @@ window.addEventListener('load', function () { setTimeout(function () { var s = d
         if (e.state === 'warn') {
           const p = 1 - Math.max(0, e.t - gameTime) / warn;
           if (gameTime >= e.nextShake) { addShake(1.5 + 5 * p); e.nextShake = gameTime + 0.4; }
+          if (WARN_DUST && e.kind === 'collapse' && e.cells && e.cells.length) { // falling dust and stone chips rise off the doomed floor, more and more as it nears the fall
+            e.fxAcc = (e.fxAcc || 0) + dt * (3 + 12 * p);
+            while (e.fxAcc >= 1) {
+              e.fxAcc -= 1; const j = e.cells[(Math.random() * e.cells.length) | 0], fx = (j % GW) * CS + CS * Math.random(), fy = ((j / GW) | 0) * CS + CS * Math.random();
+              if (Math.random() < 0.45) playVFX('poof', fx, fy - 6, { scale: 0.3 + 0.25 * p + Math.random() * 0.15, fps: 14, flip: Math.random() < 0.5 });
+              for (let n = Math.random() < p ? 2 : 1; n > 0; n--) dustRock(fx, fy - 4, (Math.random() - 0.5) * 70, -90 - Math.random() * 120 * (0.6 + p), 2 + Math.random() * 3);
+            }
+          }
           if (gameTime >= e.t) arenaLand(e);
         }
       }
@@ -2251,6 +2259,8 @@ window.addEventListener('load', function () { setTimeout(function () { var s = d
     }
     // WARNING MARKER (art=6, Matin 2026-11-25): molten cracks over the doomed cells + a glowing rune border; written by Neon high (QC by Claude), art from Flow (sprites/arena/warn-*.jpg, drawn additively on black)
     // One neutral pattern for every level (Matin 2026-11-25: the lava look was too specific): the texture is white-hot fractures, WARN_THEME tints it per level (a later level overrides it)
+    // ?warn=dust (test, Matin 2026-11-25) = only falling dust and stone chips over the doomed floor + a faint border; ?warn=both = cracks and dust; default = cracks
+    const WARN_MODE = (/[?&]warn=(\w+)/.exec(location.search) || [0, 'cracks'])[1], WARN_DUST = WARN_MODE !== 'cracks';
     const WARN_IMG = {}, WARN_TINTED = {}, WARN_THEME = { tint: 'rgb(255,175,85)', line: 'rgb(255,165,70)', glow: 'rgb(255,125,35)' };
     function warnTint(im, col) { if (!im) return null; const k = im.src + col; if (!WARN_TINTED[k]) { const cv = document.createElement('canvas'); cv.width = im.naturalWidth; cv.height = im.naturalHeight; const x = cv.getContext('2d'); x.drawImage(im, 0, 0); x.globalCompositeOperation = 'multiply'; x.fillStyle = col; x.fillRect(0, 0, cv.width, cv.height); WARN_TINTED[k] = cv; } return WARN_TINTED[k]; }
     function warnArt(n) { let im = WARN_IMG[n]; if (!im) { im = WARN_IMG[n] = new Image(); im.src = 'sprites/arena/' + n; } return im.complete && im.naturalWidth ? im : null; }
@@ -2306,7 +2316,7 @@ window.addEventListener('load', function () { setTimeout(function () { var s = d
     const wb = e._wb || warnBuild(e, GW, CS);
     c.save();
     c.globalCompositeOperation = 'lighter';
-    const cracks = warnTint(warnArt('warn-cracks.jpg'), WARN_THEME.tint);
+    const cracks = WARN_MODE === 'dust' ? null : warnTint(warnArt('warn-cracks.jpg'), WARN_THEME.tint);
     if (cracks) {
     c.save(); // Isolate clip so border and runes draw outside the zone
     c.clip(wb.path);
@@ -2321,7 +2331,7 @@ window.addEventListener('load', function () { setTimeout(function () { var s = d
     }
     c.strokeStyle = WARN_THEME.line;
     c.lineWidth = 4;
-    c.globalAlpha = 0.55 + 0.4 * p;
+    c.globalAlpha = (WARN_MODE === 'dust' ? 0.35 : 0.55) + 0.4 * p;
     c.shadowColor = WARN_THEME.glow;
     c.shadowBlur = 14;
     c.setLineDash(WARN_DASH);
@@ -2334,7 +2344,7 @@ window.addEventListener('load', function () { setTimeout(function () { var s = d
     }
     c.stroke();
     c.shadowBlur = 0; // Avoid expensive shadow pass on rune sprites
-    const runes = warnArt('warn-runes.jpg');
+    const runes = WARN_MODE === 'dust' ? null : warnArt('warn-runes.jpg');
     if (runes) {
     const rw = runes.width / 6, rh = runes.height;
     const sz = 42 * (1 + 0.12 * pulse), half = sz * 0.5;
@@ -10784,7 +10794,7 @@ telemetryInit();
       }
     };
 
-    const BUILD_ID = '1125-2236';
+    const BUILD_ID = '1125-2301';
     if (/beta-b/.test(location.pathname)) { const bid = document.createElement('div'); bid.textContent = 'build ' + BUILD_ID; bid.style.cssText = 'position:fixed;right:6px;bottom:2px;font:10px monospace;color:#fff;opacity:.45;z-index:99999;pointer-events:none'; document.body.appendChild(bid); }   // which build is this? (Matin 2026-11-25: fixes were reported 'still wrong' and I could not tell if the new build was running)
     // --- ASSET CACHE (beta pages only): sw.js keeps the art / clips / sounds in the browser so every visit after the first downloads nothing. play.html and the stable index never register it. ---
     if ('serviceWorker' in navigator && /[?&]nosw=1/.test(location.search)) {   // safety switch: ?nosw=1 removes the cache worker and its files
