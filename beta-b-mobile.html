@@ -2101,7 +2101,7 @@ window.addEventListener('load', function () { setTimeout(function () { var s = d
         for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { const nx = x + dx, ny = y + dy; if (nx < 0 || ny < 0 || nx >= GW || ny >= GH) continue; const k = ny * GW + nx; if (grid[k] === 1 && !seen[k]) { seen[k] = 1; q.push(k); } }
       }
       for (let i = 0; i < GW * GH; i++) if (grid[i] === 1 && !seen[i]) drop(i); // hanging pieces fall too
-      const nonEmpty = saved.size > 0, wide = nonEmpty && arenaWide(), ok = nonEmpty && wide;
+      const nonEmpty = saved.size > 0, wide = nonEmpty && (e.zi !== undefined && e.zi < 5 ? true : arenaWide()), ok = nonEmpty && wide;   // Matin 2026-11-25: the five outer pieces (bridges, wings, shrine) ALWAYS fall; the width rule only guards other collapses
       arenaWhy = !nonEmpty ? 'empty' : (wide ? 'ok' : 'wide'); // why a collapse was refused (test hook)
       const cells = Array.from(saved.keys());
       if (!ok || !commit) saved.forEach((v, i) => { grid[i] = v[0]; deco[i] = v[1]; });
@@ -2192,7 +2192,7 @@ window.addEventListener('load', function () { setTimeout(function () { var s = d
         const others = arenaZones.map((z, i) => i).filter(i => i < 5 && i !== e.zi && !arenaZones[i].done);   // Matin 2026-11-25: ONLY the five outer pieces (bridges, wings, shrine) may ever fall; the hub strips (zones 5-7, his cyan ones) never fall before 10:00
         for (let k = 0; k < others.length && !cells; k++) {
           const zi = others[(k + e.id) % others.length], z = arenaZones[zi];
-          cells = arenaCollapseApply({ rects: z.rects }, false);
+          cells = arenaCollapseApply({ rects: z.rects, zi }, false);
           if (cells) { e.zi = zi; e.name = z.name; e.rects = z.rects; }
         }
       }
