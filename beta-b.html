@@ -10758,7 +10758,10 @@ telemetryInit();
 
       updateSpawnDirector(dt);
       updateHero(dt);
-      if (!weatherInit) { weatherInit = true; const wq = new URLSearchParams(location.search).get('weather'); Weather.set(wq || Weather.random(Date.now() % 100000), 0.6, (('ontouchstart' in window) || navigator.maxTouchPoints > 0) ? 0.45 : 1); }
+      if (!weatherInit) { weatherInit = true; const wq = new URLSearchParams(location.search).get('weather'); if (wq === 'cycle') { // ?weather=cycle: all eight types one after another, 5 s each, the name shown on top (to look at them fast)
+          let ci = 0; const lab = document.createElement('div'); lab.style.cssText = 'position:fixed;left:50%;top:8px;transform:translateX(-50%);font:700 18px sans-serif;color:#fff;background:rgba(0,0,0,.55);padding:4px 14px;border-radius:12px;z-index:99999;pointer-events:none'; document.body.appendChild(lab);
+          const stepW = () => { const ty = Weather.TYPES[ci++ % Weather.TYPES.length]; Weather.set(ty, 0.9, 1); lab.textContent = ty; }; stepW(); setInterval(stepW, 5000);
+        } else Weather.set(wq || Weather.random(Date.now() % 100000), 0.6, (('ontouchstart' in window) || navigator.maxTouchPoints > 0) ? 0.45 : 1); }
       Weather.update(dt, screenW, screenH);
       updateEnemies(dt);
       updateProjectilesAndEffects(dt);
@@ -11142,7 +11145,7 @@ telemetryInit();
       return { TYPES: TYPES, set: set, update: update, draw: draw, current: current, random: random };
     })();
     let weatherInit = false;
-    const BUILD_ID = '1125-2340';
+    const BUILD_ID = '1125-2345';
     if (/beta-b/.test(location.pathname)) { const bid = document.createElement('div'); bid.textContent = 'build ' + BUILD_ID; bid.style.cssText = 'position:fixed;right:6px;bottom:2px;font:10px monospace;color:#fff;opacity:.45;z-index:99999;pointer-events:none'; document.body.appendChild(bid); }   // which build is this? (Matin 2026-11-25: fixes were reported 'still wrong' and I could not tell if the new build was running)
     // --- ASSET CACHE (beta pages only): sw.js keeps the art / clips / sounds in the browser so every visit after the first downloads nothing. play.html and the stable index never register it. ---
     if ('serviceWorker' in navigator && /[?&]nosw=1/.test(location.search)) {   // safety switch: ?nosw=1 removes the cache worker and its files
