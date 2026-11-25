@@ -1588,7 +1588,7 @@ window.addEventListener('load', function () { setTimeout(function () { var s = d
     // The run: 0-10:00 the lower map collapses piece by piece; 10:00 the crypt gates open and the lower map falls 20 s later (run north);
     // then ~3 minutes of crypt fight (elite waves, floor traps); at 13:00 the inner gate opens (cutscene), the hero walks into the final room,
     // the doors seal behind and the final boss appears. Only the final boss's death wins the run.
-    const DMG_LEAD = 42; // s before a collapse that its art turns damaged (half of the 85 s between collapses)
+    const DMG_LEAD = 45; // s before a collapse that its art turns damaged (half of the 85 s between collapses)
     const EVENT_WARN = 10, GATE_WARN = 6, DROP_WARN = 20, VAULT_WARN = 8; let GATES_AT = 600, DROP_AT = 630, VAULT_AT = 810, arenaReach = null, arenaReachTime = -1, arenaReachCount = 0, arenaCryptChests = 0;
     const warnOf = e => e.kind === 'gates' ? GATE_WARN : e.kind === 'drop' ? DROP_WARN : e.kind === 'vault' ? VAULT_WARN : e.kind === 'ring' ? 6 : EVENT_WARN;
     let arenaStage = 0; // 0 lower map, 1 gates open (run north), 2 crypt fight, 3 inner gate open, 4 final room sealed with the boss
