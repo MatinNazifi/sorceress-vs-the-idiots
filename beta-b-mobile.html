@@ -10931,6 +10931,7 @@ telemetryInit();
       end: v => triggerGameOver(!!v), // leaderboard test: end the run
       spawn: (type, dx = 200, dy = 0, elite = false) => spawnEnemy(type, hero.x + dx, hero.y + dy, elite), // e.g. 'mootaur'
       passive: id => { if (PASSIVE_REGISTRY[id] && hero.passives[id] < MAX_LEVEL) PASSIVE_REGISTRY[id].apply(); return hero.passives[id]; },
+      chestAt: (dx, dy) => { chests.push({ x: hero.x + dx, y: hero.y + dy, radius: 32, isRelicChest: true, bounceY: 0, vy: 0, landed: true, life: 600 }); return chests.length; }, // QA: a landed chest at an offset (chest badge test)
       hurt: n => { hero.hp = Math.max(1, hero.hp - n); return hero.hp; }, // HUD juice QA: god mode skips hitHero
       heal: n => { hero.hp = Math.min(hero.maxHp, hero.hp + n); return hero.hp; },
       die: (atHero) => { if (atHero) spawnPickup('dice', hero.x + 40, hero.y); else diceHeld++; return { held: diceHeld, found: diceFound }; },
