@@ -10774,14 +10774,14 @@ telemetryInit();
     // --- MAIN GAME LOOP ---
     let lastTimestamp = performance.now();
     // ?perf=1: a small readout (bottom-left) of where each frame goes, averaged over 30 frames: frame time, update, draw, ambient, art tiles in memory (Matin 2026-11-26: 4K lag from ~1:45)
-    const PERF = { on: /[?&]perf=1/.test(location.search), dt: 0, upd: 0, draw: 0, amb: 0, n: 0, mx: 0, el: null };
+    const PERF = { on: /[?&]perf=1/.test(location.search) || /beta-b/.test(location.pathname), show: /[?&]perf=1/.test(location.search), last: null, dt: 0, upd: 0, draw: 0, amb: 0, n: 0, mx: 0, el: null };
     function timedDraw() { if (!PERF.on) { draw(); return; } const t = performance.now(); draw(); PERF.draw += performance.now() - t; }
     function perfFrame(rawDt) {
       PERF.dt += rawDt * 1000; PERF.n++; if (rawDt * 1000 > PERF.mx) PERF.mx = rawDt * 1000;
       if (PERF.n < 30) return;
-      if (!PERF.el) { PERF.el = document.createElement('div'); PERF.el.style.cssText = 'position:fixed;left:6px;bottom:22px;font:12px monospace;color:#0f0;background:rgba(0,0,0,.6);padding:3px 6px;z-index:99999;pointer-events:none;white-space:pre'; document.body.appendChild(PERF.el); }
+      if (PERF.show && !PERF.el) { PERF.el = document.createElement('div'); PERF.el.style.cssText = 'position:fixed;left:6px;bottom:22px;font:12px monospace;color:#0f0;background:rgba(0,0,0,.6);padding:3px 6px;z-index:99999;pointer-events:none;white-space:pre'; document.body.appendChild(PERF.el); }
       const n = PERF.n, st = (typeof ArenaArt6 !== 'undefined' && ArenaArt6.stats) ? ArenaArt6.stats() : {}, mem = performance.memory ? Math.round(performance.memory.usedJSHeapSize / 1048576) + ' MB' : 'n/a';
-      PERF.el.textContent = 't ' + Math.round(gameTime) + ' s | frame ' + (PERF.dt / n).toFixed(1) + ' ms (' + Math.round(1000 / (PERF.dt / n)) + ' fps) worst ' + PERF.mx.toFixed(0) + ' ms' + String.fromCharCode(10) + 'update ' + (PERF.upd / n).toFixed(1) + ' | draw ' + (PERF.draw / n).toFixed(1) + ' | ambient ' + (PERF.amb / n).toFixed(1) + ' ms' + String.fromCharCode(10) + 'art tiles ' + (st.tiles || 0) + (st.ultra === false ? ' (4x OFF: too slow)' : '') + ' (queue ' + (st.queue || 0) + ') | enemies ' + enemies.length + ' | particles ' + particles.length + ' | heap ' + mem;
+      PERF.last = { ms: PERF.dt / n, upd: PERF.upd / n, draw: PERF.draw / n, amb: PERF.amb / n, worst: PERF.mx }; if (PERF.show) PERF.el.textContent = 't ' + Math.round(gameTime) + ' s | frame ' + (PERF.dt / n).toFixed(1) + ' ms (' + Math.round(1000 / (PERF.dt / n)) + ' fps) worst ' + PERF.mx.toFixed(0) + ' ms' + String.fromCharCode(10) + 'update ' + (PERF.upd / n).toFixed(1) + ' | draw ' + (PERF.draw / n).toFixed(1) + ' | ambient ' + (PERF.amb / n).toFixed(1) + ' ms' + String.fromCharCode(10) + 'art tiles ' + (st.tiles || 0) + (st.ultra === false ? ' (4x OFF: too slow)' : '') + ' (queue ' + (st.queue || 0) + ') | enemies ' + enemies.length + ' | particles ' + particles.length + ' | heap ' + mem;
       PERF.dt = PERF.upd = PERF.draw = PERF.amb = PERF.mx = 0; PERF.n = 0;
     }
 
@@ -10928,6 +10928,37 @@ telemetryInit();
       }
     };
 
+    // --- FPS TRACKER (Matin 2026-11-26: "when I play you see the fps track"; the lag at minute 6:30 could not be reproduced by a script) ---
+    // Beta desktop pages only (?track=0 turns it off, ?track=1 forces it on). Once a second it records: real fps (every display frame, not the game's own count), worst frame, frames over 25 ms, the game's update/draw ms,
+    // how many of everything exists (enemies, particles, shots, gems, numbers, effects, vases, pickups), heap, DOM size, art tiles/state, plus every long animation frame (> 100 ms) WITH the function that caused it (Chrome's
+    // long-animation-frame API). Samples go to a tiny local server (tools/fps-tracker.js, http://127.0.0.1:8799/t, no-cors text/plain = no preflight); if it is not running they wait in memory and retry with back-off.
+    // F9 downloads everything recorded so far as a .json file (works without the server). Nothing leaves the PC, nothing is shown on screen.
+    const TRACK = (() => {
+      if (!(/[?&]track=1/.test(location.search) || (/beta-b/.test(location.pathname) && !/[?&]track=0/.test(location.search) && !('ontouchstart' in window)))) return null;
+      const sid = Date.now().toString(36) + Math.random().toString(36).slice(2, 5), all = [], out = [], ENDPOINT = 'http://127.0.0.1:8799/t';
+      let fr = 0, sum = 0, worst = 0, slow = 0, t1 = performance.now(), tPrev = t1, fails = 0, nextTry = 0, dom = 0, domAt = 0, loaf = [], start = Date.now();
+      try { new PerformanceObserver(l => { for (const e of l.getEntries()) if (e.duration >= 100) loaf.push({ dur: Math.round(e.duration), block: Math.round(e.blockingDuration || 0), scripts: (e.scripts || []).slice(0, 3).map(s => ({ inv: s.invoker, fn: s.sourceFunctionName, dur: Math.round(s.duration), at: s.sourceCharPosition })) }); }).observe({ type: 'long-animation-frame', buffered: false }); } catch (err) { /* older Chrome */ }
+      function sample(now) {
+        const a = (typeof ArenaArt6 !== 'undefined' && ArenaArt6.stats) ? ArenaArt6.stats() : {}, p = (typeof PERF !== 'undefined' && PERF.last) || {};
+        if (now - domAt > 5000) { domAt = now; dom = document.getElementsByTagName('*').length; }
+        const s = { sid, wall: Date.now(), gt: +gameTime.toFixed(1), fps: fr, avg: +(sum / Math.max(1, fr)).toFixed(2), worst: Math.round(worst), slow, upd: +(p.upd || 0).toFixed(2), draw: +(p.draw || 0).toFixed(2), amb: +(p.amb || 0).toFixed(2),
+          en: enemies.length, pa: particles.length, hp: heroProjectiles.length, ep: enemyProjectiles.length, gem: soulGems.length, dn: damageNumbers.length, vfx: activeVfxCount, vs: vases.length, pk: pickups.length, ch: chests.length,
+          heap: performance.memory ? Math.round(performance.memory.usedJSHeapSize / 1048576) : 0, dom, kills: killCount, lvl: hero.level, tiles: a.tiles || 0, tq: a.queue || 0, ultra: a.ultra !== false, run: !!runStarted, modal: !!isPausedForModal };
+        if (loaf.length) { s.loaf = loaf.splice(0, 4); }
+        all.push(s); if (all.length > 3600) all.shift(); out.push(s); if (out.length > 900) out.shift();
+        fr = 0; sum = 0; worst = 0; slow = 0;
+      }
+      function send(now) {
+        if (!out.length || now < nextTry) return;
+        const body = out.map(x => JSON.stringify(x)).join('\n'), n = out.length;
+        fetch(ENDPOINT, { method: 'POST', mode: 'no-cors', body, keepalive: true }).then(() => { out.splice(0, n); fails = 0; }).catch(() => { fails++; nextTry = now + Math.min(30000, 2000 * fails); });
+        nextTry = now + 2000;   // one batch at a time: a no-cors fetch cannot report success, so a failure back-off only comes from a refused connection
+      }
+      function frame(t) { const d = t - tPrev; tPrev = t; fr++; sum += d; if (d > worst) worst = d; if (d > 25) slow++; if (t - t1 >= 1000) { t1 = t; sample(t); send(t); } requestAnimationFrame(frame); }
+      requestAnimationFrame(frame);
+      window.addEventListener('keydown', e => { if (e.key === 'F9') { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([all.map(x => JSON.stringify(x)).join('\n')], { type: 'text/plain' })); a.download = 'fps-track-' + sid + '.jsonl'; a.click(); } });
+      return { sid, all };
+    })();
     // --- WEATHER (Matin 2026-11-25): ambient overlays in screen space, a different one each run (?weather=rain|storm|fog|leaves|embers|snow|fireflies|sand|none forces one). Written by Neon high, QC by Neon high + Claude. ---
     const Weather = (function () {
       const TYPES = ['rain', 'storm', 'fog', 'leaves', 'embers', 'snow', 'fireflies', 'sand'];
@@ -11365,7 +11396,7 @@ telemetryInit();
       }
       return { init, tick, drawNow, active: () => started, event: () => (ev ? ev.type : null), rain: () => rainOn, force: type => { if (type === 'rain') { force = 'rain'; } else { ev = null; startEvent(type); } }, clearForce: () => { force = null; } };
     })();
-    const BUILD_ID = '1126-1725';
+    const BUILD_ID = '1126-1800';
     if (/beta-b/.test(location.pathname)) { const bid = document.createElement('div'); bid.textContent = 'build ' + BUILD_ID; bid.style.cssText = 'position:fixed;right:6px;bottom:2px;font:10px monospace;color:#fff;opacity:.45;z-index:99999;pointer-events:none'; document.body.appendChild(bid); }   // which build is this? (Matin 2026-11-25: fixes were reported 'still wrong' and I could not tell if the new build was running)
     // --- ASSET CACHE (beta pages only): sw.js keeps the art / clips / sounds in the browser so every visit after the first downloads nothing. play.html and the stable index never register it. ---
     if ('serviceWorker' in navigator && /[?&]nosw=1/.test(location.search)) {   // safety switch: ?nosw=1 removes the cache worker and its files
