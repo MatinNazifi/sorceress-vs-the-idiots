@@ -1995,6 +1995,8 @@ window.addEventListener('load', function () { setTimeout(function () { var s = d
           const want = ArenaArt6.cellState(wx, wy, World.yaw, World.tilt) === 3;
           if (want !== (grid[i] === 1)) { grid[i] = want ? 1 : 0; ch.push(i); cry++; }
         }
+        // the final room stays SEALED: the painted floor reaches round it, so a 2-cell wall is put back along both sides of the vault box (it opens only through its own gate)
+        { const bx0 = Math.floor(arenaVaultBox.x0 / CS), bx1 = Math.floor(arenaVaultBox.x1 / CS), vr = Math.floor(arenaVaultY / CS); for (let y = 0; y < vr; y++) for (const x of [bx0 - 2, bx0 - 1, bx1, bx1 + 1]) { const i = y * GW + x; if (grid[i] === 1) { grid[i] = 0; ch.push(i); } } }
         // doorways: the painted floor stops behind the wall, so from every gate column carve straight north through the wall until the floor (never more than 14 rows: if no floor is found nothing is carved)
         const gCols = new Map(); arenaGateCells.forEach(g => { const gx = g % GW, gy = (g / GW) | 0; if (!gCols.has(gx) || gy < gCols.get(gx)) gCols.set(gx, gy); });
         gCols.forEach((top, gx) => { const path = []; let found = false; for (let y = top - 1; y >= Math.max(0, top - 14); y--) { const i = y * GW + gx; if (grid[i] === 1) { found = true; break; } path.push(i); } if (found) path.forEach(i => { grid[i] = 1; ch.push(i); cry++; }); });
@@ -11779,7 +11781,7 @@ telemetryInit();
       }
       return { init, tick, drawNow, active: () => started, event: () => (ev ? ev.type : null), rain: () => rainOn, force: type => { if (type === 'rain') { force = 'rain'; } else { ev = null; startEvent(type); } }, clearForce: () => { force = null; } };
     })();
-    const BUILD_ID = '1126-1843';
+    const BUILD_ID = '1126-1844';
     if (/beta-b/.test(location.pathname)) { const bid = document.createElement('div'); bid.textContent = 'build ' + BUILD_ID; bid.style.cssText = 'position:fixed;right:6px;bottom:2px;font:10px monospace;color:#fff;opacity:.45;z-index:99999;pointer-events:none'; document.body.appendChild(bid); }   // which build is this? (Matin 2026-11-25: fixes were reported 'still wrong' and I could not tell if the new build was running)
     // --- ASSET CACHE (beta pages only): sw.js keeps the art / clips / sounds in the browser so every visit after the first downloads nothing. play.html and the stable index never register it. ---
     if ('serviceWorker' in navigator && /[?&]nosw=1/.test(location.search)) {   // safety switch: ?nosw=1 removes the cache worker and its files
