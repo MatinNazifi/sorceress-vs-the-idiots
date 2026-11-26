@@ -3472,7 +3472,7 @@ window.ArenaArt6 = (function () {
   function tilesMayLoad() { return typeof omniAllLoaded !== 'function' || omniAllLoaded() || nowS() - ultraT0 > 40; }
   function pumpTiles() {
     if (!tilesMayLoad()) return;
-    while (tileBusy < 8 && tileQ.length) {
+    while (tileBusy < (frameId < 1500 ? 4 : 8) && tileQ.length) {   /* the first ~10 s: 4 decodes at a time, later loads 8 */
       var name = tileQ.shift(), e = tiles[name]; if (!e) continue; tileBusy++;
       (function (e) { var im = new Image(); im.onload = function () { var done = function () { e.im = im; tileBusy--; promoteQ.push(e); pumpTiles(); };   /* decoded, but only drawn (= uploaded to the GPU) 2 per frame: see drawTiles */ if (im.decode) im.decode().then(done, done); else done(); }; /* decode off the main thread: a first draw of a big tile used to hitch the frame */ im.onerror = function () { tileBusy--; pumpTiles(); }; im.src = 'sprites/arena/v6u/' + name; })(e);
     }
@@ -3482,7 +3482,7 @@ window.ArenaArt6 = (function () {
   }
   function drawTiles(ctx, v, U, X, Y, sw, alpha, fallback) {
     var sc = sw / U.w, T = ultra.tile, i, t, x, y, w, h, im, miss = [], hit = [];
-    tileTick = nowS(); if (promoteTick !== frameId) { promoteTick = frameId; for (i = 0; i < 2 && promoteQ.length; i++) promoteQ.shift().ok = true; }   /* at most 2 new tiles per frame go live: 130 uploads in one frame dropped the start to ~90 fps */
+    tileTick = nowS(); if (promoteTick !== frameId) { promoteTick = frameId; for (i = 0; i < (frameId < 1500 ? 1 : 3) && promoteQ.length; i++) promoteQ.shift().ok = true; }   /* few new tiles per frame go live (1 in the first ~10 s, 3 later): 130 uploads in one frame dropped the start to ~90 fps */
     for (i = 0; i < U.tiles.length; i++) {
       t = U.tiles[i]; x = X + t[0] * T * sc; y = Y + t[1] * T * sc; w = (Math.min(U.w - t[0] * T, T + ultra.pad)) * sc; h = (Math.min(U.h - t[1] * T, T + ultra.pad)) * sc;
       if (x + w < 0 || x > v.W || y + h < 0 || y > v.H) { if (x + w > -PRE && x < v.W + PRE && y + h > -PRE && y < v.H + PRE) tileImg(t[2]); continue; }   // just off screen: fetch + decode ahead so a dodge (hero 2.8x speed) never meets an empty tile
@@ -11671,7 +11671,7 @@ telemetryInit();
       }
       return { init, tick, drawNow, active: () => started, event: () => (ev ? ev.type : null), rain: () => rainOn, force: type => { if (type === 'rain') { force = 'rain'; } else { ev = null; startEvent(type); } }, clearForce: () => { force = null; } };
     })();
-    const BUILD_ID = '1126-1545';
+    const BUILD_ID = '1126-1546';
     if (/beta-b/.test(location.pathname)) { const bid = document.createElement('div'); bid.textContent = 'build ' + BUILD_ID; bid.style.cssText = 'position:fixed;right:6px;bottom:2px;font:10px monospace;color:#fff;opacity:.45;z-index:99999;pointer-events:none'; document.body.appendChild(bid); }   // which build is this? (Matin 2026-11-25: fixes were reported 'still wrong' and I could not tell if the new build was running)
     // --- ASSET CACHE (beta pages only): sw.js keeps the art / clips / sounds in the browser so every visit after the first downloads nothing. play.html and the stable index never register it. ---
     if ('serviceWorker' in navigator && /[?&]nosw=1/.test(location.search)) {   // safety switch: ?nosw=1 removes the cache worker and its files
