@@ -1934,7 +1934,7 @@ window.addEventListener('load', function () { setTimeout(function () { var s = d
     }
     window.__gridDump = () => ({ GW, GH, CS, grid: Array.from(grid), zone: Array.from(zone), gates: arenaGateCells.slice(), vault: arenaVaultCells.slice(), topPx, vaultY: arenaVaultY, box: arenaVaultBox, stage: arenaStage });   // QA: the whole walk grid (for reachability tests)
     window.__cryptCells = () => { const o = []; for (let y = 0; y < Math.floor(topPx / CS); y++) for (let x = 0; x < GW; x++) if (grid[y * GW + x] === 1) o.push([x * CS + CS / 2, y * CS + CS / 2]); return o; };   // QA: walkable cells of the crypt (rows above the gates)
-    function art5View(cam) { return { hx: hero.x, hy: hero.y, ty: topPx - 6 * CS,   /* phase 2 (the wall over the hero) starts where the crypt FLOOR starts: in the doorway strip between the floor and the gates she stays visible (Matin 2026-11-26) */ W: screenW, H: screenH, z: cam.zoom || 0.9, cx: cam.x, cy: cam.y, yaw: World.yaw, tilt: World.tilt }; }
+    function art5View(cam) { return { hx: hero.x, hy: hero.y, ty: topPx, W: screenW, H: screenH, z: cam.zoom || 0.9, cx: cam.x, cy: cam.y, yaw: World.yaw, tilt: World.tilt }; }
     function art5DrawItem(c, w) { const dp = typeof dpr !== 'undefined' ? dpr : 1; c.save(); c.setTransform(dp, 0, 0, dp, 0, 0); if (w.band !== undefined) ArenaArt6.drawBand(c, art5View(CAMERA), w.band); else if (w.art5Front) ArenaArt5.drawFront(c, art5View(CAMERA)); else w.art5.draw(c, art5View(CAMERA)); c.restore(); }
     function arenaPushWalls(list, camX, camY, hw, hh) {
       if (art5Ready()) { // the painted blocks, gates and lamps sort with the hero; the grey boxes are not used
@@ -2241,6 +2241,11 @@ window.addEventListener('load', function () { setTimeout(function () { var s = d
             if (grid[cellAt(e.x, e.y)] === 1) { e._off = 0; continue; }
             e._off = (e._off || 0) + 0.4; if (e._off >= 0.8) killEnemy(e);
           }
+          /* gems / pickups / vases / chests left over the void vanish with the floor (a gem that is flying to the hero is kept) */
+          for (let i = soulGems.length - 1; i >= 0; i--) { const g = soulGems[i]; if (!g.magnetized && grid[cellAt(g.x, g.y)] !== 1) soulGems.splice(i, 1); }
+          for (let i = pickups.length - 1; i >= 0; i--) { const p = pickups[i]; if (grid[cellAt(p.x, p.y)] !== 1) pickups.splice(i, 1); }
+          for (let i = vases.length - 1; i >= 0; i--) { const v = vases[i]; if (grid[cellAt(v.x, v.y)] !== 1) vases.splice(i, 1); }
+          for (let i = chests.length - 1; i >= 0; i--) { const c = chests[i]; if (grid[cellAt(c.x, c.y)] !== 1) chests.splice(i, 1); }
         }
       }
       for (let i = 0; i < arenaEvents.length; i++) {
@@ -2692,6 +2697,8 @@ window.addEventListener('load', function () { setTimeout(function () { var s = d
         OUT.x = startX; OUT.y = startY;
         return OUT;
       },
+
+      noSpawn(x, y) { return arena === true && arenaStage < 2 && topPx > 0 && y < topPx; },   // the crypt takes no spawns until the crypt fight (Matin 2026-11-26): the spawn director checks this for EVERY spawn path
 
       steer(ex, ey, hx, hy) {
         const hcx = (hx / CS) | 0, hcy = (hy / CS) | 0, hc = hcy * GW + hcx;
@@ -3577,6 +3584,8 @@ window.ArenaArt6 = (function () {
     return { x: X0 + run.a * SW * sc, y: Y0, w: Math.min((run.b - run.a) * SW, e.w - run.a * SW) * sc, h: e.h * sc, sc: sc };
   }
   function viewAxAy(v) { var cosY = Math.cos(v.yaw), sinY = Math.sin(v.yaw); return [cosY * v.cx - sinY * v.cy, v.tilt * (sinY * v.cx + cosY * v.cy)]; }
+  var GATE_X = [];   /* gate arches left OUT of the over-hero wall copy (open layer px: [[55,229],[405,575],[749,925]]): empty = she goes behind the arches too, as walking over an arch looked like climbing the wall */
+  var LEDGE_X = 1004, LEDGE_M = 0.526, LEDGE_C = 133.5, LEDGE_T = 66;   /* front wall: its bottom edge is the line y = M x + C (layer px) up to the corner at x = 1004; the ledge strip is the lowest T px of it */
   var cwItem = { wall: true, band: 'cw', x: 0, y: 0, ry: 2e8 };   /* phase 2: the wall layer as ONE item drawn after everything */
   function sortBands(v) {
     var out = [], a = viewAxAy(v), i, r, runs, b;
@@ -3594,7 +3603,24 @@ window.ArenaArt6 = (function () {
   }
   function drawBand(ctx, v, idx) {
     var runs = bands[idx], a = viewAxAy(v), r, run, e, b, cy;
-    if (idx === 'cw') { var wl = byKey['crypt_wall_front|' + cur.crypt_wall_front]; if (wl) { ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high'; drawLayer(ctx, v, wl, 1, a[0], a[1]); } return; }
+    if (idx === 'cw') {   /* phase 2: a COPY of the front + right wall drawn over the hero. While the gates are open the three gate arches are left out of the copy (she walks through them, so they stay in the normal layer under her) */
+      var wl = byKey['crypt_wall_front|' + cur.crypt_wall_front];
+      if (wl) {
+        ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
+        var kk = data.k, wX = v.W * 0.5 + v.z * (((wl.x / kk) - fit.tx) / fit.s - a[0]), wY = v.H * 0.5 + v.z * (((wl.y / kk) - fit.ty) / fit.s - a[1]), wsw = v.z * (wl.w / kk) / fit.s, wsh = v.z * (wl.h / kk) / fit.s, wsc = wsw / wl.w;
+        /* the copy is the wall FACE only: the base ledge strip along the bottom of the front wall (Matin marked it: "not the lower part") stays in the normal layer, so what stands in the hub in front of the wall is not covered */
+        var ints = [[0, LEDGE_X], [LEDGE_X, wl.w]], gi, gx, nx;
+        if (cur.crypt_wall_front === 'open') for (gx = 0; gx < GATE_X.length; gx++) { nx = []; ints.forEach(function (iv) { if (iv[0] < GATE_X[gx][0]) nx.push([iv[0], Math.min(iv[1], GATE_X[gx][0])]); if (GATE_X[gx][1] < iv[1]) nx.push([Math.max(iv[0], GATE_X[gx][1]), iv[1]]); }); ints = nx; }
+        ctx.save(); ctx.beginPath();
+        for (gi = 0; gi < ints.length; gi++) {
+          var i0 = ints[gi][0], i1 = ints[gi][1]; if (i1 <= i0) continue;
+          var y0 = i0 < LEDGE_X ? Math.min(wl.h, LEDGE_M * i0 + LEDGE_C - LEDGE_T) : wl.h, y1 = i1 <= LEDGE_X ? Math.min(wl.h, LEDGE_M * i1 + LEDGE_C - LEDGE_T) : wl.h;
+          ctx.moveTo(wX + i0 * wsc, wY); ctx.lineTo(wX + i1 * wsc, wY); ctx.lineTo(wX + i1 * wsc, wY + y1 * wsc); ctx.lineTo(wX + i0 * wsc, wY + y0 * wsc); ctx.closePath();
+        }
+        ctx.clip(); drawLayer(ctx, v, wl, 1, a[0], a[1]); ctx.restore();
+      }
+      return;
+    }
     if (!runs) return;
     for (r = 0; r < runs.length; r++) {
       run = runs[r]; e = run.e; if (cur[e.l.module] !== e.l.state || !e.cv) continue;
@@ -3613,7 +3639,6 @@ window.ArenaArt6 = (function () {
       if (!front && l.module === 'boss_door' && l.state === 'locked' && cur.boss_door === 'open' && door.meta) { drawDoor(ctx, v, l, ax, ay); continue; }
       if (l.above_player) continue;   // the front posts and ropes are drawn as depth bands (sortBands / drawBand), sorted against the hero, enemies and vases
       if (front) continue;
-      if (cryptInside && l.module === 'crypt_wall_front') continue;   /* phase 2 (hero inside the crypt): the front + right walls are drawn ABOVE him, see sortBands */
       var m = l.module; if (cur[m] !== l.state) continue; // only the module's current art; the previous art is drawn under it while a fade runs
       var p = 1, pl = null;
       if (prev[m] !== undefined && prev[m] !== null) { var q = (t - t0[m]) / dur[m]; if (q < 1) { p = q < 0 ? 0 : q; pl = byKey[m + '|' + prev[m]]; } }
@@ -4433,6 +4458,7 @@ window.ArenaArt6 = (function () {
       if (damageNumbers.length > 90) damageNumbers.shift();
     }
 
+    const GEM_CAP = 120;
     function spawnSoulGem(x, y, type = 'small') {
       let xpValue = 5;
       let color = '#44ee88';
@@ -4446,6 +4472,7 @@ window.ArenaArt6 = (function () {
         color = '#ffaa22';
         size = 17;
       }
+      if (soulGems.length >= GEM_CAP) { const g0 = soulGems[soulGems.length - 1 - (Math.random() * 40 | 0) % soulGems.length]; g0.xp += xpValue; return; }   /* late game fps (Matin 2026-11-26): past 120 gems on the floor a new gem's XP is added to an existing gem, nothing is lost, far fewer sprites */
       soulGems.push({
         x, y,
         xp: xpValue,
@@ -4784,6 +4811,7 @@ window.ArenaArt6 = (function () {
 
     // --- ENEMY LOGIC & ARCHETYPES ---
     function spawnEnemy(type, x, y, isElite = false) {
+      if (World.noSpawn && World.noSpawn(x, y)) { const sp0 = World.spawnRing(hero, 700); x = sp0.x; y = sp0.y; if (World.noSpawn(x, y)) return null; }   /* never in the sealed / not-yet-open crypt, whoever asked (encirclement, stair burst, elite, trickle) */
       const minutes = gameTime / 60;
       // Balance: Enemy HP * 0.88
       // (v17: the +6% HP per weapon past 6 was reverted, playtests got too hard)
@@ -5044,9 +5072,10 @@ window.ArenaArt6 = (function () {
       }
     }
 
+    const ENEMY_CAP_LATE = 115;
     const ENEMY_CAP = 170; // was 380: fps drop late game
     function spawnTrickleEnemy() {
-      if (enemies.length >= ENEMY_CAP) return;
+      if (enemies.length >= (gameTime >= 540 ? ENEMY_CAP_LATE : ENEMY_CAP)) return;   /* the last minutes carry fewer bodies (Matin 2026-11-26: lag at the end) */
       const dist = (screenW / CAMERA.zoom) * 0.6 + 60;
       const sp = World.spawnRing(hero, dist); // grid maps land on floor, Tower is the old ring
       let sx = sp.x;
@@ -6366,11 +6395,10 @@ if (metaFx.regen > 0 && hero.hp > 0) hero.hp = Math.min(hero.maxHp, hero.hp + me
         // Dead-zone: |vx| <= 8 keeps the last facing, so near-vertical movers don't flicker
         // Grumbo (caster) always faces the hero it shoots at, even while backing off or standing
         // (screen side, not world x: the camera is yawed, so world x put some enemies on the wrong side, 2026-11-25)
-        if (e.type === 'grumbo') {
-          const sh = screenDX(toHeroX, toHeroY);
-          if (sh > 8) e.facing = 1;
-          else if (sh < -8) e.facing = -1;
-        } else { const sv = screenDX(e.vx, e.vy); if (sv > 8) e.facing = 1; else if (sv < -8) e.facing = -1; }
+        /* Matin 2026-11-26: the goblin and the toad moonwalked (faced the hero while walking away, or kept a stale facing on a screen-vertical walk). Now: walking = face the walk, otherwise face the hero. */
+        { const sv = screenDX(e.vx, e.vy), sh = screenDX(toHeroX, toHeroY);
+          if (sv > 8) e.facing = 1; else if (sv < -8) e.facing = -1;
+          else if (sh > 8) e.facing = 1; else if (sh < -8) e.facing = -1; }
         // Walk-sheet frame rate scales with movement speed: ~10 fps at base speed
         const moveSpeed = Math.hypot(e.vx, e.vy);
         e.isMovingNow = moveSpeed > 5;
@@ -11474,7 +11502,7 @@ telemetryInit();
       }
       return { init, tick, drawNow, active: () => started, event: () => (ev ? ev.type : null), rain: () => rainOn, force: type => { if (type === 'rain') { force = 'rain'; } else { ev = null; startEvent(type); } }, clearForce: () => { force = null; } };
     })();
-    const BUILD_ID = '1126-2020';
+    const BUILD_ID = '1126-2057';
     if (/beta-b/.test(location.pathname)) { const bid = document.createElement('div'); bid.textContent = 'build ' + BUILD_ID; bid.style.cssText = 'position:fixed;right:6px;bottom:2px;font:10px monospace;color:#fff;opacity:.45;z-index:99999;pointer-events:none'; document.body.appendChild(bid); }   // which build is this? (Matin 2026-11-25: fixes were reported 'still wrong' and I could not tell if the new build was running)
     // --- ASSET CACHE (beta pages only): sw.js keeps the art / clips / sounds in the browser so every visit after the first downloads nothing. play.html and the stable index never register it. ---
     if ('serviceWorker' in navigator && /[?&]nosw=1/.test(location.search)) {   // safety switch: ?nosw=1 removes the cache worker and its files
