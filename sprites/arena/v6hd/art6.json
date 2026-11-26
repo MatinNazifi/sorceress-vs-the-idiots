@@ -202,10 +202,10 @@
 {
 "module": "bridge_left",
 "state": "warning",
-"x": 439,
-"y": 722,
-"w": 422,
-"h": 523,
+"x": 438,
+"y": 725,
+"w": 425,
+"h": 521,
 "z": 40,
 "above_player": false,
 "file": "bridge_left__warning.webp"
