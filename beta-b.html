@@ -3403,7 +3403,9 @@ window.ArenaArt6 = (function () {
     if (miss.length) pumpTiles();
     if (miss.length && fallback) ctx.drawImage(fallback.im, fallback.X, fallback.Y, fallback.w, fallback.h);   // some tiles still loading: the 2x image under the ones that are ready
     if (alpha < 1) ctx.globalAlpha = alpha;
+    ctx.imageSmoothingQuality = 'low';   /* the 4x tiles are drawn near 1:1: the 'high' filter built a mip chain for every new tile = a hitch on each state change and dodge */
     for (i = 0; i < hit.length; i++) ctx.drawImage(hit[i][0], hit[i][1], hit[i][2], hit[i][3], hit[i][4]);
+    ctx.imageSmoothingQuality = 'high';
     if (alpha < 1) ctx.globalAlpha = 1;
   }
   function drawLayer(ctx, v, l, alpha, ax, ay, nofb) {
@@ -11299,7 +11301,7 @@ telemetryInit();
       }
       return { init, tick, drawNow, active: () => started, event: () => (ev ? ev.type : null), rain: () => rainOn, force: type => { if (type === 'rain') { force = 'rain'; } else { ev = null; startEvent(type); } }, clearForce: () => { force = null; } };
     })();
-    const BUILD_ID = '1126-1344';
+    const BUILD_ID = '1126-1346';
     if (/beta-b/.test(location.pathname)) { const bid = document.createElement('div'); bid.textContent = 'build ' + BUILD_ID; bid.style.cssText = 'position:fixed;right:6px;bottom:2px;font:10px monospace;color:#fff;opacity:.45;z-index:99999;pointer-events:none'; document.body.appendChild(bid); }   // which build is this? (Matin 2026-11-25: fixes were reported 'still wrong' and I could not tell if the new build was running)
     // --- ASSET CACHE (beta pages only): sw.js keeps the art / clips / sounds in the browser so every visit after the first downloads nothing. play.html and the stable index never register it. ---
     if ('serviceWorker' in navigator && /[?&]nosw=1/.test(location.search)) {   // safety switch: ?nosw=1 removes the cache worker and its files
