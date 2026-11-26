@@ -1333,6 +1333,9 @@ window.addEventListener('load', function () { setTimeout(function () { var s = d
       return _ring;
     },
 
+    // true = no enemy may be spawned here (the arena crypt before the crypt fight). THE WRAPPER WAS MISSING: the guard in spawnEnemy called World.noSpawn, which did not exist, so it never ran (Matin 2026-11-26)
+    noSpawn(x, y) { return this._def && this._def.noSpawn ? this._def.noSpawn(x, y) : false; },
+
     // Direction (unit vector) an enemy should walk to reach the hero around walls, or null for a straight line.
     steer(ex, ey, hx, hy) {
       return this._def && this._def.steer ? this._def.steer(ex, ey, hx, hy) : null;
@@ -6632,14 +6635,17 @@ if (metaFx.regen > 0 && hero.hp > 0) hero.hp = Math.min(hero.maxHp, hero.hp + me
         // Grumbo (caster) always faces the hero it shoots at, even while backing off or standing
         // (screen side, not world x: the camera is yawed, so world x put some enemies on the wrong side, 2026-11-25)
         /* Matin 2026-11-26: the goblin and the toad moonwalked (faced the hero while walking away, or kept a stale facing on a screen-vertical walk). Now: walking = face the walk, otherwise face the hero. */
-        { const sv = screenDX(e.vx, e.vy), sh = screenDX(toHeroX, toHeroY);
-          if (sv > 8) e.facing = 1; else if (sv < -8) e.facing = -1;
+        /* the walk is what the enemy REALLY did on screen over the last frames (e._mv, smoothed), not what it meant to do: in a crowd the push-apart moves it the other way and it moonwalked (measured: ~50% of moving enemies faced against their screen movement) */
+        { const sh = screenDX(toHeroX, toHeroY), mv = e._mv !== undefined ? e._mv : screenDX(e.vx, e.vy);
+          if (mv > 14) e.facing = 1; else if (mv < -14) e.facing = -1;
           else if (sh > 8) e.facing = 1; else if (sh < -8) e.facing = -1; }
         // Walk-sheet frame rate scales with movement speed: ~10 fps at base speed
         const moveSpeed = Math.hypot(e.vx, e.vy);
         e.isMovingNow = moveSpeed > 5;
         if (e.isMovingNow) e.animTime += dt * 10 * Math.min(2.2, moveSpeed / e.speed);
 
+        { const ax = screenDX(e.x - (e._px !== undefined ? e._px : e.x), e.y - (e._py !== undefined ? e._py : e.y)) / Math.max(dt, 0.001); e._mv = (e._mv || 0) * 0.8 + ax * 0.2; }   // real screen speed since the last frame (includes the crowd push)
+        e._px = e.x; e._py = e.y;   // position at the start of this frame: next frame's displacement = this frame's own move + whatever pushed it
         e.x += (e.vx + e.recoilX) * dt;
         e.y += (e.vy + e.recoilY) * dt;
         e.recoilX *= 0.85;
@@ -11360,6 +11366,7 @@ telemetryInit();
       hit: (amount = 10) => { const e = findNearestEnemy(hero.x, hero.y, 900); if (!e) return null; const hp0 = e.hp; damageEnemy(e, amount / DMG_TUNE, 1, false); return [Math.round(hp0), Math.round(e.hp), enemies.indexOf(e) >= 0]; }, // QA: hit the nearest enemy for `amount`
       passive: id => { if (PASSIVE_REGISTRY[id] && hero.passives[id] < MAX_LEVEL) PASSIVE_REGISTRY[id].apply(); return hero.passives[id]; },
       heroAt: (x, y) => { hero.x = x; hero.y = y; hero.iFrames = 999; }, // QA: exact hero position (layer tests)
+      facingCheck: () => { const r = { moving: 0, wrong: 0, byType: {}, detail: [] }; enemies.forEach(e => { if (e._fcx !== undefined) { const d = screenDX(e.x - e._fcx, e.y - e._fcy); if (Math.abs(d) > 6) { r.moving++; const bad = (d > 0 ? 1 : -1) !== e.facing; if (bad) { r.wrong++; r.detail.push([e.type, e.facing, Math.round(d), Math.round(screenDX(hero.x - e.x, hero.y - e.y)), Math.round(e._mv || 0), Math.round(screenDX(e.vx, e.vy)), e.state || '', e.atkT > 0 ? 'atk' : '']); } const b = r.byType[e.type] = r.byType[e.type] || { n: 0, wrong: 0 }; b.n++; if (bad) b.wrong++; } } e._fcx = e.x; e._fcy = e.y; }); return r; }, // QA: does every moving enemy face the way it moves on screen (Matin: moonwalking goblins / toads)
       chestAt: (dx, dy) => { chests.push({ x: hero.x + dx, y: hero.y + dy, radius: 32, isRelicChest: true, bounceY: 0, vy: 0, landed: true, life: 600 }); return chests.length; }, // QA: a landed chest at an offset (chest badge test)
       hurt: n => { hero.hp = Math.max(1, hero.hp - n); return hero.hp; }, // HUD juice QA: god mode skips hitHero
       heal: n => { hero.hp = Math.min(hero.maxHp, hero.hp + n); return hero.hp; },
@@ -11860,7 +11867,7 @@ telemetryInit();
       }
       return { init, tick, drawNow, active: () => started, event: () => (ev ? ev.type : null), rain: () => rainOn, force: type => { if (type === 'rain') { force = 'rain'; } else { ev = null; startEvent(type); } }, clearForce: () => { force = null; } };
     })();
-    const BUILD_ID = '1126-2128';
+    const BUILD_ID = '1126-2151';
     if (/beta-b/.test(location.pathname)) { const bid = document.createElement('div'); bid.textContent = 'build ' + BUILD_ID; bid.style.cssText = 'position:fixed;right:6px;bottom:2px;font:10px monospace;color:#fff;opacity:.45;z-index:99999;pointer-events:none'; document.body.appendChild(bid); }   // which build is this? (Matin 2026-11-25: fixes were reported 'still wrong' and I could not tell if the new build was running)
     // --- ASSET CACHE (beta pages only): sw.js keeps the art / clips / sounds in the browser so every visit after the first downloads nothing. play.html and the stable index never register it. ---
     if ('serviceWorker' in navigator && /[?&]nosw=1/.test(location.search)) {   // safety switch: ?nosw=1 removes the cache worker and its files
