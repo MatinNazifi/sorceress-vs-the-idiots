@@ -6403,7 +6403,7 @@ if (metaFx.regen > 0 && hero.hp > 0) hero.hp = Math.min(hero.maxHp, hero.hp + me
     const ATK_RANGE_PAD = 14;    // melee types start the swing this far before contact
     const ATK_REARM = 0.7;       // s between melee swings
     const ENEMY_MELEE = new Set(['potbelly', 'fishguy']);
-    const HURT_S = 0.18;
+    const HURT_S = 0.4;   /* the hit clip's reaction (about 10 of its frames, ~0.4 s at 24 fps) now plays near its real speed; it was squeezed into 0.18 s and looked like a flash */
     function startEnemyAttack(e, force) {
       if (e.isBoss || e.freezeTimer > 0 || e.atkT >= 0 || (!force && e.atkRearm > 0)) return;
       const dx = hero.x - e.x, dy = hero.y - e.y, d = Math.hypot(dx, dy) || 1;
@@ -6466,11 +6466,11 @@ if (metaFx.regen > 0 && hero.hp > 0) hero.hp = Math.min(hero.maxHp, hero.hp + me
         e.dmgWinSum += amount;
       }
       e.hp -= amount;
-      e.flashTimer = 0.1; // 0.1 s white flash
+      e.flashTimer = 0.05; // short white flash: the clip's 3rd frame is a motion streak and a long flash turned it into a white blob
       if (e.hp > 0 && !e.isBoss && !(e.hurtT > 0)) { // flinch plays out, a beam's per-frame ticks don't freeze it
         e.hurtT = HURT_S;
         e.hurtDir = hitDirX < 0 ? -1 : 1;
-        e.flashTimer = 0.12;
+        e.flashTimer = 0.05;
       }
       Sound.hit(isCrit);
       e.hitFlash = 0.12; // elite bar flash
@@ -6524,7 +6524,7 @@ if (metaFx.regen > 0 && hero.hp > 0) hero.hp = Math.min(hero.maxHp, hero.hp + me
     }
 
     // LATE DEATH (Matin 2026-11-26): about one normal enemy in five is hit, staggers for about a second and only THEN plays its death clip. While it staggers it is already dead: no attack, no target, no damage.
-    const LATE_DEATH_P = 0.2;
+    const LATE_DEATH_P = 0;   /* OFF (Matin 2026-11-26): a lethal hit plays a death clip AT ONCE; a hit that does not kill plays the hit clip */
     function killEnemy(e) {
       if (e.dying !== undefined) return;
       const strip = SPRITES['enemy-omni-' + e.type + '_death'], hs = SPRITES['enemy-omni-' + e.type + '_hurt'], hd = OMNI_ENEMY[e.type + '_hurt'];
@@ -6565,7 +6565,7 @@ if (metaFx.regen > 0 && hero.hp > 0) hero.hp = Math.min(hero.maxHp, hero.hp + me
         const th = ({ potbelly: 60, fishguy: 95, grumbo: 80, mootaur: 210 })[e.type] * (SPRITE_HEIGHT_MUL[e.type + '-walk'] || 1) * (e.isElite && e.type !== 'mootaur' ? 1.6 : 1) * CHAR_SCALE;
         const playS = 1.8;                                     // the clip's motion is ~4 s long: play it in 1.8 s, hold the last pose 0.9 s, fade
         // (enemy death clip sound removed 2026-11-25: Matin, too annoying in swarms; the strips keep the files)
-        playVFX(DK, e.x, e.y + 4, { frames: DD.frames, fps: DD.frames / playS, hold: 0.9, life: playS + 0.9, drawH: th * DD.hr, ground: DD.ground, flip: e.facing < 0 });
+        playVFX(DK, e.x, e.y + 4, { startFrame: ({ grumbo_death: 10, fishguy_death2: 2, potbelly_death2: 2 })[DN] || 0, frames: DD.frames, fps: DD.frames / playS, hold: 0.9, life: playS + 0.9, drawH: th * DD.hr, ground: DD.ground, flip: e.facing < 0 });
       } else {
         playVFX('poof', e.x, e.y - (e.radius * 0.4), {
           scale: poofScale,
@@ -8852,7 +8852,7 @@ function drawEnemy0(e) {
         yShift = (1 - (AD.ground || 1)) * targetHeight;
       } else if ((e.hurtT > 0 || e.dying > 0) && spriteKey !== 'collector' && !e.isBoss && OMNI_ENEMY[e.type + '_hurt'] && SPRITES['enemy-omni-' + e.type + '_hurt'] && SPRITES['enemy-omni-' + e.type + '_hurt'].complete && SPRITES['enemy-omni-' + e.type + '_hurt'].naturalWidth > 0) {   // Omni flinch clip, played over the 0.18 s hit flinch
         const HD = OMNI_ENEMY[e.type + '_hurt'];
-        spriteKey = 'enemy-omni-' + e.type + '_hurt'; frameCount = HD.frames; frameIdx = e.dying > 0 ? Math.min(HD.frames - 1, Math.floor((1 - e.dying / e.dyingTot) * HD.frames)) : Math.min(HD.frames - 1, Math.floor((1 - e.hurtT / HURT_S) * HD.frames));   /* late death: the whole hit clip at its real speed */
+        spriteKey = 'enemy-omni-' + e.type + '_hurt'; frameCount = HD.frames; frameIdx = e.dying > 0 ? Math.min(HD.frames - 1, Math.floor((1 - e.dying / e.dyingTot) * HD.frames)) : Math.min(HD.frames - 1, Math.floor((1 - e.hurtT / HURT_S) * Math.min(HD.frames, (HD.peak || 7) + 4)));   /* only the reaction part of the clip (up to its peak + 4 frames) is played over the flinch; the long stumble tail is not shown. late death: the whole hit clip at its real speed */
         targetHeight *= HD.hr || 1; yShift = (1 - (HD.ground || 1)) * targetHeight;
       } else if (e.atkT >= 0 && SPRITES[e.type + '-attack']) {
         spriteKey = e.type + '-attack'; frameCount = 2; frameIdx = e.atkT < ATK_WINDUP ? 0 : 1;
@@ -11363,7 +11363,7 @@ telemetryInit();
       }
       return { init, tick, drawNow, active: () => started, event: () => (ev ? ev.type : null), rain: () => rainOn, force: type => { if (type === 'rain') { force = 'rain'; } else { ev = null; startEvent(type); } }, clearForce: () => { force = null; } };
     })();
-    const BUILD_ID = '1126-1645';
+    const BUILD_ID = '1126-1653';
     if (/beta-b/.test(location.pathname)) { const bid = document.createElement('div'); bid.textContent = 'build ' + BUILD_ID; bid.style.cssText = 'position:fixed;right:6px;bottom:2px;font:10px monospace;color:#fff;opacity:.45;z-index:99999;pointer-events:none'; document.body.appendChild(bid); }   // which build is this? (Matin 2026-11-25: fixes were reported 'still wrong' and I could not tell if the new build was running)
     // --- ASSET CACHE (beta pages only): sw.js keeps the art / clips / sounds in the browser so every visit after the first downloads nothing. play.html and the stable index never register it. ---
     if ('serviceWorker' in navigator && /[?&]nosw=1/.test(location.search)) {   // safety switch: ?nosw=1 removes the cache worker and its files
