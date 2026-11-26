@@ -11054,6 +11054,7 @@ telemetryInit();
       PERF.dt = PERF.upd = PERF.draw = PERF.amb = PERF.mx = 0; PERF.n = 0;
     }
 
+    const FPS_CAP = (() => { const m = /[?&]cap=(\d+)/.exec(location.search); return m ? +m[1] : 120; })();
     const SM_TOP = Math.min(1, Math.max(0.5, parseFloat(new URLSearchParams(location.search).get('top')) || 0.75));
     const SM_LV = [SM_TOP, SM_TOP * 0.78, SM_TOP * 0.6, SM_TOP * 0.48, 0.34];
     const SM = { lv: SM_LV, i: 0, ema: 16, bad: 0, calm: 0, slow: 0, stepAt: 0, upAt: 0, hold: 5000, dips: 0, emaAtStep: 0, futile: false };
@@ -11102,6 +11103,7 @@ telemetryInit();
     function loopBody(currentTimestamp) {
       requestAnimationFrame(loop);
       if (currentTimestamp - lastTimestamp < (GFX.mode === 30 ? 30.5 : 14.5)) return; // 120 Hz screens: render every 2nd refresh
+      if (FPS_CAP && currentTimestamp - lastTimestamp < 1000 / FPS_CAP - 1.5) return;   /* frame limit (Matin 2026-11-26): default 120, ?cap=N changes it, ?cap=0 = off; a 240 Hz screen then draws every second frame */
 
       const rawDt = Math.min((currentTimestamp - lastTimestamp) / 1000, 0.1);
       lastTimestamp = currentTimestamp;
@@ -11661,7 +11663,7 @@ telemetryInit();
       }
       return { init, tick, drawNow, active: () => started, event: () => (ev ? ev.type : null), rain: () => rainOn, force: type => { if (type === 'rain') { force = 'rain'; } else { ev = null; startEvent(type); } }, clearForce: () => { force = null; } };
     })();
-    const BUILD_ID = '1126-1507';
+    const BUILD_ID = '1126-1510';
     if (/beta-b/.test(location.pathname)) { const bid = document.createElement('div'); bid.textContent = 'build ' + BUILD_ID; bid.style.cssText = 'position:fixed;right:6px;bottom:2px;font:10px monospace;color:#fff;opacity:.45;z-index:99999;pointer-events:none'; document.body.appendChild(bid); }   // which build is this? (Matin 2026-11-25: fixes were reported 'still wrong' and I could not tell if the new build was running)
     // --- ASSET CACHE (beta pages only): sw.js keeps the art / clips / sounds in the browser so every visit after the first downloads nothing. play.html and the stable index never register it. ---
     if ('serviceWorker' in navigator && /[?&]nosw=1/.test(location.search)) {   // safety switch: ?nosw=1 removes the cache worker and its files
