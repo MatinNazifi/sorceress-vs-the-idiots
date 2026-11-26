@@ -2170,7 +2170,8 @@ window.addEventListener('load', function () { setTimeout(function () { var s = d
       if (!force && arenaReach && gameTime - arenaReachTime < 0.5) return;
       arenaReachTime = gameTime;
       if (!arenaReach || arenaReach.length !== GW * GH) arenaReach = new Uint8Array(GW * GH); else arenaReach.fill(0);
-      const h = cellAt(hero.x, hero.y); if (!(h >= 0 && h < GW * GH) || grid[h] !== 1) { arenaReachCount = 0; return; }
+      let h = cellAt(hero.x, hero.y); if (!(h >= 0 && h < GW * GH)) { arenaReachCount = 0; return; }
+      if (grid[h] !== 1) { let f = -1; for (let r = 1; r <= 4 && f < 0; r++) for (let dy = -r; dy <= r && f < 0; dy++) for (let dx = -r; dx <= r; dx++) { const j = h + dy * GW + dx; if (j >= 0 && j < GW * GH && grid[j] === 1) { f = j; break; } } if (f < 0) { arenaReachCount = 0; return; } h = f; }   /* standing on a blocked cell (a doorway the floor mask just closed): reach starts from the nearest floor, not from nothing (empty reach made every spawn fall back to "any walkable cell") */
       const q = [h]; arenaReach[h] = 1;
       for (let head = 0; head < q.length; head++) {
         const c = q[head], cx = c % GW, cy = (c / GW) | 0;
@@ -2713,7 +2714,7 @@ window.addEventListener('load', function () { setTimeout(function () { var s = d
         return OUT;
       },
 
-      noSpawn(x, y) { return arena === true && arenaStage < 2 && topPx > 0 && y < topPx; },   // the crypt takes no spawns until the crypt fight (Matin 2026-11-26): the spawn director checks this for EVERY spawn path
+      noSpawn(x, y) { return arena === true && ((arenaStage < 2 && topPx > 0 && y < topPx) || (arenaStage < 3 && inVault(x, y))); },   // + never on the sealed door platform / final room (the snap fallback of the spawn ring put ~100 enemies on it when the hero stood on a blocked cell)   // the crypt takes no spawns until the crypt fight (Matin 2026-11-26): the spawn director checks this for EVERY spawn path
 
       steer(ex, ey, hx, hy) {
         const hcx = (hx / CS) | 0, hcy = (hy / CS) | 0, hc = hcy * GW + hcx;
@@ -11051,9 +11052,11 @@ telemetryInit();
         if (jmp !== 'bridge' && !window.__artWalkStats) return; clearInterval(iv);
         setTimeout(() => {
           if (jmp === 'bridge') window.__setTime && window.__setTime(185);
-          else if (jmp === 'phase2') { window.__event(5); setTimeout(() => { window.__event(6); window.__setTime && window.__setTime(612); }, 500); }
-          else { window.__event(5); }
-          setTimeout(() => window.__cast.heroAt(spot[0], spot[1]), jmp === 'phase2' ? 2200 : 900);
+          else if (jmp === 'phase2') {   /* the clock goes to 9:20 FIRST so the five early collapses land while the crypt is still sealed (a collapse after the gates open drops any floor not joined to the hub), then gates, then the drop, then 10:12 */
+            window.__setTime && window.__setTime(560);
+            setTimeout(() => { window.__event(5); setTimeout(() => { window.__event(6); window.__setTime && window.__setTime(612); }, 600); }, 2500);
+          } else { window.__event(5); }
+          setTimeout(() => window.__cast.heroAt(spot[0], spot[1]), jmp === 'phase2' ? 4200 : 900);
         }, 600);
       }, 300);
     })();
@@ -11527,7 +11530,7 @@ telemetryInit();
       }
       return { init, tick, drawNow, active: () => started, event: () => (ev ? ev.type : null), rain: () => rainOn, force: type => { if (type === 'rain') { force = 'rain'; } else { ev = null; startEvent(type); } }, clearForce: () => { force = null; } };
     })();
-    const BUILD_ID = '1126-2230';
+    const BUILD_ID = '1126-2236';
     if (/beta-b/.test(location.pathname)) { const bid = document.createElement('div'); bid.textContent = 'build ' + BUILD_ID; bid.style.cssText = 'position:fixed;right:6px;bottom:2px;font:10px monospace;color:#fff;opacity:.45;z-index:99999;pointer-events:none'; document.body.appendChild(bid); }   // which build is this? (Matin 2026-11-25: fixes were reported 'still wrong' and I could not tell if the new build was running)
     // --- ASSET CACHE (beta pages only): sw.js keeps the art / clips / sounds in the browser so every visit after the first downloads nothing. play.html and the stable index never register it. ---
     if ('serviceWorker' in navigator && /[?&]nosw=1/.test(location.search)) {   // safety switch: ?nosw=1 removes the cache worker and its files
