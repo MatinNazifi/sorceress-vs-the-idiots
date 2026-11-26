@@ -1932,7 +1932,7 @@ window.addEventListener('load', function () { setTimeout(function () { var s = d
         }
         { /* the wall TOPS are not floor (Matin 2026-11-26: Sepid stood on top of the wall at both end corners): the floor cells at the far LEFT and far RIGHT ends that touch non-floor on the outer side lose one cell (the two end sections he marked); the rest is his selection untouched. Doorway cells (not painted floor) are left alone. */
           const nf = (x, y) => x < 0 || y < 0 || x >= GW || y >= GH || grid[y * GW + x] !== 1, topRow2 = Math.floor(topPx / CS), vs2 = new Set(arenaVaultCells), rem = [];
-          for (let y = 0; y < topRow2; y++) for (let x = 0; x < GW; x++) { const i = y * GW + x; if (grid[i] !== 1 || vs2.has(i)) continue; const wx = x * CS + CS / 2, wy = y * CS + CS / 2; if (inVault(wx, wy)) continue; if (ArenaArt6.cellState(wx, wy, World.yaw, World.tilt) !== 3) continue; if (x >= 83 && nf(x + 1, y)) rem.push(i); }   /* ONLY the two end sections (left and right wall); everything else is exactly his selection */
+          for (let y = 0; y < topRow2; y++) for (let x = 0; x < GW; x++) { const i = y * GW + x; if (grid[i] !== 1 || vs2.has(i)) continue; const wx = x * CS + CS / 2, wy = y * CS + CS / 2; if (inVault(wx, wy)) continue; if (ArenaArt6.cellState(wx, wy, World.yaw, World.tilt) !== 3) continue; if (false) rem.push(i); }   /* OFF: his area is used EXACTLY as he drew it; the wall separation is a drawing layer now (crypt_over), not a cut of his area */   /* ONLY the two end sections (left and right wall); everything else is exactly his selection */
           rem.forEach(i => { grid[i] = 0; ch.push(i); cry++; });
         }
       }
@@ -3345,7 +3345,7 @@ window.ArenaArt6 = (function () {
   'use strict';
   var data = null, base = '', fit = null, ok = false, imgs = {}, byKey = {};
   var cryptInside = false, rbT = 0, want = {}, cur = {}, prev = {}, t0 = {}, dur = {}, pend = {}, hubFallen = 0, forced = false;
-  var HEALTHY = { environment: 'healthy', crypt_floor_walls: 'closed', crypt_wall_front: 'closed', boss_door: 'locked', left: 'healthy', main: 'healthy', right: 'healthy', front: 'healthy',
+  var HEALTHY = { environment: 'healthy', crypt_floor_walls: 'closed', crypt_over: 'closed', crypt_wall_front: 'closed', boss_door: 'locked', left: 'healthy', main: 'healthy', right: 'healthy', front: 'healthy',
     bridge_left: 'healthy', bridge_right: 'healthy', pit_1: 'healthy', pit_2: 'healthy', pit_3: 'healthy', pit_4: 'healthy', bridge_left_front: 'on', bridge_right_front: 'on' };
   var ZONE = { 'the west bridge': 'bridge_left', 'the east bridge': 'bridge_right', 'the south shrine': 'front', 'the west wing': 'left', 'the east wing': 'right',
     'the west side of the hub': 'main', 'the east side of the hub': 'main', 'the south side of the hub': 'main' };
@@ -3376,11 +3376,11 @@ window.ArenaArt6 = (function () {
     if (m === 'main') { hubFallen++; setWant('main', hubFallen >= 2 ? 'collapsed' : 'damaged', LAND_FADE); } else setWant(m, 'collapsed', LAND_FADE);
   }
   function dropAll() { hubFallen = 9; ['left', 'main', 'right', 'front', 'bridge_left', 'bridge_right'].forEach(function (m) { setWant(m, 'collapsed', 0.6); }); }
-  function openCrypt() { if (!OPEN_ART_OK) return; setWant('crypt_floor_walls', 'open', GATE_FADE); setWant('crypt_wall_front', 'open', GATE_FADE); if (ok) { buildFeet(); buildBands(); } /* the open wall art becomes a depth piece too */ }
+  function openCrypt() { if (!OPEN_ART_OK) return; setWant('crypt_floor_walls', 'open', GATE_FADE); setWant('crypt_over', 'open', GATE_FADE); setWant('crypt_wall_front', 'open', GATE_FADE); if (ok) { buildFeet(); buildBands(); } /* the open wall art becomes a depth piece too */ }
   var CRYPT_SOLID = /[?&]ledge=1/.test(location.search), CRYPT_FLOOR_FROM_ART = !/[?&]cryptart=0/.test(location.search);   /* ?cryptart=1 = QA switch for the crypt-from-art collision while it is being rebuilt */
   var CRYPT_FLOOR_FROM_ART_OLD = false;   /* OFF (Matin 2026-11-26: the new crypt collision trapped him inside the crypt): the crypt floor / ledge collision from the art comes back only after it is tested with a real fight */
   var OPEN_ART_OK = true;   /* Matin 2026-11-26: the old 'open' crypt drawing was a different scale (arch and wall too big): the closed art stays until the open art is re-made FROM the closed one */
-  function closeCrypt() { setWant('crypt_floor_walls', 'closed', GATE_FADE); setWant('crypt_wall_front', 'closed', GATE_FADE); if (ok) { buildFeet(); buildBands(); } } // after the great drop the gates shut again
+  function closeCrypt() { setWant('crypt_floor_walls', 'closed', GATE_FADE); setWant('crypt_over', 'closed', GATE_FADE); setWant('crypt_wall_front', 'closed', GATE_FADE); if (ok) { buildFeet(); buildBands(); } } // after the great drop the gates shut again
   function hideBossDoor() { setWant('boss_door', 'hidden', 0.01); }
   // BOSS DOOR OPENS (Omni clip, 40 frames over 4 s: padlock drops, chains fall, doors swing in, golden light); the last frame stays. Falls back to hiding the door if the strip is not loaded.
   var door = { img: null, meta: null, t0: 0 };
@@ -3418,7 +3418,7 @@ window.ArenaArt6 = (function () {
       for (cx0 = 0; cx0 < W; cx0++) { ym = -1; for (cy0 = H - 1; cy0 >= 0; cy0--) if (wl[(cy0 * W + cx0) * 4 + 3] > 128) { ym = cy0; break; } if (ym >= 0) for (cy0 = Math.max(0, ym - 6); cy0 <= ym; cy0++) cs[cy0 * W + cx0] = 255; }
       walk.cs = cs;
     }
-    var cim = new Image(); cim.onload = function () { var cv = document.createElement('canvas'); cv.width = W; cv.height = H; var cx = cv.getContext('2d', { willReadFrequently: true }); cx.drawImage(cim, 0, 0, W, H); walk.cr = cx.getImageData(0, 0, W, H).data; }; cim.src = base + 'crypt_walk.png?v=8';   // the crypt's painted purple floor (art3d: crypt_walk.png), the collision of the crypt follows it
+    var cim = new Image(); cim.onload = function () { var cv = document.createElement('canvas'); cv.width = W; cv.height = H; var cx = cv.getContext('2d', { willReadFrequently: true }); cx.drawImage(cim, 0, 0, W, H); walk.cr = cx.getImageData(0, 0, W, H).data; }; cim.src = base + 'crypt_walk.png?v=9';   // the crypt's painted purple floor (art3d: crypt_walk.png), the collision of the crypt follows it
   }
   function cellState(wx, wy, yaw, tilt) {
     if (!walk) return 1;
@@ -3441,7 +3441,7 @@ window.ArenaArt6 = (function () {
   }
   function load(baseUrl) {
     base = baseUrl.endsWith('/') ? baseUrl : baseUrl + '/';
-    return Promise.all([fetch(base + 'art6.json').then(function (r) { return r.json(); }), fetch('sprites/arena/v5/art5.json').then(function (r) { return r.json(); })])
+    return Promise.all([fetch(base + 'art6.json?v=2').then(function (r) { return r.json(); }), fetch('sprites/arena/v5/art5.json').then(function (r) { return r.json(); })])
       .then(function (a) {
         loadDoor(); data = a[0]; data.layers.sort(function (p, q) { return p.z - q.z; }); fit = a[1].fit; reset(); // back to front by z: the crypt front wall (z 15) sits BEHIND the platform
         data.layers.forEach(function (l) { byKey[l.module + '|' + l.state] = l; });
@@ -3640,6 +3640,7 @@ window.ArenaArt6 = (function () {
         }
         ctx.clip(); drawLayer(ctx, v, wl, 1, a[0], a[1]); ctx.restore();
       }
+      var ol = byKey['crypt_over|' + cur.crypt_over]; if (ol) { ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high'; drawLayer(ctx, v, ol, 1, a[0], a[1]); }   /* the front + right wall FACES and their rim from the floor layer (the wall separation Matin drew): the hero inside the crypt walks behind them, wherever his area touches them */
       return;
     }
     if (!runs) return;
@@ -3660,6 +3661,7 @@ window.ArenaArt6 = (function () {
       if (!front && l.module === 'boss_door' && l.state === 'locked' && cur.boss_door === 'open' && door.meta) { drawDoor(ctx, v, l, ax, ay); continue; }
       if (l.above_player) continue;   // the front posts and ropes are drawn as depth bands (sortBands / drawBand), sorted against the hero, enemies and vases
       if (front) continue;
+      if (l.module === 'crypt_over') continue;   /* the front/right wall copy made from the crypt floor layer: drawn ONLY over the hero (drawBand 'cw') */
       var m = l.module; if (cur[m] !== l.state) continue; // only the module's current art; the previous art is drawn under it while a fade runs
       var p = 1, pl = null;
       if (prev[m] !== undefined && prev[m] !== null) { var q = (t - t0[m]) / dur[m]; if (q < 1) { p = q < 0 ? 0 : q; pl = byKey[m + '|' + prev[m]]; } }
@@ -11535,7 +11537,7 @@ telemetryInit();
       }
       return { init, tick, drawNow, active: () => started, event: () => (ev ? ev.type : null), rain: () => rainOn, force: type => { if (type === 'rain') { force = 'rain'; } else { ev = null; startEvent(type); } }, clearForce: () => { force = null; } };
     })();
-    const BUILD_ID = '1126-2250';
+    const BUILD_ID = '1126-2256';
     if (/beta-b/.test(location.pathname)) { const bid = document.createElement('div'); bid.textContent = 'build ' + BUILD_ID; bid.style.cssText = 'position:fixed;right:6px;bottom:2px;font:10px monospace;color:#fff;opacity:.45;z-index:99999;pointer-events:none'; document.body.appendChild(bid); }   // which build is this? (Matin 2026-11-25: fixes were reported 'still wrong' and I could not tell if the new build was running)
     // --- ASSET CACHE (beta pages only): sw.js keeps the art / clips / sounds in the browser so every visit after the first downloads nothing. play.html and the stable index never register it. ---
     if ('serviceWorker' in navigator && /[?&]nosw=1/.test(location.search)) {   // safety switch: ?nosw=1 removes the cache worker and its files
