@@ -11075,6 +11075,7 @@ telemetryInit();
     function loadHoldTick() {
       if (!LOADHOLD.on) return false;
       const now = performance.now(); if (!LOADHOLD.t0) LOADHOLD.t0 = now;
+      if (typeof loadOmniStrips === 'function' && now - (LOADHOLD.ls || 0) > 250) { LOADHOLD.ls = now; loadOmniStrips(); }   /* the held game no longer runs its update, which is what kept calling this */
       let p = (typeof ArenaArt6 !== 'undefined' && ArenaArt6.loading) ? ArenaArt6.loading() : 1;
       if (p >= 1 && typeof OMNI_ANIM !== 'undefined' && OMNI_ANIM.on && typeof omniOn === 'function' && !omniOn() && now - LOADHOLD.t0 < 15000) p = 0.9;
       if (p >= 1 || now - LOADHOLD.t0 > 20000) { LOADHOLD.on = false; if (LOADHOLD.el) LOADHOLD.el.remove(); return false; }
@@ -11693,7 +11694,7 @@ telemetryInit();
       }
       return { init, tick, drawNow, active: () => started, event: () => (ev ? ev.type : null), rain: () => rainOn, force: type => { if (type === 'rain') { force = 'rain'; } else { ev = null; startEvent(type); } }, clearForce: () => { force = null; } };
     })();
-    const BUILD_ID = '1126-1601';
+    const BUILD_ID = '1126-1604';
     if (/beta-b/.test(location.pathname)) { const bid = document.createElement('div'); bid.textContent = 'build ' + BUILD_ID; bid.style.cssText = 'position:fixed;right:6px;bottom:2px;font:10px monospace;color:#fff;opacity:.45;z-index:99999;pointer-events:none'; document.body.appendChild(bid); }   // which build is this? (Matin 2026-11-25: fixes were reported 'still wrong' and I could not tell if the new build was running)
     // --- ASSET CACHE (beta pages only): sw.js keeps the art / clips / sounds in the browser so every visit after the first downloads nothing. play.html and the stable index never register it. ---
     if ('serviceWorker' in navigator && /[?&]nosw=1/.test(location.search)) {   // safety switch: ?nosw=1 removes the cache worker and its files
