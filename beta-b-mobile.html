@@ -3562,7 +3562,7 @@ window.ArenaArt6 = (function () {
       var r = im.naturalWidth / pc.w, cw = im.naturalWidth, ch = im.naturalHeight, cv = document.createElement('canvas'); cv.width = cw; cv.height = ch;
       var cx = cv.getContext('2d', { willReadFrequently: true }); cx.drawImage(im, 0, 0); var id = cx.getImageData(0, 0, cw, ch), dd = id.data, x, y;
       for (y = 0; y < ch; y++) for (x = 0; x < cw; x++) if (pc.lab[((y / r) | 0) * pc.w + ((x / r) | 0)] !== e.k) dd[(y * cw + x) * 4 + 3] = 0;
-      cx.putImageData(id, 0, 0); e.cv = cv; e.r = r;
+      cx.putImageData(id, 0, 0); var gv = document.createElement('canvas'); gv.width = cw; gv.height = ch; gv.getContext('2d').drawImage(cv, 0, 0); e.cv = gv; e.r = r;   /* draw from a normal (GPU) canvas: the willReadFrequently copy lives in CPU memory and was re-uploaded to the GPU on every draw of a post band */
     }
   }
   function buildBands() {
@@ -11663,7 +11663,7 @@ telemetryInit();
       }
       return { init, tick, drawNow, active: () => started, event: () => (ev ? ev.type : null), rain: () => rainOn, force: type => { if (type === 'rain') { force = 'rain'; } else { ev = null; startEvent(type); } }, clearForce: () => { force = null; } };
     })();
-    const BUILD_ID = '1126-1510';
+    const BUILD_ID = '1126-1517';
     if (/beta-b/.test(location.pathname)) { const bid = document.createElement('div'); bid.textContent = 'build ' + BUILD_ID; bid.style.cssText = 'position:fixed;right:6px;bottom:2px;font:10px monospace;color:#fff;opacity:.45;z-index:99999;pointer-events:none'; document.body.appendChild(bid); }   // which build is this? (Matin 2026-11-25: fixes were reported 'still wrong' and I could not tell if the new build was running)
     // --- ASSET CACHE (beta pages only): sw.js keeps the art / clips / sounds in the browser so every visit after the first downloads nothing. play.html and the stable index never register it. ---
     if ('serviceWorker' in navigator && /[?&]nosw=1/.test(location.search)) {   // safety switch: ?nosw=1 removes the cache worker and its files
