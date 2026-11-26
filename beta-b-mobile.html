@@ -5352,7 +5352,9 @@ window.ArenaArt6 = (function () {
     }
     // PRE-WARM (Matin 2026-11-26: a dip to ~90 fps when a new enemy type first appeared): an image is uploaded to the graphics card on its FIRST draw. Draw each finished strip once, one every 120 ms, onto a 256 px canvas (smaller ones are not GPU canvases) so the upload happens quietly, not in a fight.
     const WARM = { cv: null, x: null, done: new Set() };
+    const WARM_ON = /[?&]warm=1/.test(location.search);   // OFF by default: measured at 4K it moved the uploads into the first seconds and made the start worse (51 frames of 20-39 ms)
     setInterval(() => {
+      if (!WARM_ON) return;
       if (!WARM.cv) { WARM.cv = document.createElement('canvas'); WARM.cv.width = WARM.cv.height = 256; WARM.x = WARM.cv.getContext('2d'); WARM.cv.style.cssText = 'position:fixed;left:0;top:0;width:2px;height:2px;opacity:0.01;pointer-events:none;z-index:-1'; document.body.appendChild(WARM.cv); }   // on the page, so it is really drawn (and the image uploaded)
       for (const k in OMNI_URLS) { const i = SPRITES[k]; if (!i || !i.complete || !i.naturalWidth || WARM.done.has(k)) continue; WARM.done.add(k); WARM.x.drawImage(i, 0, 0, 1, 1); return; }   /* one strip per tick */
     }, 120);
@@ -11669,7 +11671,7 @@ telemetryInit();
       }
       return { init, tick, drawNow, active: () => started, event: () => (ev ? ev.type : null), rain: () => rainOn, force: type => { if (type === 'rain') { force = 'rain'; } else { ev = null; startEvent(type); } }, clearForce: () => { force = null; } };
     })();
-    const BUILD_ID = '1126-1543';
+    const BUILD_ID = '1126-1545';
     if (/beta-b/.test(location.pathname)) { const bid = document.createElement('div'); bid.textContent = 'build ' + BUILD_ID; bid.style.cssText = 'position:fixed;right:6px;bottom:2px;font:10px monospace;color:#fff;opacity:.45;z-index:99999;pointer-events:none'; document.body.appendChild(bid); }   // which build is this? (Matin 2026-11-25: fixes were reported 'still wrong' and I could not tell if the new build was running)
     // --- ASSET CACHE (beta pages only): sw.js keeps the art / clips / sounds in the browser so every visit after the first downloads nothing. play.html and the stable index never register it. ---
     if ('serviceWorker' in navigator && /[?&]nosw=1/.test(location.search)) {   // safety switch: ?nosw=1 removes the cache worker and its files
