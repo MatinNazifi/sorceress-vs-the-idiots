@@ -6791,7 +6791,7 @@ if (metaFx.regen > 0 && hero.hp > 0) hero.hp = Math.min(hero.maxHp, hero.hp + me
         const th = ({ potbelly: 60, fishguy: 95, grumbo: 80, mootaur: 210 })[e.type] * (SPRITE_HEIGHT_MUL[e.type + '-walk'] || 1) * (e.isElite && e.type !== 'mootaur' ? 1.6 : 1) * CHAR_SCALE;
         const playS = 1.8;                                     // the clip's motion is ~4 s long: play it in 1.8 s, hold the last pose 0.9 s, fade
         // (enemy death clip sound removed 2026-11-25: Matin, too annoying in swarms; the strips keep the files)
-        playVFX(DK, e.x, e.y + 4, { startFrame: ({ grumbo_death: 10, fishguy_death2: 2, potbelly_death2: 2 })[DN] || 0, frames: DD.frames, fps: DD.frames / playS, hold: 0.9, life: playS + 0.9, drawH: th * DD.hr, ground: DD.ground, flip: e.facing < 0 });
+        playVFX(DK, e.x, e.y + 4, { startFrame: ({ potbelly_death2: 12, fishguy_death2: 6, mootaur_death2: 3, grumbo_death: 2 })[DN] || 0   /* first frame of the real fall: the banana clip walked in place for 12 frames (0.6 s) before the peel appears, the fish and minotaur clips for 6 and 3 (measured from the strips, 2026-11-26) */, frames: DD.frames, fps: DD.frames / playS, hold: 0.9, life: playS + 0.9, drawH: th * DD.hr, ground: DD.ground, flip: e.facing < 0 });
       } else {
         playVFX('poof', e.x, e.y - (e.radius * 0.4), {
           scale: poofScale,
@@ -11712,7 +11712,7 @@ telemetryInit();
       }
       return { init, tick, drawNow, active: () => started, event: () => (ev ? ev.type : null), rain: () => rainOn, force: type => { if (type === 'rain') { force = 'rain'; } else { ev = null; startEvent(type); } }, clearForce: () => { force = null; } };
     })();
-    const BUILD_ID = '1126-1718';
+    const BUILD_ID = '1126-1724';
     if (/beta-b/.test(location.pathname)) { const bid = document.createElement('div'); bid.textContent = 'build ' + BUILD_ID; bid.style.cssText = 'position:fixed;right:6px;bottom:2px;font:10px monospace;color:#fff;opacity:.45;z-index:99999;pointer-events:none'; document.body.appendChild(bid); }   // which build is this? (Matin 2026-11-25: fixes were reported 'still wrong' and I could not tell if the new build was running)
     // --- ASSET CACHE (beta pages only): sw.js keeps the art / clips / sounds in the browser so every visit after the first downloads nothing. play.html and the stable index never register it. ---
     if ('serviceWorker' in navigator && /[?&]nosw=1/.test(location.search)) {   // safety switch: ?nosw=1 removes the cache worker and its files
