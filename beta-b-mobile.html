@@ -4988,7 +4988,7 @@ window.ArenaArt6 = (function () {
 
       if (type === 'potbelly') {
         e.radius = 18;
-        e.hp = 26 * hpScale;
+        e.hp = 26 * (1 + (hpScale - 1) * 0.5);   /* Matin 2026-11-26: a goblin is hit (the bolt does ~21), keeps coming and dies about a second later to the next bolt. 26 HP = 2 bolts; the old x hpScale growth made it 3-6 bolts after the first minutes, so goblins grow at HALF the rate now (fish and frogs unchanged) */
         e.speed = 130 + Math.random() * 20;
         e.damage = 10;
       } else if (type === 'fishguy') {
@@ -11710,7 +11710,7 @@ telemetryInit();
       }
       return { init, tick, drawNow, active: () => started, event: () => (ev ? ev.type : null), rain: () => rainOn, force: type => { if (type === 'rain') { force = 'rain'; } else { ev = null; startEvent(type); } }, clearForce: () => { force = null; } };
     })();
-    const BUILD_ID = '1126-1639';
+    const BUILD_ID = '1126-1645';
     if (/beta-b/.test(location.pathname)) { const bid = document.createElement('div'); bid.textContent = 'build ' + BUILD_ID; bid.style.cssText = 'position:fixed;right:6px;bottom:2px;font:10px monospace;color:#fff;opacity:.45;z-index:99999;pointer-events:none'; document.body.appendChild(bid); }   // which build is this? (Matin 2026-11-25: fixes were reported 'still wrong' and I could not tell if the new build was running)
     // --- ASSET CACHE (beta pages only): sw.js keeps the art / clips / sounds in the browser so every visit after the first downloads nothing. play.html and the stable index never register it. ---
     if ('serviceWorker' in navigator && /[?&]nosw=1/.test(location.search)) {   // safety switch: ?nosw=1 removes the cache worker and its files
