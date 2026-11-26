@@ -3386,8 +3386,7 @@ window.ArenaArt6 = (function () {
     var s = want[m];
     if (m === 'front' && s === 'collapsed' && want.main === 'collapsed') return 'collapsed_all';
     if (m.indexOf('pit_') === 0) return want.main === 'collapsed' ? null : s;
-    if (m === 'bridge_left_front') return want.bridge_left === 'healthy' ? 'on' : null;
-    if (m === 'bridge_right_front') return want.bridge_right === 'healthy' ? 'on' : null;
+    if (m === 'bridge_left_front' || m === 'bridge_right_front') { var bs = want[m.replace('_front', '')]; return bs === 'healthy' ? 'on' : (bs === 'warning' || bs === 'cracking') ? 'damaged' : bs === 'collapsed' ? 'collapsed' : null; }   // the damaged and collapsed bridges have their own posts + ropes in front too (sorted against the hero)
     return s;
   }
   function reset() {
@@ -3425,8 +3424,9 @@ window.ArenaArt6 = (function () {
     ctx.drawImage(door.img, fi * m.fw, 0, m.fw, m.fh, X, Y, m.fw / m.q * sc, m.fh / m.q * sc);
   }
   function tick() { // a module whose shown art changed starts a fade from the old art
-    var t = nowS();
-    for (var m in want) { var s = shown(m); if (cur[m] !== s) { prev[m] = cur[m]; cur[m] = s; t0[m] = t; dur[m] = pend[m] || 0.8; } }
+    var t = nowS(), fd = false;
+    for (var m in want) { var s = shown(m); if (cur[m] !== s) { prev[m] = cur[m]; cur[m] = s; t0[m] = t; dur[m] = pend[m] || 0.8; if (/_front$/.test(m) && s) fd = true; } }
+    if (fd && ok) { buildFeet(); buildBands(); }   // a new front piece (damaged / collapsed bridge posts): its depth bands are built now
   }
   // WALK MASK: where the art really has floor. Built once from the healthy layers at half frame size (1000 x 558); cellState(wx, wy) says 1 = floor, 2 = under a pit, 0 = nothing there (water, wall tops, off the slab).
   var walk = null, WM = 0.5;
@@ -11767,7 +11767,7 @@ telemetryInit();
       }
       return { init, tick, drawNow, active: () => started, event: () => (ev ? ev.type : null), rain: () => rainOn, force: type => { if (type === 'rain') { force = 'rain'; } else { ev = null; startEvent(type); } }, clearForce: () => { force = null; } };
     })();
-    const BUILD_ID = '1126-1823';
+    const BUILD_ID = '1126-1825';
     if (/beta-b/.test(location.pathname)) { const bid = document.createElement('div'); bid.textContent = 'build ' + BUILD_ID; bid.style.cssText = 'position:fixed;right:6px;bottom:2px;font:10px monospace;color:#fff;opacity:.45;z-index:99999;pointer-events:none'; document.body.appendChild(bid); }   // which build is this? (Matin 2026-11-25: fixes were reported 'still wrong' and I could not tell if the new build was running)
     // --- ASSET CACHE (beta pages only): sw.js keeps the art / clips / sounds in the browser so every visit after the first downloads nothing. play.html and the stable index never register it. ---
     if ('serviceWorker' in navigator && /[?&]nosw=1/.test(location.search)) {   // safety switch: ?nosw=1 removes the cache worker and its files

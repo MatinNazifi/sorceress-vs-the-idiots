@@ -341,6 +341,50 @@
 "z": 15,
 "above_player": false,
 "file": "crypt_wall_front__open.webp"
+},
+{
+"module": "bridge_left_front",
+"state": "damaged",
+"x": 438,
+"y": 779,
+"w": 345,
+"h": 431,
+"z": 100,
+"above_player": true,
+"file": "bridge_left_front__damaged.webp"
+},
+{
+"module": "bridge_left_front",
+"state": "collapsed",
+"x": 439,
+"y": 776,
+"w": 344,
+"h": 434,
+"z": 100,
+"above_player": true,
+"file": "bridge_left_front__collapsed.webp"
+},
+{
+"module": "bridge_right_front",
+"state": "damaged",
+"x": 994,
+"y": 1181,
+"w": 550,
+"h": 337,
+"z": 100,
+"above_player": true,
+"file": "bridge_right_front__damaged.webp"
+},
+{
+"module": "bridge_right_front",
+"state": "collapsed",
+"x": 994,
+"y": 1181,
+"w": 547,
+"h": 337,
+"z": 100,
+"above_player": true,
+"file": "bridge_right_front__collapsed.webp"
 }
 ]
 }
