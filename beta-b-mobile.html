@@ -6365,7 +6365,7 @@ if (metaFx.regen > 0 && hero.hp > 0) hero.hp = Math.min(hero.maxHp, hero.hp + me
         e.squashX += (1 - e.squashX) * dt * 14;
         e.squashY += (1 - e.squashY) * dt * 14;
 
-        if (e.dying > 0) { e.dying -= dt; if (e.dying <= 0) { finishKill(e); continue; } }   // late death: after its ONE normal hit flinch it carries on as usual for about a second, then the death clip plays (like an enemy that survives a hit and falls to the next one)
+        if (e.dying > 0) { e.dying -= dt; e.vx = e.vy = 0; e.isMovingNow = false; if (e.dying <= 0) finishKill(e); continue; }   // late death: the real hit clip plays in place (about 1 s), then the death clip
 
         if (e.isBoss && e.stunTimer > 0) {
           e.stunTimer -= dt;
@@ -6752,9 +6752,9 @@ if (metaFx.regen > 0 && hero.hp > 0) hero.hp = Math.min(hero.maxHp, hero.hp + me
     const LATE_DEATH_P = 0.2;
     function killEnemy(e) {
       if (e.dying !== undefined) return;
-      const strip = SPRITES['enemy-omni-' + e.type + '_death'];
-      if (!e.isBoss && !e.isElite && !(e.slowTimer > 0) && OMNI_ENEMY[e.type + '_death'] && strip && strip.complete && strip.naturalWidth > 0 && Math.random() < LATE_DEATH_P) {
-        e.dying = 0.8 + Math.random() * 0.45; e.hp = 1; e.hurtT = HURT_S; e.hurtDir = e.hurtDir || 1; e.flashTimer = 0.12; return;
+      const strip = SPRITES['enemy-omni-' + e.type + '_death'], hs = SPRITES['enemy-omni-' + e.type + '_hurt'], hd = OMNI_ENEMY[e.type + '_hurt'];
+      if (!e.isBoss && !e.isElite && !(e.slowTimer > 0) && OMNI_ENEMY[e.type + '_death'] && strip && strip.complete && strip.naturalWidth > 0 && hd && hs && hs.complete && hs.naturalWidth > 0 && Math.random() < LATE_DEATH_P) {
+        e.dyingTot = e.dying = hd.frames / 24; e.hp = 1; e.hurtT = 0; e.flashTimer = 0.12; e.vx = e.vy = 0; return;   /* the real hit clip (about 1 s at 24 fps) plays through, then the death clip */
       }
       finishKill(e);
     }
@@ -9064,9 +9064,9 @@ function drawEnemy0(e) {
         frameIdx = t < ATK_WINDUP ? Math.floor(t / ATK_WINDUP * pk) : Math.min(AD.frames - 1, pk + Math.floor((t - ATK_WINDUP) / (ATK_S - ATK_WINDUP) * (AD.frames - 1 - pk)));
         targetHeight *= AD.hr || 1;
         yShift = (1 - (AD.ground || 1)) * targetHeight;
-      } else if (e.hurtT > 0 && spriteKey !== 'collector' && !e.isBoss && OMNI_ENEMY[e.type + '_hurt'] && SPRITES['enemy-omni-' + e.type + '_hurt'] && SPRITES['enemy-omni-' + e.type + '_hurt'].complete && SPRITES['enemy-omni-' + e.type + '_hurt'].naturalWidth > 0) {   // Omni flinch clip, played over the 0.18 s hit flinch
+      } else if ((e.hurtT > 0 || e.dying > 0) && spriteKey !== 'collector' && !e.isBoss && OMNI_ENEMY[e.type + '_hurt'] && SPRITES['enemy-omni-' + e.type + '_hurt'] && SPRITES['enemy-omni-' + e.type + '_hurt'].complete && SPRITES['enemy-omni-' + e.type + '_hurt'].naturalWidth > 0) {   // Omni flinch clip, played over the 0.18 s hit flinch
         const HD = OMNI_ENEMY[e.type + '_hurt'];
-        spriteKey = 'enemy-omni-' + e.type + '_hurt'; frameCount = HD.frames; frameIdx = Math.min(HD.frames - 1, Math.floor((1 - e.hurtT / HURT_S) * HD.frames));
+        spriteKey = 'enemy-omni-' + e.type + '_hurt'; frameCount = HD.frames; frameIdx = e.dying > 0 ? Math.min(HD.frames - 1, Math.floor((1 - e.dying / e.dyingTot) * HD.frames)) : Math.min(HD.frames - 1, Math.floor((1 - e.hurtT / HURT_S) * HD.frames));   /* late death: the whole hit clip at its real speed */
         targetHeight *= HD.hr || 1; yShift = (1 - (HD.ground || 1)) * targetHeight;
       } else if (e.atkT >= 0 && SPRITES[e.type + '-attack']) {
         spriteKey = e.type + '-attack'; frameCount = 2; frameIdx = e.atkT < ATK_WINDUP ? 0 : 1;
@@ -11710,7 +11710,7 @@ telemetryInit();
       }
       return { init, tick, drawNow, active: () => started, event: () => (ev ? ev.type : null), rain: () => rainOn, force: type => { if (type === 'rain') { force = 'rain'; } else { ev = null; startEvent(type); } }, clearForce: () => { force = null; } };
     })();
-    const BUILD_ID = '1126-1633';
+    const BUILD_ID = '1126-1639';
     if (/beta-b/.test(location.pathname)) { const bid = document.createElement('div'); bid.textContent = 'build ' + BUILD_ID; bid.style.cssText = 'position:fixed;right:6px;bottom:2px;font:10px monospace;color:#fff;opacity:.45;z-index:99999;pointer-events:none'; document.body.appendChild(bid); }   // which build is this? (Matin 2026-11-25: fixes were reported 'still wrong' and I could not tell if the new build was running)
     // --- ASSET CACHE (beta pages only): sw.js keeps the art / clips / sounds in the browser so every visit after the first downloads nothing. play.html and the stable index never register it. ---
     if ('serviceWorker' in navigator && /[?&]nosw=1/.test(location.search)) {   // safety switch: ?nosw=1 removes the cache worker and its files
