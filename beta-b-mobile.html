@@ -3404,7 +3404,8 @@ window.ArenaArt6 = (function () {
     if (m === 'main') { hubFallen++; setWant('main', hubFallen >= 2 ? 'collapsed' : 'damaged', LAND_FADE); } else setWant(m, 'collapsed', LAND_FADE);
   }
   function dropAll() { hubFallen = 9; ['left', 'main', 'right', 'front', 'bridge_left', 'bridge_right'].forEach(function (m) { setWant(m, 'collapsed', 0.6); }); }
-  function openCrypt() { setWant('crypt_floor_walls', 'open', GATE_FADE); setWant('crypt_wall_front', 'open', GATE_FADE); if (ok) { buildFeet(); buildBands(); } /* the open wall art becomes a depth piece too */ }
+  function openCrypt() { if (!OPEN_ART_OK) return; setWant('crypt_floor_walls', 'open', GATE_FADE); setWant('crypt_wall_front', 'open', GATE_FADE); if (ok) { buildFeet(); buildBands(); } /* the open wall art becomes a depth piece too */ }
+  var OPEN_ART_OK = false;   /* Matin 2026-11-26: the old 'open' crypt drawing was a different scale (arch and wall too big): the closed art stays until the open art is re-made FROM the closed one */
   function closeCrypt() { setWant('crypt_floor_walls', 'closed', GATE_FADE); setWant('crypt_wall_front', 'closed', GATE_FADE); if (ok) { buildFeet(); buildBands(); } } // after the great drop the gates shut again
   function hideBossDoor() { setWant('boss_door', 'hidden', 0.01); }
   // BOSS DOOR OPENS (Omni clip, 40 frames over 4 s: padlock drops, chains fall, doors swing in, golden light); the last frame stays. Falls back to hiding the door if the strip is not loaded.
@@ -11772,7 +11773,7 @@ telemetryInit();
       }
       return { init, tick, drawNow, active: () => started, event: () => (ev ? ev.type : null), rain: () => rainOn, force: type => { if (type === 'rain') { force = 'rain'; } else { ev = null; startEvent(type); } }, clearForce: () => { force = null; } };
     })();
-    const BUILD_ID = '1126-1829';
+    const BUILD_ID = '1126-1833';
     if (/beta-b/.test(location.pathname)) { const bid = document.createElement('div'); bid.textContent = 'build ' + BUILD_ID; bid.style.cssText = 'position:fixed;right:6px;bottom:2px;font:10px monospace;color:#fff;opacity:.45;z-index:99999;pointer-events:none'; document.body.appendChild(bid); }   // which build is this? (Matin 2026-11-25: fixes were reported 'still wrong' and I could not tell if the new build was running)
     // --- ASSET CACHE (beta pages only): sw.js keeps the art / clips / sounds in the browser so every visit after the first downloads nothing. play.html and the stable index never register it. ---
     if ('serviceWorker' in navigator && /[?&]nosw=1/.test(location.search)) {   // safety switch: ?nosw=1 removes the cache worker and its files
