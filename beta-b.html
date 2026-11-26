@@ -10956,7 +10956,9 @@ telemetryInit();
       }
       function frame(t) { const d = t - tPrev; tPrev = t; fr++; sum += d; if (d > worst) worst = d; if (d > 25) slow++; if (t - t1 >= 1000) { t1 = t; sample(t); send(t); } requestAnimationFrame(frame); }
       requestAnimationFrame(frame);
-      window.addEventListener('keydown', e => { if (e.key === 'F9') { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([all.map(x => JSON.stringify(x)).join('\n')], { type: 'text/plain' })); a.download = 'fps-track-' + sid + '.jsonl'; a.click(); } });
+      const save = () => { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([all.map(x => JSON.stringify(x)).join('\n')], { type: 'text/plain' })); a.download = 'fps-track-' + sid + '.jsonl'; a.click(); };
+      window.addEventListener('keydown', e => { if (e.key === 'F9') save(); });
+      let low = 0, autoSaved = false; setInterval(() => { const s = all[all.length - 1]; if (!s || !s.run || s.modal) return; low = s.fps < 60 ? low + 1 : 0; if (low >= 8 && !autoSaved) { autoSaved = true; save(); } }, 1000);   /* 8 playing seconds under 60 fps: the file is saved to Downloads by itself, once, so the lag is on record even if the local receiver is not allowed or not running */
       return { sid, all };
     })();
     // --- WEATHER (Matin 2026-11-25): ambient overlays in screen space, a different one each run (?weather=rain|storm|fog|leaves|embers|snow|fireflies|sand|none forces one). Written by Neon high, QC by Neon high + Claude. ---
@@ -11396,7 +11398,7 @@ telemetryInit();
       }
       return { init, tick, drawNow, active: () => started, event: () => (ev ? ev.type : null), rain: () => rainOn, force: type => { if (type === 'rain') { force = 'rain'; } else { ev = null; startEvent(type); } }, clearForce: () => { force = null; } };
     })();
-    const BUILD_ID = '1126-1804';
+    const BUILD_ID = '1126-1805';
     if (/beta-b/.test(location.pathname)) { const bid = document.createElement('div'); bid.textContent = 'build ' + BUILD_ID; bid.style.cssText = 'position:fixed;right:6px;bottom:2px;font:10px monospace;color:#fff;opacity:.45;z-index:99999;pointer-events:none'; document.body.appendChild(bid); }   // which build is this? (Matin 2026-11-25: fixes were reported 'still wrong' and I could not tell if the new build was running)
     // --- ASSET CACHE (beta pages only): sw.js keeps the art / clips / sounds in the browser so every visit after the first downloads nothing. play.html and the stable index never register it. ---
     if ('serviceWorker' in navigator && /[?&]nosw=1/.test(location.search)) {   // safety switch: ?nosw=1 removes the cache worker and its files
