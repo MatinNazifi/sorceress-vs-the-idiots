@@ -2337,7 +2337,7 @@ window.addEventListener('load', function () { setTimeout(function () { var s = d
     c.lineWidth = 4;
     c.globalAlpha = (WARN_MODE === 'dust' || WARN_MODE === 'storm' ? 0.35 : 0.55) + 0.4 * p;
     c.shadowColor = WARN_THEME.glow;
-    c.shadowBlur = 14;
+    c.shadowBlur = 0;   // no blur pass: a blurred dashed stroke redrawn every frame was costly at 4K
     c.setLineDash(WARN_DASH);
     c.lineDashOffset = -gameTime * 40;
     c.beginPath();
@@ -3369,7 +3369,7 @@ window.ArenaArt6 = (function () {
   }
   function img(file) { var im = imgs[file]; if (!im) { im = imgs[file] = new Image(); im.src = base + file; } return im; }
   // ULTRA TILES (4K): each layer is cut into 1024 px tiles at 4x (build_art6_ultra.py); only the tiles on screen are fetched/decoded (LRU, max TILE_CAP). While a tile is missing the 2x/standard image fills in.
-  var ultra = null, tiles = {}, tileQ = [], tileBusy = 0, tileTick = 0, TILE_CAP = 150;
+  var ultra = null, tiles = {}, tileQ = [], tileBusy = 0, tileTick = 0, TILE_CAP = 230, PRE = 420;
   function loadUltra() {
     ultraT0 = nowS();
     fetch('sprites/arena/v6u/art6u.json?v=1').then(function (r) { return r.json(); }).then(function (u) { ultra = u; }).catch(function () { ultra = null; });
@@ -3386,7 +3386,7 @@ window.ArenaArt6 = (function () {
     if (!tilesMayLoad()) return;
     while (tileBusy < 3 && tileQ.length) {
       var name = tileQ.shift(), e = tiles[name]; if (!e) continue; tileBusy++;
-      (function (e) { var im = new Image(); im.onload = function () { e.im = im; e.ok = true; tileBusy--; pumpTiles(); }; im.onerror = function () { tileBusy--; pumpTiles(); }; im.src = 'sprites/arena/v6u/' + name; })(e);
+      (function (e) { var im = new Image(); im.onload = function () { var done = function () { e.im = im; e.ok = true; tileBusy--; pumpTiles(); }; if (im.decode) im.decode().then(done, done); else done(); }; /* decode off the main thread: a first draw of a big tile used to hitch the frame */ im.onerror = function () { tileBusy--; pumpTiles(); }; im.src = 'sprites/arena/v6u/' + name; })(e);
     }
     if (nowS() - evictT < 1) return; evictT = nowS();
     var keys = Object.keys(tiles); if (keys.length > TILE_CAP) { keys.sort(function (a, b) { return tiles[a].used - tiles[b].used; }); for (var i = 0; i < keys.length - TILE_CAP; i++) if (tiles[keys[i]].used < nowS() - 1.5) delete tiles[keys[i]]; }
@@ -3396,7 +3396,7 @@ window.ArenaArt6 = (function () {
     tileTick = nowS();
     for (i = 0; i < U.tiles.length; i++) {
       t = U.tiles[i]; x = X + t[0] * T * sc; y = Y + t[1] * T * sc; w = (Math.min(U.w - t[0] * T, T + ultra.pad)) * sc; h = (Math.min(U.h - t[1] * T, T + ultra.pad)) * sc;
-      if (x + w < 0 || x > v.W || y + h < 0 || y > v.H) continue;
+      if (x + w < 0 || x > v.W || y + h < 0 || y > v.H) { if (x + w > -PRE && x < v.W + PRE && y + h > -PRE && y < v.H + PRE) tileImg(t[2]); continue; }   // just off screen: fetch + decode ahead so a dodge (hero 2.8x speed) never meets an empty tile
       im = tileImg(t[2]); if (im) hit.push([im, x, y, w, h]); else miss.push(1);
     }
     if (miss.length) pumpTiles();
@@ -10726,15 +10726,15 @@ telemetryInit();
     // --- MAIN GAME LOOP ---
     let lastTimestamp = performance.now();
     // ?perf=1: a small readout (bottom-left) of where each frame goes, averaged over 30 frames: frame time, update, draw, ambient, art tiles in memory (Matin 2026-11-26: 4K lag from ~1:45)
-    const PERF = { on: /[?&]perf=1/.test(location.search), dt: 0, upd: 0, draw: 0, amb: 0, n: 0, el: null };
+    const PERF = { on: /[?&]perf=1/.test(location.search), dt: 0, upd: 0, draw: 0, amb: 0, n: 0, mx: 0, el: null };
     function timedDraw() { if (!PERF.on) { draw(); return; } const t = performance.now(); draw(); PERF.draw += performance.now() - t; }
     function perfFrame(rawDt) {
-      PERF.dt += rawDt * 1000; PERF.n++;
+      PERF.dt += rawDt * 1000; PERF.n++; if (rawDt * 1000 > PERF.mx) PERF.mx = rawDt * 1000;
       if (PERF.n < 30) return;
       if (!PERF.el) { PERF.el = document.createElement('div'); PERF.el.style.cssText = 'position:fixed;left:6px;bottom:22px;font:12px monospace;color:#0f0;background:rgba(0,0,0,.6);padding:3px 6px;z-index:99999;pointer-events:none;white-space:pre'; document.body.appendChild(PERF.el); }
       const n = PERF.n, st = (typeof ArenaArt6 !== 'undefined' && ArenaArt6.stats) ? ArenaArt6.stats() : {}, mem = performance.memory ? Math.round(performance.memory.usedJSHeapSize / 1048576) + ' MB' : 'n/a';
-      PERF.el.textContent = 't ' + Math.round(gameTime) + ' s | frame ' + (PERF.dt / n).toFixed(1) + ' ms (' + Math.round(1000 / (PERF.dt / n)) + ' fps)' + String.fromCharCode(10) + 'update ' + (PERF.upd / n).toFixed(1) + ' | draw ' + (PERF.draw / n).toFixed(1) + ' | ambient ' + (PERF.amb / n).toFixed(1) + ' ms' + String.fromCharCode(10) + 'art tiles ' + (st.tiles || 0) + ' (queue ' + (st.queue || 0) + ') | enemies ' + enemies.length + ' | particles ' + particles.length + ' | heap ' + mem;
-      PERF.dt = PERF.upd = PERF.draw = PERF.amb = 0; PERF.n = 0;
+      PERF.el.textContent = 't ' + Math.round(gameTime) + ' s | frame ' + (PERF.dt / n).toFixed(1) + ' ms (' + Math.round(1000 / (PERF.dt / n)) + ' fps) worst ' + PERF.mx.toFixed(0) + ' ms' + String.fromCharCode(10) + 'update ' + (PERF.upd / n).toFixed(1) + ' | draw ' + (PERF.draw / n).toFixed(1) + ' | ambient ' + (PERF.amb / n).toFixed(1) + ' ms' + String.fromCharCode(10) + 'art tiles ' + (st.tiles || 0) + ' (queue ' + (st.queue || 0) + ') | enemies ' + enemies.length + ' | particles ' + particles.length + ' | heap ' + mem;
+      PERF.dt = PERF.upd = PERF.draw = PERF.amb = PERF.mx = 0; PERF.n = 0;
     }
 
     function loop(currentTimestamp) {
@@ -11226,7 +11226,7 @@ telemetryInit();
       }
       function startRain() { rainOn = true; for (let i = 0; i < N_RAIN; i++) { rX[i] = R(0, W); rY[i] = R(-H, H); rV[i] = R(950, 1300); rC[i] = pickCell(FX.rain, 'streak'); } for (let i = 0; i < N_SPL; i++) { pX[i] = R(0, W); pY[i] = R(H * 0.15, H); pA[i] = R(-1, 0); pC[i] = pickCell(FX.rain, 'splash'); } }
       function startEvent(forced) { // leaves or mist now and then (rain has its own long window)
-        const types = ['mist', 'leaves'].filter(t => t !== lastType); const type = forced || types[(Math.random() * types.length) | 0]; lastType = type; ev = { type, t: 0, dur: R(22, 38) };
+        const types = ['mist', 'leaves'].filter(t => t !== lastType && !(t === 'leaves' && rainOn)); /* no leaves blowing while it rains (Matin: they do not match) */ const type = forced || types[(Math.random() * types.length) | 0]; lastType = type; ev = { type, t: 0, dur: R(22, 38) };
         if (type === 'mist') for (let i = 0; i < N_MIST; i++) { toWorld(cam, R(-100, W + 100), R(-50, H + 50), P); mX[i] = P.x; mY[i] = P.y; mV[i] = R(8, 18); mS[i] = R(190, 340); mC[i] = (Math.random() * 6) | 0; }   // mist belongs to the MAP (world position, drifting), not to the camera
         else for (let i = 0; i < N_LEAF; i++) { lX[i] = R(-100, W); lY[i] = R(-60, H); lVx[i] = R(90, 170); lVy[i] = R(25, 70); lR[i] = R(0, 6.28); lVr[i] = R(-2.4, 2.4); lP[i] = R(0, 6.28); lC[i] = (Math.random() * 8) | 0; }
       }
@@ -11297,7 +11297,7 @@ telemetryInit();
       }
       return { init, tick, drawNow, active: () => started, event: () => (ev ? ev.type : null), rain: () => rainOn, force: type => { if (type === 'rain') { force = 'rain'; } else { ev = null; startEvent(type); } }, clearForce: () => { force = null; } };
     })();
-    const BUILD_ID = '1126-0107';
+    const BUILD_ID = '1126-1312';
     if (/beta-b/.test(location.pathname)) { const bid = document.createElement('div'); bid.textContent = 'build ' + BUILD_ID; bid.style.cssText = 'position:fixed;right:6px;bottom:2px;font:10px monospace;color:#fff;opacity:.45;z-index:99999;pointer-events:none'; document.body.appendChild(bid); }   // which build is this? (Matin 2026-11-25: fixes were reported 'still wrong' and I could not tell if the new build was running)
     // --- ASSET CACHE (beta pages only): sw.js keeps the art / clips / sounds in the browser so every visit after the first downloads nothing. play.html and the stable index never register it. ---
     if ('serviceWorker' in navigator && /[?&]nosw=1/.test(location.search)) {   // safety switch: ?nosw=1 removes the cache worker and its files
