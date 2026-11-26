@@ -1108,6 +1108,7 @@ window.addEventListener('load', function () { setTimeout(function () { var s = d
     const GFX_HD = (() => { const q = urlParams.get('q'); if (q === 'hd' || q === 'std' || q === 'ultra') return q !== 'std'; if (('ontouchstart' in window) || navigator.maxTouchPoints > 0) return false; return Math.max(screen.width, screen.height) * (window.devicePixelRatio || 1) >= 2200; })();
     // ULTRA (Matin 2026-11-25, 4K close-up was blurry): on top of HD, the level layers come as 4x tiles (only the ones on screen load). Real 4K screens (>= 3200 device px) or ?q=ultra; ?q=hd keeps the 2x layers.
     const GFX_ULTRA = GFX_HD && (urlParams.get('q') === 'ultra' || (urlParams.get('q') !== 'hd' && Math.max(screen.width, screen.height) * (window.devicePixelRatio || 1) >= 3200));
+    const GFX_HD_STRIPS = GFX_HD && urlParams.get('hdstrips') === '1';   /* the 2x animation strips (hero + enemies, ~600 MB decoded) are OFF by default: with them the GPU image cache thrashed from game minute ~2 and frames took 100-300 ms at 4K (tools/game-perf.js, 2026-11-26); ?hdstrips=1 turns them back on */
     // Leaderboard: stays off until the Worker URL replaces PLACEHOLDER. ?lbapi=<url> only works on localhost (testing).
     const LB_API = 'https://sorceress-leaderboard.ek-relay.workers.dev';
     const lbBase = (/^(localhost|127\.0\.0\.1)$/.test(location.hostname) && urlParams.get('lbapi')) || LB_API;
@@ -5302,11 +5303,11 @@ window.ArenaArt6 = (function () {
     // cycles per second = speed / stride. Tune stride (world px per full cycle) and runSpeed (switch walk -> run) here.
     const OMNI_ANIM = { on: !(typeof location !== 'undefined' && /[?&]anim=old\b/.test(location.search)), runSpeed: 250, walk: { frames: 30, stride: 130 }, run: { frames: 30, stride: 170 } };
     // The two strips (~600 KB) load AFTER the map: Omni Flash clip 2 = walk, clip 3 = run (anim_test/make_omni_strips.py). Called when the level art is ready, after 6 s, and on the first step.
-    const OMNI_URLS = GFX_HD ? { 'hero-omni-walk': 'sprites/hero-omni-walk-hd.webp?v=3', 'hero-omni-run': 'sprites/hero-omni-run-hd.webp?v=3', 'hero-omni-atk': 'sprites/hero-omni-atk-hd.webp?v=2', 'hero-omni-cast': 'sprites/hero-omni-cast-hd.webp?v=2' } : { 'hero-omni-walk': 'sprites/hero-omni-walk.webp?v=2', 'hero-omni-run': 'sprites/hero-omni-run.webp?v=2', 'hero-omni-atk': 'sprites/hero-omni-atk.webp?v=2', 'hero-omni-cast': 'sprites/hero-omni-cast.webp?v=2' };
+    const OMNI_URLS = GFX_HD_STRIPS ? { 'hero-omni-walk': 'sprites/hero-omni-walk-hd.webp?v=3', 'hero-omni-run': 'sprites/hero-omni-run-hd.webp?v=3', 'hero-omni-atk': 'sprites/hero-omni-atk-hd.webp?v=2', 'hero-omni-cast': 'sprites/hero-omni-cast-hd.webp?v=2' } : { 'hero-omni-walk': 'sprites/hero-omni-walk.webp?v=2', 'hero-omni-run': 'sprites/hero-omni-run.webp?v=2', 'hero-omni-atk': 'sprites/hero-omni-atk.webp?v=2', 'hero-omni-cast': 'sprites/hero-omni-cast.webp?v=2' };
     // Direction clips (Omni, anim_test/make_dir_strip.py): the side run is used when she moves sideways on screen; mostly-vertical heading uses S (toward the camera) / N (away), the diagonals use SE / NE. Clips face right and are mirrored by hero.facing.
     // stride = world px per cycle = 170 * clip seconds / 0.88 (the run clip's stride and cycle), so each direction's feet match the ground like the side run.
     const OMNI_DIR = { SE: { stride: 193 }, S: { stride: 193 }, N: { stride: 160 }, NE: { stride: 185 } }, OMNI_DIR_FRAMES = 30;
-    for (const d in OMNI_DIR) OMNI_URLS['hero-omni-dir' + d] = 'sprites/hero-omni-dir' + d + (GFX_HD ? '-hd' : '') + '.webp?v=1';
+    for (const d in OMNI_DIR) OMNI_URLS['hero-omni-dir' + d] = 'sprites/hero-omni-dir' + d + (GFX_HD_STRIPS ? '-hd' : '') + '.webp?v=1';
     // Attack while running (Matin's swing clip, anim_test/make_omni_atk.py): 24 frames, plays OVER the run (no stopping). dur = clip seconds, speed = playback rate, start = first frame (skips the wind-up so the burst
     // lands ~0.2 s after the cast), map[i] = the run-strip frame whose legs match attack frame i: when the attack ends the run phase continues from there (no leg jump).
     // Attacks (Matin's swing + hand-cast clips) play OVER the run. They start LEAD frames before the burst frame so the burst lands with the shot; map[] hands the legs back to the run; tip[] moves the projectile origin onto the real staff crystal.
@@ -5315,12 +5316,12 @@ window.ArenaArt6 = (function () {
     // Front (S) / back (N) view attacks (anim_test/make_dir_atk.py): same 24 frames and rules as above; used while she heads straight up/down. Diagonals have no attack clip (the direction run keeps playing).
     const OMNI_DIRATK = {};
     for (const d of ['S', 'N']) { OMNI_DIRATK[d] = [Object.assign({ key: 'hero-omni-atk' + d }, OMNI_DIRATK_DATA['atk' + d]), Object.assign({ key: 'hero-omni-cast' + d }, OMNI_DIRATK_DATA['cast' + d])];
-      for (const [k, n] of [['atk', 'atk'], ['cast', 'cast']]) OMNI_URLS['hero-omni-' + k + d] = 'sprites/hero-omni-' + n + d + (GFX_HD ? '-hd' : '') + '.webp?v=1'; }
+      for (const [k, n] of [['atk', 'atk'], ['cast', 'cast']]) OMNI_URLS['hero-omni-' + k + d] = 'sprites/hero-omni-' + n + d + (GFX_HD_STRIPS ? '-hd' : '') + '.webp?v=1'; }
     // Enemy Omni walk/run strips (anim_test/make_dir_strip.py ... enemy nofx): drawn instead of the 6-frame walk sheet while the enemy walks (34-character-rendering.js); they load with the other Omni strips after the hero's walk/run.
-    for (const t in OMNI_ENEMY) OMNI_URLS['enemy-omni-' + t] = 'sprites/enemy-omni-' + t + (GFX_HD ? '-hd' : '') + '.webp?v=3';
+    for (const t in OMNI_ENEMY) OMNI_URLS['enemy-omni-' + t] = 'sprites/enemy-omni-' + t + (GFX_HD_STRIPS ? '-hd' : '') + '.webp?v=3';
     // Standing attack (anim_test/make_stand_atk.py): she stands, staff and free hand cast together (one clip made from the real idle sprite). Same lead / speed / cooldown as the run attacks; plays once per cast, then the idle pose returns.
     const OMNI_STAND = Object.assign({ key: 'hero-omni-stand', frames: 24 }, OMNI_STAND_DATA);
-    OMNI_URLS['hero-omni-stand'] = 'sprites/hero-omni-stand' + (GFX_HD ? '-hd' : '') + '.webp?v=3';   // v2 = flipped to match the idle sprite
+    OMNI_URLS['hero-omni-stand'] = 'sprites/hero-omni-stand' + (GFX_HD_STRIPS ? '-hd' : '') + '.webp?v=3';   // v2 = flipped to match the idle sprite
     function omniStandFrame(h) { return h.stT >= 0 ? Math.min(OMNI_STAND.frames - 1, Math.floor(h.stT / OMNI_STAND.dur * OMNI_STAND.frames)) : -1; }
     function omniStandStep(h, dt) {                                                                       // every update while she is NOT moving
       loadOmniStrips();
@@ -11711,7 +11712,7 @@ telemetryInit();
       }
       return { init, tick, drawNow, active: () => started, event: () => (ev ? ev.type : null), rain: () => rainOn, force: type => { if (type === 'rain') { force = 'rain'; } else { ev = null; startEvent(type); } }, clearForce: () => { force = null; } };
     })();
-    const BUILD_ID = '1126-1654';
+    const BUILD_ID = '1126-1718';
     if (/beta-b/.test(location.pathname)) { const bid = document.createElement('div'); bid.textContent = 'build ' + BUILD_ID; bid.style.cssText = 'position:fixed;right:6px;bottom:2px;font:10px monospace;color:#fff;opacity:.45;z-index:99999;pointer-events:none'; document.body.appendChild(bid); }   // which build is this? (Matin 2026-11-25: fixes were reported 'still wrong' and I could not tell if the new build was running)
     // --- ASSET CACHE (beta pages only): sw.js keeps the art / clips / sounds in the browser so every visit after the first downloads nothing. play.html and the stable index never register it. ---
     if ('serviceWorker' in navigator && /[?&]nosw=1/.test(location.search)) {   // safety switch: ?nosw=1 removes the cache worker and its files
