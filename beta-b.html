@@ -1930,6 +1930,11 @@ window.addEventListener('load', function () { setTimeout(function () { var s = d
           while (qu.length) { const i = qu.pop(), x = i % GW, y = (i / GW) | 0; for (const j of [i - 1, i + 1, i - GW, i + GW]) { if (j < 0 || j >= GW * GH || seen[j]) continue; if ((j % GW === 0 && x === GW - 1) || (x === 0 && j % GW === GW - 1)) continue; if (grid[j] === 1 || gset.has(j)) { seen[j] = 1; qu.push(j); } } }
           for (let y = 0; y < Math.floor(topPx / CS); y++) for (let x = 0; x < GW; x++) { const i = y * GW + x; if (grid[i] === 1 && !seen[i] && !(y < vr && x >= bx0 && x < bx1)) { grid[i] = 0; ch.push(i); cry++; } }
         }
+        { /* the wall TOPS are not floor (Matin 2026-11-26: Sepid stood on top of the wall at both end corners): floor cells that touch non-floor on their WEST, EAST or NORTH side lose one cell; the SOUTH (front) side keeps reaching the lip. Doorway cells (not painted floor) are left alone. */
+          const nf = (x, y) => x < 0 || y < 0 || x >= GW || y >= GH || grid[y * GW + x] !== 1, topRow2 = Math.floor(topPx / CS), vs2 = new Set(arenaVaultCells), rem = [];
+          for (let y = 0; y < topRow2; y++) for (let x = 0; x < GW; x++) { const i = y * GW + x; if (grid[i] !== 1 || vs2.has(i)) continue; const wx = x * CS + CS / 2, wy = y * CS + CS / 2; if (inVault(wx, wy)) continue; if (ArenaArt6.cellState(wx, wy, World.yaw, World.tilt) !== 3) continue; if (nf(x - 1, y) || nf(x + 1, y) || nf(x, y - 1)) rem.push(i); }
+          rem.forEach(i => { grid[i] = 0; ch.push(i); cry++; });
+        }
       }
       if (ch.length) arenaRebuild(ch);
       if (!World.isWalkable(hero.x, hero.y, hero.radius)) { const s = World.snap(hero.x, hero.y); hero.x = s.x; hero.y = s.y; }
@@ -3413,7 +3418,7 @@ window.ArenaArt6 = (function () {
       for (cx0 = 0; cx0 < W; cx0++) { ym = -1; for (cy0 = H - 1; cy0 >= 0; cy0--) if (wl[(cy0 * W + cx0) * 4 + 3] > 128) { ym = cy0; break; } if (ym >= 0) for (cy0 = Math.max(0, ym - 6); cy0 <= ym; cy0++) cs[cy0 * W + cx0] = 255; }
       walk.cs = cs;
     }
-    var cim = new Image(); cim.onload = function () { var cv = document.createElement('canvas'); cv.width = W; cv.height = H; var cx = cv.getContext('2d', { willReadFrequently: true }); cx.drawImage(cim, 0, 0, W, H); walk.cr = cx.getImageData(0, 0, W, H).data; }; cim.src = base + 'crypt_walk.png?v=5';   // the crypt's painted purple floor (art3d: crypt_walk.png), the collision of the crypt follows it
+    var cim = new Image(); cim.onload = function () { var cv = document.createElement('canvas'); cv.width = W; cv.height = H; var cx = cv.getContext('2d', { willReadFrequently: true }); cx.drawImage(cim, 0, 0, W, H); walk.cr = cx.getImageData(0, 0, W, H).data; }; cim.src = base + 'crypt_walk.png?v=6';   // the crypt's painted purple floor (art3d: crypt_walk.png), the collision of the crypt follows it
   }
   function cellState(wx, wy, yaw, tilt) {
     if (!walk) return 1;
@@ -11530,7 +11535,7 @@ telemetryInit();
       }
       return { init, tick, drawNow, active: () => started, event: () => (ev ? ev.type : null), rain: () => rainOn, force: type => { if (type === 'rain') { force = 'rain'; } else { ev = null; startEvent(type); } }, clearForce: () => { force = null; } };
     })();
-    const BUILD_ID = '1126-2236';
+    const BUILD_ID = '1126-2244';
     if (/beta-b/.test(location.pathname)) { const bid = document.createElement('div'); bid.textContent = 'build ' + BUILD_ID; bid.style.cssText = 'position:fixed;right:6px;bottom:2px;font:10px monospace;color:#fff;opacity:.45;z-index:99999;pointer-events:none'; document.body.appendChild(bid); }   // which build is this? (Matin 2026-11-25: fixes were reported 'still wrong' and I could not tell if the new build was running)
     // --- ASSET CACHE (beta pages only): sw.js keeps the art / clips / sounds in the browser so every visit after the first downloads nothing. play.html and the stable index never register it. ---
     if ('serviceWorker' in navigator && /[?&]nosw=1/.test(location.search)) {   // safety switch: ?nosw=1 removes the cache worker and its files
