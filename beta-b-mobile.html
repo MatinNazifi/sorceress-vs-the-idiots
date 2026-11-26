@@ -3567,7 +3567,7 @@ window.ArenaArt6 = (function () {
     feet = {}; pieces = {};
     data.layers.forEach(function (l) {
       if (!l.above_player) return; var im = img(l.file); if (!(im.complete && im.naturalWidth)) return;
-      var c = document.createElement('canvas'), w = im.naturalWidth, h = im.naturalHeight; c.width = w; c.height = h; var x = c.getContext('2d', { willReadFrequently: true }); x.drawImage(im, 0, 0);
+      var c = document.createElement('canvas'), w = l.w, h = l.h; c.width = w; c.height = h; var x = c.getContext('2d', { willReadFrequently: true }); x.drawImage(im, 0, 0, w, h);   /* ALWAYS the layer's own (standard) size, also when the 2x / 4x art is already loaded: the bands are laid out in these units (a rebuild after the HD swap used the HD size = posts drawn twice as big) */
       var d = x.getImageData(0, 0, w, h).data;
       if (l.module === 'crypt_wall_front') {   // ONE piece; its depth contact per 6 px column = the wall's top edge (the floor edge the hero stands behind) + WALL_OFF
         var lab1 = new Int16Array(w * h), nn = Math.ceil(w / SW), ct1 = new Array(nn).fill(-1), jj, yy, xx, tp, p1;
@@ -3695,7 +3695,7 @@ window.ArenaArt6 = (function () {
     return n >= 20 ? 1 : 0.2;
   }
   return { load: load, loading: loading, ready: function () { return ok; }, reset: reset, warn: warn, land: land, dropAll: dropAll, openCrypt: openCrypt, closeCrypt: closeCrypt, hideBossDoor: hideBossDoor, openBossDoor: openBossDoor, cellState: cellState, cryptFloorFromArt: function () { return CRYPT_FLOOR_FROM_ART; }, cryptReady: function () { return !!(walk && walk.cr); },
-    draw: function (ctx, v) { drawPass(ctx, v, false); }, sortBands: sortBands, drawBand: drawBand, pitSpots: pitSpots, stats: function () { return { tiles: Object.keys(tiles).length, queue: tileQ.length, ultra: ultraOn }; }, debugPosts: debugPosts, state: function () { return Object.assign({}, want); } };
+    draw: function (ctx, v) { drawPass(ctx, v, false); }, sortBands: sortBands, drawBand: drawBand, pitSpots: pitSpots, stats: function () { return { tiles: Object.keys(tiles).length, queue: tileQ.length, ultra: ultraOn }; }, debugPosts: debugPosts, selfcheck: function () { var bad = []; for (var k in feet) { var e = feet[k]; if (e.w !== e.l.w || e.h !== e.l.h) bad.push(k + ' ' + e.w + 'x' + e.h + ' != ' + e.l.w + 'x' + e.l.h); } return { pieces: Object.keys(feet).length, bad: bad }; }, state: function () { return Object.assign({}, want); } };
 })();
     // --- SPRITE ASSET MANAGER ---
     const SPRITES = {};
@@ -11803,7 +11803,7 @@ telemetryInit();
       }
       return { init, tick, drawNow, active: () => started, event: () => (ev ? ev.type : null), rain: () => rainOn, force: type => { if (type === 'rain') { force = 'rain'; } else { ev = null; startEvent(type); } }, clearForce: () => { force = null; } };
     })();
-    const BUILD_ID = '1126-1920';
+    const BUILD_ID = '1126-1922';
     if (/beta-b/.test(location.pathname)) { const bid = document.createElement('div'); bid.textContent = 'build ' + BUILD_ID; bid.style.cssText = 'position:fixed;right:6px;bottom:2px;font:10px monospace;color:#fff;opacity:.45;z-index:99999;pointer-events:none'; document.body.appendChild(bid); }   // which build is this? (Matin 2026-11-25: fixes were reported 'still wrong' and I could not tell if the new build was running)
     // --- ASSET CACHE (beta pages only): sw.js keeps the art / clips / sounds in the browser so every visit after the first downloads nothing. play.html and the stable index never register it. ---
     if ('serviceWorker' in navigator && /[?&]nosw=1/.test(location.search)) {   // safety switch: ?nosw=1 removes the cache worker and its files
