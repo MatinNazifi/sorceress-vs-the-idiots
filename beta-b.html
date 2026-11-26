@@ -1917,6 +1917,7 @@ window.addEventListener('load', function () { setTimeout(function () { var s = d
       if (!World.isWalkable(hero.x, hero.y, hero.radius)) { const s = World.snap(hero.x, hero.y); hero.x = s.x; hero.y = s.y; }
       window.__artWalkStats = { blockedOffArt: off, blockedPit: pit, cryptChanged: cry };
     }
+    window.__cryptCells = () => { const o = []; for (let y = 0; y < Math.floor(topPx / CS); y++) for (let x = 0; x < GW; x++) if (grid[y * GW + x] === 1) o.push([x * CS + CS / 2, y * CS + CS / 2]); return o; };   // QA: walkable cells of the crypt (rows above the gates)
     function art5View(cam) { return { hx: hero.x, hy: hero.y, W: screenW, H: screenH, z: cam.zoom || 0.9, cx: cam.x, cy: cam.y, yaw: World.yaw, tilt: World.tilt }; }
     function art5DrawItem(c, w) { const dp = typeof dpr !== 'undefined' ? dpr : 1; c.save(); c.setTransform(dp, 0, 0, dp, 0, 0); if (w.band !== undefined) ArenaArt6.drawBand(c, art5View(CAMERA), w.band); else if (w.art5Front) ArenaArt5.drawFront(c, art5View(CAMERA)); else w.art5.draw(c, art5View(CAMERA)); c.restore(); }
     function arenaPushWalls(list, camX, camY, hw, hh) {
@@ -10924,7 +10925,6 @@ telemetryInit();
       face: f => { hero.facing = f; },
       end: v => triggerGameOver(!!v), // leaderboard test: end the run
       spawn: (type, dx = 200, dy = 0, elite = false) => spawnEnemy(type, hero.x + dx, hero.y + dy, elite), // e.g. 'mootaur'
-      cryptCells: () => { const o = []; for (let y = 0; y < Math.floor(topPx / CS); y++) for (let x = 0; x < GW; x++) if (grid[y * GW + x] === 1) o.push([x * CS + CS / 2, y * CS + CS / 2]); return o; }, // QA: walkable cells of the crypt (rows above the gates)
       hit: (amount = 10) => { const e = findNearestEnemy(hero.x, hero.y, 900); if (!e) return null; const hp0 = e.hp; damageEnemy(e, amount / DMG_TUNE, 1, false); return [Math.round(hp0), Math.round(e.hp), enemies.indexOf(e) >= 0]; }, // QA: hit the nearest enemy for `amount`
       passive: id => { if (PASSIVE_REGISTRY[id] && hero.passives[id] < MAX_LEVEL) PASSIVE_REGISTRY[id].apply(); return hero.passives[id]; },
       heroAt: (x, y) => { hero.x = x; hero.y = y; hero.iFrames = 999; }, // QA: exact hero position (layer tests)
@@ -11416,7 +11416,7 @@ telemetryInit();
       }
       return { init, tick, drawNow, active: () => started, event: () => (ev ? ev.type : null), rain: () => rainOn, force: type => { if (type === 'rain') { force = 'rain'; } else { ev = null; startEvent(type); } }, clearForce: () => { force = null; } };
     })();
-    const BUILD_ID = '1126-1811';
+    const BUILD_ID = '1126-1812';
     if (/beta-b/.test(location.pathname)) { const bid = document.createElement('div'); bid.textContent = 'build ' + BUILD_ID; bid.style.cssText = 'position:fixed;right:6px;bottom:2px;font:10px monospace;color:#fff;opacity:.45;z-index:99999;pointer-events:none'; document.body.appendChild(bid); }   // which build is this? (Matin 2026-11-25: fixes were reported 'still wrong' and I could not tell if the new build was running)
     // --- ASSET CACHE (beta pages only): sw.js keeps the art / clips / sounds in the browser so every visit after the first downloads nothing. play.html and the stable index never register it. ---
     if ('serviceWorker' in navigator && /[?&]nosw=1/.test(location.search)) {   // safety switch: ?nosw=1 removes the cache worker and its files
