@@ -3640,7 +3640,14 @@ window.ArenaArt6 = (function () {
       drawLayer(ctx, v, l, p, ax, ay, !!pl);
     }
   }
-  return { load: load, ready: function () { return ok; }, reset: reset, warn: warn, land: land, dropAll: dropAll, openCrypt: openCrypt, closeCrypt: closeCrypt, hideBossDoor: hideBossDoor, openBossDoor: openBossDoor, cellState: cellState,
+  // LOADING PROGRESS 0..1 for the start bar (Matin 2026-11-26): the 4x map tiles are what makes the first seconds dip, so the run waits until they are in
+  function loading() {
+    if (!ok) return 0.05; if (!GFX_ULTRA || !ultraOn) return 1; if (!ultra) return 0.15;
+    var keys = Object.keys(tiles), n = keys.length, ready = 0, i; for (i = 0; i < n; i++) if (tiles[keys[i]].ok) ready++;
+    if (tileQ.length || tileBusy || promoteQ.length) return 0.2 + 0.78 * ready / Math.max(1, n);
+    return n >= 20 ? 1 : 0.2;
+  }
+  return { load: load, loading: loading, ready: function () { return ok; }, reset: reset, warn: warn, land: land, dropAll: dropAll, openCrypt: openCrypt, closeCrypt: closeCrypt, hideBossDoor: hideBossDoor, openBossDoor: openBossDoor, cellState: cellState,
     draw: function (ctx, v) { drawPass(ctx, v, false); }, sortBands: sortBands, drawBand: drawBand, pitSpots: pitSpots, stats: function () { return { tiles: Object.keys(tiles).length, queue: tileQ.length, ultra: ultraOn }; }, debugPosts: debugPosts, state: function () { return Object.assign({}, want); } };
 })();
     // --- SPRITE ASSET MANAGER ---
@@ -11063,6 +11070,21 @@ telemetryInit();
     }
 
     const FPS_CAP = (() => { const m = /[?&]cap=(\d+)/.exec(location.search); return m ? +m[1] : 120; })();
+    // START BAR (Matin 2026-11-26): under ?art=6 the run waits (a few seconds, never more than 20) until the big map tiles and the walk/run animations are in, so the first seconds are not a dip. ?noload=1 skips it.
+    const LOADHOLD = { on: /[?&]art=6\b/.test(location.search) && !/[?&]noload=1/.test(location.search), el: null, bar: null, t0: 0 };
+    function loadHoldTick() {
+      if (!LOADHOLD.on) return false;
+      const now = performance.now(); if (!LOADHOLD.t0) LOADHOLD.t0 = now;
+      let p = (typeof ArenaArt6 !== 'undefined' && ArenaArt6.loading) ? ArenaArt6.loading() : 1;
+      if (p >= 1 && typeof OMNI_ANIM !== 'undefined' && OMNI_ANIM.on && typeof omniOn === 'function' && !omniOn() && now - LOADHOLD.t0 < 15000) p = 0.9;
+      if (p >= 1 || now - LOADHOLD.t0 > 20000) { LOADHOLD.on = false; if (LOADHOLD.el) LOADHOLD.el.remove(); return false; }
+      if (!LOADHOLD.el) {
+        const d = document.createElement('div'); d.style.cssText = 'position:fixed;inset:0;z-index:99990;background:rgba(10,8,18,.94);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;font:700 20px "Trebuchet MS",sans-serif;color:#e8dcc0;pointer-events:none';
+        d.textContent = 'Loading the swamp...'; const b = document.createElement('div'); b.style.cssText = 'width:min(360px,70vw);height:12px;border:2px solid #6b5a3a;border-radius:8px;overflow:hidden;background:#1c1624';
+        LOADHOLD.bar = document.createElement('div'); LOADHOLD.bar.style.cssText = 'height:100%;width:0;background:linear-gradient(90deg,#c9923a,#f2c46b);transition:width .2s'; b.appendChild(LOADHOLD.bar); d.appendChild(b); document.body.appendChild(d); LOADHOLD.el = d;
+      }
+      LOADHOLD.bar.style.width = Math.round(p * 100) + '%'; return true;
+    }
     const SM_TOP = Math.min(1, Math.max(0.5, parseFloat(new URLSearchParams(location.search).get('top')) || 0.75));
     const SM_LV = [SM_TOP, SM_TOP * 0.78, SM_TOP * 0.6, SM_TOP * 0.48, 0.34];
     const SM = { lv: SM_LV, i: 0, ema: 16, bad: 0, calm: 0, slow: 0, stepAt: 0, upAt: 0, hold: 5000, dips: 0, emaAtStep: 0, futile: false };
@@ -11126,7 +11148,7 @@ telemetryInit();
       const _pt0 = PERF.on ? performance.now() : 0;
       if (PERF.on) perfFrame(rawDt);
 
-      if (isPausedForModal || isGameOver || isPausedByUser || !runStarted) {
+      if (isPausedForModal || isGameOver || isPausedByUser || !runStarted || loadHoldTick()) {
         timedDraw();
         return;
       }
@@ -11671,7 +11693,7 @@ telemetryInit();
       }
       return { init, tick, drawNow, active: () => started, event: () => (ev ? ev.type : null), rain: () => rainOn, force: type => { if (type === 'rain') { force = 'rain'; } else { ev = null; startEvent(type); } }, clearForce: () => { force = null; } };
     })();
-    const BUILD_ID = '1126-1546';
+    const BUILD_ID = '1126-1601';
     if (/beta-b/.test(location.pathname)) { const bid = document.createElement('div'); bid.textContent = 'build ' + BUILD_ID; bid.style.cssText = 'position:fixed;right:6px;bottom:2px;font:10px monospace;color:#fff;opacity:.45;z-index:99999;pointer-events:none'; document.body.appendChild(bid); }   // which build is this? (Matin 2026-11-25: fixes were reported 'still wrong' and I could not tell if the new build was running)
     // --- ASSET CACHE (beta pages only): sw.js keeps the art / clips / sounds in the browser so every visit after the first downloads nothing. play.html and the stable index never register it. ---
     if ('serviceWorker' in navigator && /[?&]nosw=1/.test(location.search)) {   // safety switch: ?nosw=1 removes the cache worker and its files
