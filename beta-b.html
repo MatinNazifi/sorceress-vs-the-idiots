@@ -10855,7 +10855,7 @@ telemetryInit();
       if (!weatherInit) { weatherInit = true; const wq = new URLSearchParams(location.search).get('weather'); if (wq === 'cycle') { // ?weather=cycle: all eight types one after another, 5 s each, the name shown on top (to look at them fast)
           let ci = 0; const lab = document.createElement('div'); lab.style.cssText = 'position:fixed;left:50%;top:8px;transform:translateX(-50%);font:700 18px sans-serif;color:#fff;background:rgba(0,0,0,.55);padding:4px 14px;border-radius:12px;z-index:99999;pointer-events:none'; document.body.appendChild(lab);
           const stepW = () => { const ty = Weather.TYPES[ci++ % Weather.TYPES.length]; Weather.set(ty, 0.9, 1); lab.textContent = ty; }; stepW(); setInterval(stepW, 5000);
-        } else if (!wq && /[?&]art=6/.test(location.search) && !/[?&]amb=0/.test(location.search)) Ambient.init((('ontouchstart' in window) || navigator.maxTouchPoints > 0) ? 0.5 : 1);   // this level: spores on the swamp, embers on the island, rain/mist/leaves now and then (44x-ambient.js)
+        } else if (!wq && /[?&]art=6/.test(location.search) && !/[?&]amb=0/.test(location.search)) { Ambient.init((('ontouchstart' in window) || navigator.maxTouchPoints > 0) ? 0.5 : 1); Weather.set('rain', 0.6, (('ontouchstart' in window) || navigator.maxTouchPoints > 0) ? 0.45 : 1); }   /* the BASE rain (Weather module, code-drawn) the whole level (Matin 2026-11-26) */   // this level: spores on the swamp, embers on the island, rain/mist/leaves now and then (44x-ambient.js)
         else Weather.set(wq || Weather.random(Date.now() % 100000), 0.6, (('ontouchstart' in window) || navigator.maxTouchPoints > 0) ? 0.45 : 1); }
       Weather.update(dt, screenW, screenH);
       if (Ambient.active()) { if (PERF.on) { const _a = performance.now(); Ambient.tick(dt, CAMERA, World, screenW, screenH, gameTime); PERF.amb += performance.now() - _a; } else Ambient.tick(dt, CAMERA, World, screenW, screenH, gameTime); }
@@ -11251,7 +11251,7 @@ telemetryInit();
     //  * light that changes to make it alive: drifting cloud shadows, pulsing pit glow, lightning while it rains.
     // Sprites: sprites/fx/pt-*.png (anim_test/cut_particles.py). Glow sheets are drawn additively, leaves normally. No allocation per frame (typed pools). ?weather=<type> still shows the old Weather module. ---
     const Ambient = (function () {
-      const FX = {}, N_EMB = 28, N_SPO = 34, N_RAIN = 70, N_SPL = 24, N_MIST = 8, N_LEAF = 30, N_CLOUD = 4, RAIN_FROM = 0, RAIN_TO = 99999;
+      const FX = {}, N_EMB = 28, N_SPO = 34, N_RAIN = 70, N_SPL = 24, N_MIST = 8, N_LEAF = 30, N_CLOUD = 4, RAIN_FROM = 99999, RAIN_TO = 99999;   /* the Flow-sheet rain is OFF: the level uses the base Weather rain (Matin) */
       const eX = new Float32Array(N_EMB), eY = new Float32Array(N_EMB), eH = new Float32Array(N_EMB), eV = new Float32Array(N_EMB), eA = new Float32Array(N_EMB), eL = new Float32Array(N_EMB), eS = new Float32Array(N_EMB), eC = new Int16Array(N_EMB);
       const sX = new Float32Array(N_SPO), sY = new Float32Array(N_SPO), sVx = new Float32Array(N_SPO), sVy = new Float32Array(N_SPO), sA = new Float32Array(N_SPO), sL = new Float32Array(N_SPO), sS = new Float32Array(N_SPO), sC = new Int16Array(N_SPO);
       const rX = new Float32Array(N_RAIN), rY = new Float32Array(N_RAIN), rV = new Float32Array(N_RAIN), rC = new Int16Array(N_RAIN);
@@ -11292,7 +11292,7 @@ telemetryInit();
       }
       function startRain() { rainOn = true; for (let i = 0; i < N_RAIN; i++) { rX[i] = R(0, W); rY[i] = R(-H, H); rV[i] = R(950, 1300); rC[i] = pickCell(FX.rain, 'streak'); } for (let i = 0; i < N_SPL; i++) { pX[i] = R(0, W); pY[i] = R(H * 0.15, H); pA[i] = R(-1, 0); pC[i] = pickCell(FX.rain, 'splash'); } }
       function startEvent(forced) { // leaves or mist now and then (rain has its own long window)
-        const types = ['mist', 'leaves'].filter(t => t !== lastType && !(t === 'leaves' && rainOn)); /* no leaves blowing while it rains (Matin: they do not match) */ const type = forced || types[(Math.random() * types.length) | 0]; lastType = type; ev = { type, t: 0, dur: R(22, 38) };
+        const types = ['mist'];   /* mist only: it rains all level, leaves do not match (Matin) */ /* no leaves blowing while it rains (Matin: they do not match) */ const type = forced || types[(Math.random() * types.length) | 0]; lastType = type; ev = { type, t: 0, dur: R(22, 38) };
         if (type === 'mist') for (let i = 0; i < N_MIST; i++) { toWorld(cam, R(-100, W + 100), R(-50, H + 50), P); mX[i] = P.x; mY[i] = P.y; mV[i] = R(8, 18); mS[i] = R(190, 340); mC[i] = (Math.random() * 6) | 0; }   // mist belongs to the MAP (world position, drifting), not to the camera
         else for (let i = 0; i < N_LEAF; i++) { lX[i] = R(-100, W); lY[i] = R(-60, H); lVx[i] = R(90, 170); lVy[i] = R(25, 70); lR[i] = R(0, 6.28); lVr[i] = R(-2.4, 2.4); lP[i] = R(0, 6.28); lC[i] = (Math.random() * 8) | 0; }
       }
@@ -11363,7 +11363,7 @@ telemetryInit();
       }
       return { init, tick, drawNow, active: () => started, event: () => (ev ? ev.type : null), rain: () => rainOn, force: type => { if (type === 'rain') { force = 'rain'; } else { ev = null; startEvent(type); } }, clearForce: () => { force = null; } };
     })();
-    const BUILD_ID = '1126-1627';
+    const BUILD_ID = '1126-1631';
     if (/beta-b/.test(location.pathname)) { const bid = document.createElement('div'); bid.textContent = 'build ' + BUILD_ID; bid.style.cssText = 'position:fixed;right:6px;bottom:2px;font:10px monospace;color:#fff;opacity:.45;z-index:99999;pointer-events:none'; document.body.appendChild(bid); }   // which build is this? (Matin 2026-11-25: fixes were reported 'still wrong' and I could not tell if the new build was running)
     // --- ASSET CACHE (beta pages only): sw.js keeps the art / clips / sounds in the browser so every visit after the first downloads nothing. play.html and the stable index never register it. ---
     if ('serviceWorker' in navigator && /[?&]nosw=1/.test(location.search)) {   // safety switch: ?nosw=1 removes the cache worker and its files
