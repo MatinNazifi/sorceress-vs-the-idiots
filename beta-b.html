@@ -1931,7 +1931,7 @@ window.addEventListener('load', function () { setTimeout(function () { var s = d
     }
     window.__gridDump = () => ({ GW, GH, CS, grid: Array.from(grid), zone: Array.from(zone), gates: arenaGateCells.slice(), vault: arenaVaultCells.slice(), topPx, vaultY: arenaVaultY, box: arenaVaultBox, stage: arenaStage });   // QA: the whole walk grid (for reachability tests)
     window.__cryptCells = () => { const o = []; for (let y = 0; y < Math.floor(topPx / CS); y++) for (let x = 0; x < GW; x++) if (grid[y * GW + x] === 1) o.push([x * CS + CS / 2, y * CS + CS / 2]); return o; };   // QA: walkable cells of the crypt (rows above the gates)
-    function art5View(cam) { return { hx: hero.x, hy: hero.y, W: screenW, H: screenH, z: cam.zoom || 0.9, cx: cam.x, cy: cam.y, yaw: World.yaw, tilt: World.tilt }; }
+    function art5View(cam) { return { hx: hero.x, hy: hero.y, ty: topPx, W: screenW, H: screenH, z: cam.zoom || 0.9, cx: cam.x, cy: cam.y, yaw: World.yaw, tilt: World.tilt }; }
     function art5DrawItem(c, w) { const dp = typeof dpr !== 'undefined' ? dpr : 1; c.save(); c.setTransform(dp, 0, 0, dp, 0, 0); if (w.band !== undefined) ArenaArt6.drawBand(c, art5View(CAMERA), w.band); else if (w.art5Front) ArenaArt5.drawFront(c, art5View(CAMERA)); else w.art5.draw(c, art5View(CAMERA)); c.restore(); }
     function arenaPushWalls(list, camX, camY, hw, hh) {
       if (art5Ready()) { // the painted blocks, gates and lamps sort with the hero; the grey boxes are not used
@@ -3302,7 +3302,7 @@ window.ArenaArt5 = (function () {
 window.ArenaArt6 = (function () {
   'use strict';
   var data = null, base = '', fit = null, ok = false, imgs = {}, byKey = {};
-  var rbT = 0, want = {}, cur = {}, prev = {}, t0 = {}, dur = {}, pend = {}, hubFallen = 0, forced = false;
+  var cryptInside = false, rbT = 0, want = {}, cur = {}, prev = {}, t0 = {}, dur = {}, pend = {}, hubFallen = 0, forced = false;
   var HEALTHY = { environment: 'healthy', crypt_floor_walls: 'closed', crypt_wall_front: 'closed', boss_door: 'locked', left: 'healthy', main: 'healthy', right: 'healthy', front: 'healthy',
     bridge_left: 'healthy', bridge_right: 'healthy', pit_1: 'healthy', pit_2: 'healthy', pit_3: 'healthy', pit_4: 'healthy', bridge_left_front: 'on', bridge_right_front: 'on' };
   var ZONE = { 'the west bridge': 'bridge_left', 'the east bridge': 'bridge_right', 'the south shrine': 'front', 'the west wing': 'left', 'the east wing': 'right',
@@ -3401,7 +3401,7 @@ window.ArenaArt6 = (function () {
     base = baseUrl.endsWith('/') ? baseUrl : baseUrl + '/';
     return Promise.all([fetch(base + 'art6.json').then(function (r) { return r.json(); }), fetch('sprites/arena/v5/art5.json').then(function (r) { return r.json(); })])
       .then(function (a) {
-        loadDoor(); data = a[0]; data.layers.sort(function (p, q) { return p.z - q.z; }); data.layers.forEach(function (l) { if (l.module === 'crypt_wall_front') l.above_player = true; }); /* the crypt's front + right walls are depth bands: the hero goes BEHIND them */ fit = a[1].fit; reset(); // back to front by z: the crypt front wall (z 15) sits BEHIND the platform
+        loadDoor(); data = a[0]; data.layers.sort(function (p, q) { return p.z - q.z; }); fit = a[1].fit; reset(); // back to front by z: the crypt front wall (z 15) sits BEHIND the platform
         data.layers.forEach(function (l) { byKey[l.module + '|' + l.state] = l; });
         // ready only when the healthy-state layers are decoded: until then the grey-box floor stays (a black map while 17 MB loaded was the bug); the other states load in the background
         var core = data.layers.filter(function (l) { return HEALTHY[l.module] === l.state; });
@@ -3562,9 +3562,12 @@ window.ArenaArt6 = (function () {
     return { x: X0 + run.a * SW * sc, y: Y0, w: Math.min((run.b - run.a) * SW, e.w - run.a * SW) * sc, h: e.h * sc, sc: sc };
   }
   function viewAxAy(v) { var cosY = Math.cos(v.yaw), sinY = Math.sin(v.yaw); return [cosY * v.cx - sinY * v.cy, v.tilt * (sinY * v.cx + cosY * v.cy)]; }
+  var cwItem = { wall: true, band: 'cw', x: 0, y: 0, ry: 2e8 };   /* phase 2: the wall layer as ONE item drawn after everything */
   function sortBands(v) {
     var out = [], a = viewAxAy(v), i, r, runs, b;
     if (!ok) return out;
+    cryptInside = v.ty !== undefined && v.hy < v.ty;   /* the hero is north of the crypt gates = inside */
+    if (cryptInside) out.push(cwItem);
     for (i = 0; i < bandKeys.length; i++) {
       runs = bands[bandKeys[i]];
       for (r = 0; r < runs.length; r++) {
@@ -3576,6 +3579,7 @@ window.ArenaArt6 = (function () {
   }
   function drawBand(ctx, v, idx) {
     var runs = bands[idx], a = viewAxAy(v), r, run, e, b, cy;
+    if (idx === 'cw') { var wl = byKey['crypt_wall_front|' + cur.crypt_wall_front]; if (wl) { ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high'; drawLayer(ctx, v, wl, 1, a[0], a[1]); } return; }
     if (!runs) return;
     for (r = 0; r < runs.length; r++) {
       run = runs[r]; e = run.e; if (cur[e.l.module] !== e.l.state || !e.cv) continue;
@@ -3594,6 +3598,7 @@ window.ArenaArt6 = (function () {
       if (!front && l.module === 'boss_door' && l.state === 'locked' && cur.boss_door === 'open' && door.meta) { drawDoor(ctx, v, l, ax, ay); continue; }
       if (l.above_player) continue;   // the front posts and ropes are drawn as depth bands (sortBands / drawBand), sorted against the hero, enemies and vases
       if (front) continue;
+      if (cryptInside && l.module === 'crypt_wall_front') continue;   /* phase 2 (hero inside the crypt): the front + right walls are drawn ABOVE him, see sortBands */
       var m = l.module; if (cur[m] !== l.state) continue; // only the module's current art; the previous art is drawn under it while a fade runs
       var p = 1, pl = null;
       if (prev[m] !== undefined && prev[m] !== null) { var q = (t - t0[m]) / dur[m]; if (q < 1) { p = q < 0 ? 0 : q; pl = byKey[m + '|' + prev[m]]; } }
@@ -11439,7 +11444,7 @@ telemetryInit();
       }
       return { init, tick, drawNow, active: () => started, event: () => (ev ? ev.type : null), rain: () => rainOn, force: type => { if (type === 'rain') { force = 'rain'; } else { ev = null; startEvent(type); } }, clearForce: () => { force = null; } };
     })();
-    const BUILD_ID = '1126-1852';
+    const BUILD_ID = '1126-1911';
     if (/beta-b/.test(location.pathname)) { const bid = document.createElement('div'); bid.textContent = 'build ' + BUILD_ID; bid.style.cssText = 'position:fixed;right:6px;bottom:2px;font:10px monospace;color:#fff;opacity:.45;z-index:99999;pointer-events:none'; document.body.appendChild(bid); }   // which build is this? (Matin 2026-11-25: fixes were reported 'still wrong' and I could not tell if the new build was running)
     // --- ASSET CACHE (beta pages only): sw.js keeps the art / clips / sounds in the browser so every visit after the first downloads nothing. play.html and the stable index never register it. ---
     if ('serviceWorker' in navigator && /[?&]nosw=1/.test(location.search)) {   // safety switch: ?nosw=1 removes the cache worker and its files
