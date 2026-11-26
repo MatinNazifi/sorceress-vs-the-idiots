@@ -1890,14 +1890,14 @@ window.addEventListener('load', function () { setTimeout(function () { var s = d
       if (!ART_5 || arena !== true || typeof ArenaArt5 === 'undefined') return false;
       if (!art5Started) { art5Started = true; ArenaArt5.load('sprites/arena/v5/'); if (ART_6) ArenaArt6.load('sprites/arena/v6w/'); }
       const rd = ArenaArt5.ready() && (!ART_6 || ArenaArt6.ready());
-      if (rd && ART_6 && !art6Walk) applyArtWalk();
+      if (rd && ART_6 && !art6Walk && ArenaArt6.cryptReady()) applyArtWalk();
       if (rd && ART_6 && !art6Hid) { art6Hid = true; ['gate_1', 'gate_2', 'gate_3', 'gatehouse', 'block_h1', 'block_h2', 'block_h3', 'block_h4', 'block_h5', 'block_c1', 'block_c2', 'block_c3', 'block_c4', 'lamp_post_s'].forEach(n => ArenaArt5.setHidden(n, true)); } // the level pack has the crypt and its gates itself and no cover blocks
       return rd;
     }
     // ?art=6: the lower map is walkable only where the ART has floor, and a pit is a solid block (the grid used to be the old grey-box shape: she walked on water, over pits and "under" the bridge posts)
     let art6Walk = false; window.__artWalkStats = null;
     function applyArtWalk() {
-      art6Walk = true; const ch = []; let off = 0, pit = 0;
+      art6Walk = true; const ch = []; let off = 0, pit = 0, cry = 0;
       for (let i = 0; i < GW * GH; i++) {
         if (zone[i] !== 1 || grid[i] !== 1) continue;
         const cx = (i % GW) * CS + CS / 2, cy = ((i / GW) | 0) * CS + CS / 2, O = CS * 0.3;
@@ -1905,9 +1905,17 @@ window.addEventListener('load', function () { setTimeout(function () { var s = d
         if (st === 0) for (let k = 0; k < 4 && st === 0; k++) if (ArenaArt6.cellState(cx + (k & 1 ? O : -O), cy + (k & 2 ? O : -O), World.yaw, World.tilt) === 1) st = 1;   // plank gaps and cracks: a cell with art under any of 5 points is floor (a single centre sample blocked whole cells and trapped enemies on the bridges)
         if (st !== 1) { grid[i] = 0; ch.push(i); if (st === 2) pit++; else off++; }
       }
+      { // the crypt follows its PAINTED purple floor (crypt_walk.png), not the grey-box rooms (Matin 2026-11-26: collision must match the current art); the final room (vault) keeps its own cells
+        const vaultSet = new Set(arenaVaultCells), topRow = Math.floor(topPx / CS);
+        for (let y = 0; y < topRow; y++) for (let x = 0; x < GW; x++) {
+          const i = y * GW + x, wx = x * CS + CS / 2, wy = y * CS + CS / 2; if (vaultSet.has(i) || inVault(wx, wy)) continue;
+          const want = ArenaArt6.cellState(wx, wy, World.yaw, World.tilt) === 3;
+          if (want !== (grid[i] === 1)) { grid[i] = want ? 1 : 0; ch.push(i); cry++; }
+        }
+      }
       if (ch.length) arenaRebuild(ch);
       if (!World.isWalkable(hero.x, hero.y, hero.radius)) { const s = World.snap(hero.x, hero.y); hero.x = s.x; hero.y = s.y; }
-      window.__artWalkStats = { blockedOffArt: off, blockedPit: pit };
+      window.__artWalkStats = { blockedOffArt: off, blockedPit: pit, cryptChanged: cry };
     }
     function art5View(cam) { return { hx: hero.x, hy: hero.y, W: screenW, H: screenH, z: cam.zoom || 0.9, cx: cam.x, cy: cam.y, yaw: World.yaw, tilt: World.tilt }; }
     function art5DrawItem(c, w) { const dp = typeof dpr !== 'undefined' ? dpr : 1; c.save(); c.setTransform(dp, 0, 0, dp, 0, 0); if (w.band !== undefined) ArenaArt6.drawBand(c, art5View(CAMERA), w.band); else if (w.art5Front) ArenaArt5.drawFront(c, art5View(CAMERA)); else w.art5.draw(c, art5View(CAMERA)); c.restore(); }
@@ -3313,8 +3321,8 @@ window.ArenaArt6 = (function () {
     if (m === 'main') { hubFallen++; setWant('main', hubFallen >= 2 ? 'collapsed' : 'damaged', LAND_FADE); } else setWant(m, 'collapsed', LAND_FADE);
   }
   function dropAll() { hubFallen = 9; ['left', 'main', 'right', 'front', 'bridge_left', 'bridge_right'].forEach(function (m) { setWant(m, 'collapsed', 0.6); }); }
-  function openCrypt() { setWant('crypt_floor_walls', 'open', GATE_FADE); setWant('crypt_wall_front', 'open', GATE_FADE); }
-  function closeCrypt() { setWant('crypt_floor_walls', 'closed', GATE_FADE); setWant('crypt_wall_front', 'closed', GATE_FADE); } // after the great drop the gates shut again
+  function openCrypt() { setWant('crypt_floor_walls', 'open', GATE_FADE); setWant('crypt_wall_front', 'open', GATE_FADE); if (ok) { buildFeet(); buildBands(); } /* the open wall art becomes a depth piece too */ }
+  function closeCrypt() { setWant('crypt_floor_walls', 'closed', GATE_FADE); setWant('crypt_wall_front', 'closed', GATE_FADE); if (ok) { buildFeet(); buildBands(); } } // after the great drop the gates shut again
   function hideBossDoor() { setWant('boss_door', 'hidden', 0.01); }
   // BOSS DOOR OPENS (Omni clip, 40 frames over 4 s: padlock drops, chains fall, doors swing in, golden light); the last frame stays. Falls back to hiding the door if the strip is not loaded.
   var door = { img: null, meta: null, t0: 0 };
@@ -3345,7 +3353,8 @@ window.ArenaArt6 = (function () {
       data.layers.forEach(function (l) { if (HEALTHY[l.module] === l.state && pred(l.module)) { var im = img(l.file); if (im.complete && im.naturalWidth) c.drawImage(im, l.x / k * WM, l.y / k * WM, l.w / k * WM, l.h / k * WM); } });
       return c.getImageData(0, 0, W, H).data;
     };
-    walk = { W: W, H: H, floor: mk(function (m) { return !!FLOOR_MODS[m]; }), pit: mk(function (m) { return m.indexOf('pit_') === 0; }) };
+    walk = { W: W, H: H, floor: mk(function (m) { return !!FLOOR_MODS[m]; }), pit: mk(function (m) { return m.indexOf('pit_') === 0; }), cr: null };
+    var cim = new Image(); cim.onload = function () { var cv = document.createElement('canvas'); cv.width = W; cv.height = H; var cx = cv.getContext('2d', { willReadFrequently: true }); cx.drawImage(cim, 0, 0, W, H); walk.cr = cx.getImageData(0, 0, W, H).data; }; cim.src = base + 'crypt_walk.png?v=1';   // the crypt's painted purple floor (art3d: crypt_walk.png), the collision of the crypt follows it
   }
   function cellState(wx, wy, yaw, tilt) {
     if (!walk) return 1;
@@ -3353,7 +3362,8 @@ window.ArenaArt6 = (function () {
     if (fx < 0 || fy < 0 || fx >= walk.W || fy >= walk.H) return 0;
     var i = (fy * walk.W + fx) * 4 + 3;
     if (walk.pit[i] > 128) return 2;
-    return walk.floor[i] > 128 ? 1 : 0;
+    if (walk.floor[i] > 128) return 1;
+    return (walk.cr && walk.cr[i - 3] > 128) ? 3 : 0;   // 3 = the crypt's floor
   }
   // HD upgrade (big desktop screens only, GFX_HD): after the standard art is on screen, the 2x sharper copy of each layer is fetched in the background and swapped in as it lands
   function loadHD() {
@@ -3367,7 +3377,7 @@ window.ArenaArt6 = (function () {
     base = baseUrl.endsWith('/') ? baseUrl : baseUrl + '/';
     return Promise.all([fetch(base + 'art6.json').then(function (r) { return r.json(); }), fetch('sprites/arena/v5/art5.json').then(function (r) { return r.json(); })])
       .then(function (a) {
-        loadDoor(); data = a[0]; data.layers.sort(function (p, q) { return p.z - q.z; }); fit = a[1].fit; reset(); // back to front by z: the crypt front wall (z 15) sits BEHIND the platform
+        loadDoor(); data = a[0]; data.layers.sort(function (p, q) { return p.z - q.z; }); data.layers.forEach(function (l) { if (l.module === 'crypt_wall_front') l.above_player = true; }); /* the crypt's front + right walls are depth bands: the hero goes BEHIND them */ fit = a[1].fit; reset(); // back to front by z: the crypt front wall (z 15) sits BEHIND the platform
         data.layers.forEach(function (l) { byKey[l.module + '|' + l.state] = l; });
         // ready only when the healthy-state layers are decoded: until then the grey-box floor stays (a black map while 17 MB loaded was the bug); the other states load in the background
         var core = data.layers.filter(function (l) { return HEALTHY[l.module] === l.state; });
@@ -3429,7 +3439,7 @@ window.ArenaArt6 = (function () {
   // (a far post above a near post) never share a depth. Inside a piece every 6 px column has a CONTACT depth: a post column (a thick vertical stroke, >= 28 px) = its own lowest pixel; a rope column = linear
   // between the posts on both sides. A post standing IN THE WATER (no bridge under its foot) continues DECK px below the deck edge, so its contact is that much higher; a post standing on the deck
   // (the inner corner) has contact = foot. Pieces are cut into depth BANDS of BAND world units (the render depth key 'ry'); each band is one sortable item, drawn after what is higher on screen, before what is lower.
-  var feet = {}, pieces = {}, baseCache = {}, SW = 6, DBGPOSTS = /[?&]posts=1/.test(location.search), DECK = 84, BIAS = 10, BAND = 6, bands = {}, bandItems = {}, bandKeys = [];
+  var feet = {}, pieces = {}, baseCache = {}, SW = 6, DBGPOSTS = /[?&]posts=1/.test(location.search), DECK = 84, BIAS = 10, BAND = 6, WALL_OFF = 12, bands = {}, bandItems = {}, bandKeys = [];
   function labelPieces(d, w, h) {
     var lab = new Int16Array(w * h), nc = 0, st = new Int32Array(w * h), x, y, sp, p, q, qx, qy, dx, dy, nx, ny, np;
     for (y = 0; y < h; y++) for (x = 0; x < w; x++) {
@@ -3453,7 +3463,14 @@ window.ArenaArt6 = (function () {
     data.layers.forEach(function (l) {
       if (!l.above_player) return; var im = img(l.file); if (!(im.complete && im.naturalWidth)) return;
       var c = document.createElement('canvas'), w = im.naturalWidth, h = im.naturalHeight; c.width = w; c.height = h; var x = c.getContext('2d', { willReadFrequently: true }); x.drawImage(im, 0, 0);
-      var d = x.getImageData(0, 0, w, h).data, L = labelPieces(d, w, h), n = Math.ceil(w / SW), cnt = new Int32Array(L.nc + 1), k, i, ids = [], b = baseAlpha(l);
+      var d = x.getImageData(0, 0, w, h).data;
+      if (l.module === 'crypt_wall_front') {   // ONE piece; its depth contact per 6 px column = the wall's top edge (the floor edge the hero stands behind) + WALL_OFF
+        var lab1 = new Int16Array(w * h), nn = Math.ceil(w / SW), ct1 = new Array(nn).fill(-1), jj, yy, xx, tp, p1;
+        for (p1 = 0; p1 < w * h; p1++) if (d[p1 * 4 + 3] > 128) lab1[p1] = 1;
+        for (jj = 0; jj < nn; jj++) { tp = -1; for (xx = jj * SW; xx < Math.min(w, (jj + 1) * SW) && tp < 0; xx++) for (yy = 0; yy < h; yy++) if (lab1[yy * w + xx]) { tp = yy; break; } ct1[jj] = tp < 0 ? -1 : tp + WALL_OFF; }
+        pieces[l.file] = { w: w, h: h, lab: lab1, ids: [1] }; feet[l.file + '#1'] = { n: nn, ct: ct1, w: w, h: h, l: l, k: 1, cv: null, r: 1 }; return;
+      }
+      var L = labelPieces(d, w, h), n = Math.ceil(w / SW), cnt = new Int32Array(L.nc + 1), k, i, ids = [], b = baseAlpha(l);
       for (i = 0; i < w * h; i++) cnt[L.lab[i]]++;
       for (k = 1; k <= L.nc; k++) if (cnt[k] >= 25) ids.push(k);
       pieces[l.file] = { w: w, h: h, lab: L.lab, ids: ids };
@@ -3567,7 +3584,7 @@ window.ArenaArt6 = (function () {
     if (tileQ.length || tileBusy || promoteQ.length) return 0.2 + 0.78 * ready / Math.max(1, n);
     return n >= 20 ? 1 : 0.2;
   }
-  return { load: load, loading: loading, ready: function () { return ok; }, reset: reset, warn: warn, land: land, dropAll: dropAll, openCrypt: openCrypt, closeCrypt: closeCrypt, hideBossDoor: hideBossDoor, openBossDoor: openBossDoor, cellState: cellState,
+  return { load: load, loading: loading, ready: function () { return ok; }, reset: reset, warn: warn, land: land, dropAll: dropAll, openCrypt: openCrypt, closeCrypt: closeCrypt, hideBossDoor: hideBossDoor, openBossDoor: openBossDoor, cellState: cellState, cryptReady: function () { return !!(walk && walk.cr); },
     draw: function (ctx, v) { drawPass(ctx, v, false); }, sortBands: sortBands, drawBand: drawBand, pitSpots: pitSpots, stats: function () { return { tiles: Object.keys(tiles).length, queue: tileQ.length, ultra: ultraOn }; }, debugPosts: debugPosts, state: function () { return Object.assign({}, want); } };
 })();
     // --- SPRITE ASSET MANAGER ---
@@ -10907,6 +10924,7 @@ telemetryInit();
       face: f => { hero.facing = f; },
       end: v => triggerGameOver(!!v), // leaderboard test: end the run
       spawn: (type, dx = 200, dy = 0, elite = false) => spawnEnemy(type, hero.x + dx, hero.y + dy, elite), // e.g. 'mootaur'
+      cryptCells: () => { const o = []; for (let y = 0; y < Math.floor(topPx / CS); y++) for (let x = 0; x < GW; x++) if (grid[y * GW + x] === 1) o.push([x * CS + CS / 2, y * CS + CS / 2]); return o; }, // QA: walkable cells of the crypt (rows above the gates)
       hit: (amount = 10) => { const e = findNearestEnemy(hero.x, hero.y, 900); if (!e) return null; const hp0 = e.hp; damageEnemy(e, amount / DMG_TUNE, 1, false); return [Math.round(hp0), Math.round(e.hp), enemies.indexOf(e) >= 0]; }, // QA: hit the nearest enemy for `amount`
       passive: id => { if (PASSIVE_REGISTRY[id] && hero.passives[id] < MAX_LEVEL) PASSIVE_REGISTRY[id].apply(); return hero.passives[id]; },
       heroAt: (x, y) => { hero.x = x; hero.y = y; hero.iFrames = 999; }, // QA: exact hero position (layer tests)
@@ -11398,7 +11416,7 @@ telemetryInit();
       }
       return { init, tick, drawNow, active: () => started, event: () => (ev ? ev.type : null), rain: () => rainOn, force: type => { if (type === 'rain') { force = 'rain'; } else { ev = null; startEvent(type); } }, clearForce: () => { force = null; } };
     })();
-    const BUILD_ID = '1126-1807';
+    const BUILD_ID = '1126-1811';
     if (/beta-b/.test(location.pathname)) { const bid = document.createElement('div'); bid.textContent = 'build ' + BUILD_ID; bid.style.cssText = 'position:fixed;right:6px;bottom:2px;font:10px monospace;color:#fff;opacity:.45;z-index:99999;pointer-events:none'; document.body.appendChild(bid); }   // which build is this? (Matin 2026-11-25: fixes were reported 'still wrong' and I could not tell if the new build was running)
     // --- ASSET CACHE (beta pages only): sw.js keeps the art / clips / sounds in the browser so every visit after the first downloads nothing. play.html and the stable index never register it. ---
     if ('serviceWorker' in navigator && /[?&]nosw=1/.test(location.search)) {   // safety switch: ?nosw=1 removes the cache worker and its files
