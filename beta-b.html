@@ -1898,11 +1898,13 @@ window.addEventListener('load', function () { setTimeout(function () { var s = d
     let art6Walk = false; window.__artWalkStats = null;
     function applyArtWalk() {
       art6Walk = true; const ch = []; let off = 0, pit = 0, cry = 0;
+      const gateNear = new Set(); arenaGateCells.forEach(g => { const gx = g % GW, gy = (g / GW) | 0; for (let dy = -4; dy <= 4; dy++) for (let dx = -4; dx <= 4; dx++) gateNear.add((gy + dy) * GW + gx + dx); });
       for (let i = 0; i < GW * GH; i++) {
         if (zone[i] !== 1 || grid[i] !== 1) continue;
         const cx = (i % GW) * CS + CS / 2, cy = ((i / GW) | 0) * CS + CS / 2, O = CS * 0.3;
         let st = ArenaArt6.cellState(cx, cy, World.yaw, World.tilt);
-        if (st === 0) for (let k = 0; k < 4 && st === 0; k++) if (ArenaArt6.cellState(cx + (k & 1 ? O : -O), cy + (k & 2 ? O : -O), World.yaw, World.tilt) === 1) st = 1;   // plank gaps and cracks: a cell with art under any of 5 points is floor (a single centre sample blocked whole cells and trapped enemies on the bridges)
+        if (st === 4) st = gateNear.has(i) ? 1 : -1;   // the crypt's wall and the ledge at its base block, but not right in front of a gate (the way in)
+        else if (st === 0) for (let k = 0; k < 4 && st === 0; k++) if (ArenaArt6.cellState(cx + (k & 1 ? O : -O), cy + (k & 2 ? O : -O), World.yaw, World.tilt) === 1) st = 1;   // plank gaps and cracks: a cell with art under any of 5 points is floor (a single centre sample blocked whole cells and trapped enemies on the bridges)
         if (st !== 1) { grid[i] = 0; ch.push(i); if (st === 2) pit++; else off++; }
       }
       { // the crypt follows its PAINTED purple floor (crypt_walk.png), not the grey-box rooms (Matin 2026-11-26: collision must match the current art); the final room (vault) keeps its own cells
@@ -3354,7 +3356,7 @@ window.ArenaArt6 = (function () {
       data.layers.forEach(function (l) { if (HEALTHY[l.module] === l.state && pred(l.module)) { var im = img(l.file); if (im.complete && im.naturalWidth) c.drawImage(im, l.x / k * WM, l.y / k * WM, l.w / k * WM, l.h / k * WM); } });
       return c.getImageData(0, 0, W, H).data;
     };
-    walk = { W: W, H: H, floor: mk(function (m) { return !!FLOOR_MODS[m]; }), pit: mk(function (m) { return m.indexOf('pit_') === 0; }), cr: null };
+    walk = { W: W, H: H, floor: mk(function (m) { return !!FLOOR_MODS[m]; }), pit: mk(function (m) { return m.indexOf('pit_') === 0; }), cs: mk(function (m) { return m === 'crypt_floor_walls' || m === 'crypt_wall_front'; }), cr: null };   // cs = every pixel of the crypt's own art (floor, walls, the ledge at the wall's base): solid unless it is the crypt's floor
     var cim = new Image(); cim.onload = function () { var cv = document.createElement('canvas'); cv.width = W; cv.height = H; var cx = cv.getContext('2d', { willReadFrequently: true }); cx.drawImage(cim, 0, 0, W, H); walk.cr = cx.getImageData(0, 0, W, H).data; }; cim.src = base + 'crypt_walk.png?v=1';   // the crypt's painted purple floor (art3d: crypt_walk.png), the collision of the crypt follows it
   }
   function cellState(wx, wy, yaw, tilt) {
@@ -3363,8 +3365,10 @@ window.ArenaArt6 = (function () {
     if (fx < 0 || fy < 0 || fx >= walk.W || fy >= walk.H) return 0;
     var i = (fy * walk.W + fx) * 4 + 3;
     if (walk.pit[i] > 128) return 2;
+    var isCr = walk.cr && walk.cr[i - 3] > 128;
+    if (walk.cs[i] > 128 && !isCr) return 4;   // 4 = the crypt's wall / ledge (the hub floor under it does not count)
     if (walk.floor[i] > 128) return 1;
-    return (walk.cr && walk.cr[i - 3] > 128) ? 3 : 0;   // 3 = the crypt's floor
+    return isCr ? 3 : 0;   // 3 = the crypt's floor
   }
   // HD upgrade (big desktop screens only, GFX_HD): after the standard art is on screen, the 2x sharper copy of each layer is fetched in the background and swapped in as it lands
   function loadHD() {
@@ -11416,7 +11420,7 @@ telemetryInit();
       }
       return { init, tick, drawNow, active: () => started, event: () => (ev ? ev.type : null), rain: () => rainOn, force: type => { if (type === 'rain') { force = 'rain'; } else { ev = null; startEvent(type); } }, clearForce: () => { force = null; } };
     })();
-    const BUILD_ID = '1126-1813';
+    const BUILD_ID = '1126-1822';
     if (/beta-b/.test(location.pathname)) { const bid = document.createElement('div'); bid.textContent = 'build ' + BUILD_ID; bid.style.cssText = 'position:fixed;right:6px;bottom:2px;font:10px monospace;color:#fff;opacity:.45;z-index:99999;pointer-events:none'; document.body.appendChild(bid); }   // which build is this? (Matin 2026-11-25: fixes were reported 'still wrong' and I could not tell if the new build was running)
     // --- ASSET CACHE (beta pages only): sw.js keeps the art / clips / sounds in the browser so every visit after the first downloads nothing. play.html and the stable index never register it. ---
     if ('serviceWorker' in navigator && /[?&]nosw=1/.test(location.search)) {   // safety switch: ?nosw=1 removes the cache worker and its files
