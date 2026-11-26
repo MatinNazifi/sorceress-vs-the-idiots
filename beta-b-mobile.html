@@ -1988,7 +1988,7 @@ window.addEventListener('load', function () { setTimeout(function () { var s = d
         else if (st === 0) for (let k = 0; k < 4 && st === 0; k++) if (ArenaArt6.cellState(cx + (k & 1 ? O : -O), cy + (k & 2 ? O : -O), World.yaw, World.tilt) === 1) st = 1;   // plank gaps and cracks: a cell with art under any of 5 points is floor (a single centre sample blocked whole cells and trapped enemies on the bridges)
         if (st !== 1) { grid[i] = 0; ch.push(i); if (st === 2) pit++; else off++; }
       }
-      { // the crypt follows its PAINTED purple floor (crypt_walk.png), not the grey-box rooms (Matin 2026-11-26: collision must match the current art); the final room (vault) keeps its own cells
+      if (ArenaArt6.cryptFloorFromArt()) { // the crypt follows its PAINTED purple floor (crypt_walk.png), not the grey-box rooms (Matin 2026-11-26: collision must match the current art); the final room (vault) keeps its own cells
         const vaultSet = new Set(arenaVaultCells), topRow = Math.floor(topPx / CS);
         for (let y = 0; y < topRow; y++) for (let x = 0; x < GW; x++) {
           const i = y * GW + x, wx = x * CS + CS / 2, wy = y * CS + CS / 2; if (vaultSet.has(i) || inVault(wx, wy)) continue;
@@ -3405,6 +3405,7 @@ window.ArenaArt6 = (function () {
   }
   function dropAll() { hubFallen = 9; ['left', 'main', 'right', 'front', 'bridge_left', 'bridge_right'].forEach(function (m) { setWant(m, 'collapsed', 0.6); }); }
   function openCrypt() { if (!OPEN_ART_OK) return; setWant('crypt_floor_walls', 'open', GATE_FADE); setWant('crypt_wall_front', 'open', GATE_FADE); if (ok) { buildFeet(); buildBands(); } /* the open wall art becomes a depth piece too */ }
+  var CRYPT_SOLID = false, CRYPT_FLOOR_FROM_ART = false;   /* OFF (Matin 2026-11-26: the new crypt collision trapped him inside the crypt): the crypt floor / ledge collision from the art comes back only after it is tested with a real fight */
   var OPEN_ART_OK = false;   /* Matin 2026-11-26: the old 'open' crypt drawing was a different scale (arch and wall too big): the closed art stays until the open art is re-made FROM the closed one */
   function closeCrypt() { setWant('crypt_floor_walls', 'closed', GATE_FADE); setWant('crypt_wall_front', 'closed', GATE_FADE); if (ok) { buildFeet(); buildBands(); } } // after the great drop the gates shut again
   function hideBossDoor() { setWant('boss_door', 'hidden', 0.01); }
@@ -3453,7 +3454,7 @@ window.ArenaArt6 = (function () {
     var i = (fy * walk.W + fx) * 4 + 3;
     if (walk.pit[i] > 128) return 2;
     var isCr = walk.cr && walk.cr[i - 3] > 128;
-    if (walk.cs[(i - 3) >> 2] > 128 && !isCr) return 4;   // 4 = the crypt's wall / ledge (the hub floor under it does not count)
+    if (CRYPT_SOLID && walk.cs[(i - 3) >> 2] > 128 && !isCr) return 4;   // 4 = the crypt's wall / ledge (the hub floor under it does not count)
     if (walk.floor[i] > 128) return 1;
     return isCr ? 3 : 0;   // 3 = the crypt's floor
   }
@@ -3676,7 +3677,7 @@ window.ArenaArt6 = (function () {
     if (tileQ.length || tileBusy || promoteQ.length) return 0.2 + 0.78 * ready / Math.max(1, n);
     return n >= 20 ? 1 : 0.2;
   }
-  return { load: load, loading: loading, ready: function () { return ok; }, reset: reset, warn: warn, land: land, dropAll: dropAll, openCrypt: openCrypt, closeCrypt: closeCrypt, hideBossDoor: hideBossDoor, openBossDoor: openBossDoor, cellState: cellState, cryptReady: function () { return !!(walk && walk.cr); },
+  return { load: load, loading: loading, ready: function () { return ok; }, reset: reset, warn: warn, land: land, dropAll: dropAll, openCrypt: openCrypt, closeCrypt: closeCrypt, hideBossDoor: hideBossDoor, openBossDoor: openBossDoor, cellState: cellState, cryptFloorFromArt: function () { return CRYPT_FLOOR_FROM_ART; }, cryptReady: function () { return !!(walk && walk.cr); },
     draw: function (ctx, v) { drawPass(ctx, v, false); }, sortBands: sortBands, drawBand: drawBand, pitSpots: pitSpots, stats: function () { return { tiles: Object.keys(tiles).length, queue: tileQ.length, ultra: ultraOn }; }, debugPosts: debugPosts, state: function () { return Object.assign({}, want); } };
 })();
     // --- SPRITE ASSET MANAGER ---
@@ -11773,7 +11774,7 @@ telemetryInit();
       }
       return { init, tick, drawNow, active: () => started, event: () => (ev ? ev.type : null), rain: () => rainOn, force: type => { if (type === 'rain') { force = 'rain'; } else { ev = null; startEvent(type); } }, clearForce: () => { force = null; } };
     })();
-    const BUILD_ID = '1126-1833';
+    const BUILD_ID = '1126-1834';
     if (/beta-b/.test(location.pathname)) { const bid = document.createElement('div'); bid.textContent = 'build ' + BUILD_ID; bid.style.cssText = 'position:fixed;right:6px;bottom:2px;font:10px monospace;color:#fff;opacity:.45;z-index:99999;pointer-events:none'; document.body.appendChild(bid); }   // which build is this? (Matin 2026-11-25: fixes were reported 'still wrong' and I could not tell if the new build was running)
     // --- ASSET CACHE (beta pages only): sw.js keeps the art / clips / sounds in the browser so every visit after the first downloads nothing. play.html and the stable index never register it. ---
     if ('serviceWorker' in navigator && /[?&]nosw=1/.test(location.search)) {   // safety switch: ?nosw=1 removes the cache worker and its files
