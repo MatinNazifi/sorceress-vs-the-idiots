@@ -1980,7 +1980,9 @@ window.addEventListener('load', function () { setTimeout(function () { var s = d
       art6Walk = true; const ch = []; let off = 0, pit = 0;
       for (let i = 0; i < GW * GH; i++) {
         if (zone[i] !== 1 || grid[i] !== 1) continue;
-        const st = ArenaArt6.cellState((i % GW) * CS + CS / 2, ((i / GW) | 0) * CS + CS / 2, World.yaw, World.tilt);
+        const cx = (i % GW) * CS + CS / 2, cy = ((i / GW) | 0) * CS + CS / 2, O = CS * 0.3;
+        let st = ArenaArt6.cellState(cx, cy, World.yaw, World.tilt);
+        if (st === 0) for (let k = 0; k < 4 && st === 0; k++) if (ArenaArt6.cellState(cx + (k & 1 ? O : -O), cy + (k & 2 ? O : -O), World.yaw, World.tilt) === 1) st = 1;   // plank gaps and cracks: a cell with art under any of 5 points is floor (a single centre sample blocked whole cells and trapped enemies on the bridges)
         if (st !== 1) { grid[i] = 0; ch.push(i); if (st === 2) pit++; else off++; }
       }
       if (ch.length) arenaRebuild(ch);
@@ -2745,7 +2747,12 @@ window.addEventListener('load', function () { setTimeout(function () { var s = d
         const ecx = (ex / CS) | 0, ecy = (ey / CS) | 0;
         if (ecx < 0 || ecy < 0 || ecx >= GW || ecy >= GH) return null;
         const ec = ecy * GW + ecx;
-        if (grid[ec] === 0 || fStamp[ec] !== fCur) return null;
+        if (grid[ec] === 0 || fStamp[ec] !== fCur) { // standing on a blocked cell (a plank gap, a bridge edge): walk to the nearest cell the flow field reaches instead of pushing into the wall
+          let bd = 1e9, bx = -1, by = -1;
+          for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) { const nx = ecx + dx, ny = ecy + dy; if (nx < 0 || ny < 0 || nx >= GW || ny >= GH) continue; const n = ny * GW + nx; if (grid[n] === 0 || fStamp[n] !== fCur) continue; if (fDist[n] < bd) { bd = fDist[n]; bx = nx; by = ny; } }
+          if (bx < 0) return null;
+          const ux = bx * CS + CS / 2 - ex, uy = by * CS + CS / 2 - ey, ul = Math.hypot(ux, uy) || 1; OUT.x = ux / ul; OUT.y = uy / ul; return OUT;
+        }
         let best = fDist[ec], bcx = -1, bcy = -1;
         for (let dy = -1; dy <= 1; dy++) {
           for (let dx = -1; dx <= 1; dx++) {
@@ -6836,6 +6843,11 @@ if (metaFx.regen > 0 && hero.hp > 0) hero.hp = Math.min(hero.maxHp, hero.hp + me
     function bodyH(e) { return 28 + e.radius * 1.4; }
     function bodyX(e) { return e.x - (bodyH(e) / World.tilt) * World.sinY; }
     function bodyY(e) { return e.y - (bodyH(e) / World.tilt) * World.cosY; }
+    function segHit(p, dt, cx, cy, r) { // does the segment (previous position -> position now) pass within r of (cx, cy)?
+      const ax = p.x - p.vx * dt, ay = p.y - p.vy * dt, dx = p.x - ax, dy = p.y - ay, l2 = dx * dx + dy * dy;
+      let t = l2 > 0 ? ((cx - ax) * dx + (cy - ay) * dy) / l2 : 1; t = t < 0 ? 0 : t > 1 ? 1 : t;
+      const qx = ax + dx * t - cx, qy = ay + dy * t - cy; return qx * qx + qy * qy < r * r;
+    }
     const BOLT_TURN = 5.5; // rad/s a homing hero bolt may turn (a 620 px/s bolt then curves onto a target that walked ~60 px sideways)
     function updateProjectilesAndEffects(dt) {
       updateVFX(dt);
@@ -6868,13 +6880,14 @@ if (metaFx.regen > 0 && hero.hp > 0) hero.hp = Math.min(hero.maxHp, hero.hp + me
         for (let j = 0; j < near.length; j++) {
           const e = near[j], hr = e.radius + 12 * (p.size || 1);
           // a bolt is drawn at the staff gem (high on screen) and flies over the ground, so it passes the enemy's BODY long before its feet: bolts hit the body (screen-up from the feet) as well as the feet (Matin 2026-11-25)
-          if (Math.hypot(e.x - p.x, e.y - p.y) < hr || (isB && Math.hypot(bodyX(e) - p.x, bodyY(e) - p.y) < hr)) {
+          if (segHit(p, dt, e.x, e.y, hr) || (isB && segHit(p, dt, bodyX(e), bodyY(e), hr))) {   // the whole path of this frame, not one point: a long frame (low fps) used to step the bolt past the enemy
             if (p.hitSet) {
               // Piercing Lance: each enemy is hit once, the lance never stops
               if (p.hitSet.has(e)) continue;
               p.hitSet.add(e);
             }
             const isCrit = Math.random() < 0.25;
+            if (isB) playVFX('spark', bodyX(e), bodyY(e), { scale: 0.55, fps: 30, rot: Math.random() * 6.28 });   // an impact you can see on every hit, also when a piercing bolt flies on
             damageEnemy(e, p.dmg, p.vx >= 0 ? 1 : -1, isCrit);
             p.pierce--;
             if (p.pierce <= 0) {
@@ -11536,7 +11549,7 @@ telemetryInit();
     //  * light that changes to make it alive: drifting cloud shadows, pulsing pit glow, lightning while it rains.
     // Sprites: sprites/fx/pt-*.png (anim_test/cut_particles.py). Glow sheets are drawn additively, leaves normally. No allocation per frame (typed pools). ?weather=<type> still shows the old Weather module. ---
     const Ambient = (function () {
-      const FX = {}, N_EMB = 28, N_SPO = 34, N_RAIN = 70, N_SPL = 24, N_MIST = 8, N_LEAF = 30, N_CLOUD = 4, RAIN_FROM = 180, RAIN_TO = 600;
+      const FX = {}, N_EMB = 28, N_SPO = 34, N_RAIN = 110, N_SPL = 44, N_MIST = 8, N_LEAF = 30, N_CLOUD = 4, RAIN_FROM = 0, RAIN_TO = 99999;
       const eX = new Float32Array(N_EMB), eY = new Float32Array(N_EMB), eH = new Float32Array(N_EMB), eV = new Float32Array(N_EMB), eA = new Float32Array(N_EMB), eL = new Float32Array(N_EMB), eS = new Float32Array(N_EMB), eC = new Int16Array(N_EMB);
       const sX = new Float32Array(N_SPO), sY = new Float32Array(N_SPO), sVx = new Float32Array(N_SPO), sVy = new Float32Array(N_SPO), sA = new Float32Array(N_SPO), sL = new Float32Array(N_SPO), sS = new Float32Array(N_SPO), sC = new Int16Array(N_SPO);
       const rX = new Float32Array(N_RAIN), rY = new Float32Array(N_RAIN), rV = new Float32Array(N_RAIN), rC = new Int16Array(N_RAIN);
@@ -11545,7 +11558,7 @@ telemetryInit();
       const lX = new Float32Array(N_LEAF), lY = new Float32Array(N_LEAF), lVx = new Float32Array(N_LEAF), lVy = new Float32Array(N_LEAF), lR = new Float32Array(N_LEAF), lVr = new Float32Array(N_LEAF), lP = new Float32Array(N_LEAF), lC = new Int16Array(N_LEAF);
       const kX = new Float32Array(N_CLOUD), kY = new Float32Array(N_CLOUD), kV = new Float32Array(N_CLOUD), kS = new Float32Array(N_CLOUD);
       const RING = [[1, 0], [-1, 0], [0, 1], [0, -1], [0.7, 0.7], [-0.7, 0.7], [0.7, -0.7], [-0.7, -0.7]];
-      let q = 1, started = false, clock = 0, gt = 0, nextAt = 0, ev = null, lastType = '', W = 1, H = 1, sized = false, rainOn = false, flash = 99, nextFlash = 14, flash2 = false, force = null;
+      let ri = 0.5, q = 1, started = false, clock = 0, gt = 0, nextAt = 0, ev = null, lastType = '', W = 1, H = 1, sized = false, rainOn = false, flash = 99, nextFlash = 14, flash2 = false, force = null;
       const R = (a, b) => a + Math.random() * (b - a);
       const glow = (() => { const cv = document.createElement('canvas'); cv.width = cv.height = 128; const x = cv.getContext('2d'), g = x.createRadialGradient(64, 64, 0, 64, 64, 64); g.addColorStop(0, 'rgba(255,170,70,0.9)'); g.addColorStop(0.45, 'rgba(255,110,30,0.35)'); g.addColorStop(1, 'rgba(255,80,10,0)'); x.fillStyle = g; x.fillRect(0, 0, 128, 128); return cv; })();
       const shade = (() => { const cv = document.createElement('canvas'); cv.width = cv.height = 128; const x = cv.getContext('2d'), g = x.createRadialGradient(64, 64, 0, 64, 64, 64); g.addColorStop(0, 'rgba(6,4,14,1)'); g.addColorStop(1, 'rgba(6,4,14,0)'); x.fillStyle = g; x.fillRect(0, 0, 128, 128); return cv; })();
@@ -11590,12 +11603,12 @@ telemetryInit();
         for (let i = 0; i < N_EMB * q; i++) { eA[i] += dt; eH[i] += eV[i] * dt; if (eA[i] > eL[i]) spawnE(i, pits); }
         for (let i = 0; i < N_SPO * q; i++) { sA[i] += dt; sX[i] += sVx[i] * dt; sY[i] += sVy[i] * dt; if (sA[i] > sL[i]) spawnS(i, c, inside); }
         for (let i = 0; i < N_CLOUD; i++) { kX[i] += kV[i] * dt; if (kX[i] > W + 200) { kX[i] = -kS[i]; kY[i] = R(-100, H - 100); } }
-        const rf = rainFade();   // the long rain window: minute 3 to minute 10
+        const rf = rainFade(); ri = Math.max(0.12, Math.min(1, 0.5 + 0.32 * Math.sin(gt / 41) + 0.18 * Math.sin(gt / 13 + 2)));   // rain all level (Matin): the intensity rises and falls on two slow rhythms (a drizzle, then a downpour) so it flows
         if (rf > 0 && ready(FX.rain)) {
           if (!rainOn) startRain();
-          for (let i = 0; i < N_RAIN * q; i++) { rY[i] += rV[i] * dt; if (rY[i] > H + 50) { rY[i] = R(-300, -40); rX[i] = R(0, W); } }
+          for (let i = 0; i < N_RAIN * q; i++) { rY[i] += rV[i] * (0.8 + 0.4 * ri) * dt; if (rY[i] > H + 50) { rY[i] = R(-300, -40); rX[i] = R(0, W); } }
           for (let i = 0; i < N_SPL * q; i++) { pA[i] += dt * 3.2; if (pA[i] > 1) { pA[i] = 0; pX[i] = R(0, W); pY[i] = R(H * 0.15, H); } }
-          flash += dt; nextFlash -= dt; if (nextFlash <= 0 && rf > 0.6) { flash = 0; flash2 = true; nextFlash = R(14, 28); } else if (flash2 && flash > 0.14) { flash = 0.02; flash2 = false; }   // lightning: a flash and a weaker flicker
+          flash += dt; nextFlash -= dt; if (nextFlash <= 0 && rf > 0.6 && ri > 0.72) { flash = 0; flash2 = true; nextFlash = R(14, 28); } else if (flash2 && flash > 0.14) { flash = 0.02; flash2 = false; }   // lightning: a flash and a weaker flicker
         } else rainOn = false;
         if (!ev) { if (clock >= nextAt && ready(FX.mist) && ready(FX.leaves)) startEvent(); }
         else {
@@ -11635,8 +11648,8 @@ telemetryInit();
           ctx.globalAlpha = 0.95 * f; cellDraw(ctx, FX.embers, eC[i], c.W / 2 + (dx * c.cos - dy * c.sin) * c.zoom, c.H / 2 + (dx * c.sin + dy * c.cos) * c.zoom * c.tilt - eH[i] * c.zoom, (2.6 + (eS[i] % 3) * 0.7) * c.zoom);   // tiny, like the little sparks (Matin)
         }
         if (rf > 0 && rainOn && ready(FX.rain)) {
-          ctx.globalAlpha = 0.6 * rf; for (let i = 0; i < N_RAIN * q; i++) cellDraw(ctx, FX.rain, rC[i], rX[i], rY[i], 6 + (rC[i] % 4) * 2, 0);
-          for (let i = 0; i < N_SPL * q; i++) { if (pA[i] < 0) continue; ctx.globalAlpha = 0.7 * rf * (1 - pA[i]); cellDraw(ctx, FX.rain, pC[i], pX[i], pY[i], 16 + 22 * pA[i], 0); }
+          ctx.globalAlpha = 0.6 * rf * (0.45 + 0.55 * ri); const nR = Math.ceil(N_RAIN * q * ri); for (let i = 0; i < nR; i++) cellDraw(ctx, FX.rain, rC[i], rX[i], rY[i], 6 + (rC[i] % 4) * 2, 0);
+          const nS = Math.ceil(N_SPL * q * ri); for (let i = 0; i < nS; i++) { if (pA[i] < 0) continue; ctx.globalAlpha = 0.7 * rf * (1 - pA[i]); cellDraw(ctx, FX.rain, pC[i], pX[i], pY[i], 8 + 14 * pA[i], 0); }   // small splashes on the ground
           if (flash < 0.4) { ctx.globalAlpha = 0.24 * (1 - flash / 0.4); ctx.fillStyle = '#dfe8ff'; ctx.fillRect(0, 0, c.W, c.H); }
         }
         if (ev && ready(FX[ev.type])) {
@@ -11648,7 +11661,7 @@ telemetryInit();
       }
       return { init, tick, drawNow, active: () => started, event: () => (ev ? ev.type : null), rain: () => rainOn, force: type => { if (type === 'rain') { force = 'rain'; } else { ev = null; startEvent(type); } }, clearForce: () => { force = null; } };
     })();
-    const BUILD_ID = '1126-1346';
+    const BUILD_ID = '1126-1453';
     if (/beta-b/.test(location.pathname)) { const bid = document.createElement('div'); bid.textContent = 'build ' + BUILD_ID; bid.style.cssText = 'position:fixed;right:6px;bottom:2px;font:10px monospace;color:#fff;opacity:.45;z-index:99999;pointer-events:none'; document.body.appendChild(bid); }   // which build is this? (Matin 2026-11-25: fixes were reported 'still wrong' and I could not tell if the new build was running)
     // --- ASSET CACHE (beta pages only): sw.js keeps the art / clips / sounds in the browser so every visit after the first downloads nothing. play.html and the stable index never register it. ---
     if ('serviceWorker' in navigator && /[?&]nosw=1/.test(location.search)) {   // safety switch: ?nosw=1 removes the cache worker and its files
