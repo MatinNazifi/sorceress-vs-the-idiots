@@ -10974,6 +10974,18 @@ telemetryInit();
       }
     };
 
+    // --- QUICK JUMP (Matin 2026-11-26: "fast mode for this test, I don't want to spend ten minutes"). Needs ?god=1.
+    //   &jump=crypt : the gates are opened and the hero starts INSIDE the crypt at its front-left edge (wall order, collision, finale)
+    //   &jump=gate  : gates open, the hero stands in the hub right in front of the middle gate (walk in yourself)
+    //   &jump=right : inside the crypt at the right-hand wall      &jump=bridge : on the left bridge in its damaged state at game time 3:00
+    (() => {
+      const jmp = urlParams.get('jump'); if (!jmp || !window.__cast || !window.__event) return;
+      const spot = { crypt: [816, 1136], right: [2640, 1136], gate: [1536, 1330], bridge: [790, 2560] }[jmp]; if (!spot) return;
+      const iv = setInterval(() => {
+        if (jmp !== 'bridge' && !window.__artWalkStats) return; clearInterval(iv);
+        setTimeout(() => { if (jmp === 'bridge') window.__setTime && window.__setTime(185); else { window.__event(5); } setTimeout(() => window.__cast.heroAt(spot[0], spot[1]), 900); }, 600);
+      }, 300);
+    })();
     // --- FPS TRACKER (Matin 2026-11-26: "when I play you see the fps track"; the lag at minute 6:30 could not be reproduced by a script) ---
     // Beta desktop pages only (?track=0 turns it off, ?track=1 forces it on). Once a second it records: real fps (every display frame, not the game's own count), worst frame, frames over 25 ms, the game's update/draw ms,
     // how many of everything exists (enemies, particles, shots, gems, numbers, effects, vases, pickups), heap, DOM size, art tiles/state, plus every long animation frame (> 100 ms) WITH the function that caused it (Chrome's
@@ -11444,7 +11456,7 @@ telemetryInit();
       }
       return { init, tick, drawNow, active: () => started, event: () => (ev ? ev.type : null), rain: () => rainOn, force: type => { if (type === 'rain') { force = 'rain'; } else { ev = null; startEvent(type); } }, clearForce: () => { force = null; } };
     })();
-    const BUILD_ID = '1126-1913';
+    const BUILD_ID = '1126-1920';
     if (/beta-b/.test(location.pathname)) { const bid = document.createElement('div'); bid.textContent = 'build ' + BUILD_ID; bid.style.cssText = 'position:fixed;right:6px;bottom:2px;font:10px monospace;color:#fff;opacity:.45;z-index:99999;pointer-events:none'; document.body.appendChild(bid); }   // which build is this? (Matin 2026-11-25: fixes were reported 'still wrong' and I could not tell if the new build was running)
     // --- ASSET CACHE (beta pages only): sw.js keeps the art / clips / sounds in the browser so every visit after the first downloads nothing. play.html and the stable index never register it. ---
     if ('serviceWorker' in navigator && /[?&]nosw=1/.test(location.search)) {   // safety switch: ?nosw=1 removes the cache worker and its files
