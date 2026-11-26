@@ -3291,7 +3291,7 @@ window.ArenaArt5 = (function () {
 window.ArenaArt6 = (function () {
   'use strict';
   var data = null, base = '', fit = null, ok = false, imgs = {}, byKey = {};
-  var want = {}, cur = {}, prev = {}, t0 = {}, dur = {}, pend = {}, hubFallen = 0, forced = false;
+  var rbT = 0, want = {}, cur = {}, prev = {}, t0 = {}, dur = {}, pend = {}, hubFallen = 0, forced = false;
   var HEALTHY = { environment: 'healthy', crypt_floor_walls: 'closed', crypt_wall_front: 'closed', boss_door: 'locked', left: 'healthy', main: 'healthy', right: 'healthy', front: 'healthy',
     bridge_left: 'healthy', bridge_right: 'healthy', pit_1: 'healthy', pit_2: 'healthy', pit_3: 'healthy', pit_4: 'healthy', bridge_left_front: 'on', bridge_right_front: 'on' };
   var ZONE = { 'the west bridge': 'bridge_left', 'the east bridge': 'bridge_right', 'the south shrine': 'front', 'the west wing': 'left', 'the east wing': 'right',
@@ -3386,7 +3386,7 @@ window.ArenaArt6 = (function () {
         data.layers.forEach(function (l) { byKey[l.module + '|' + l.state] = l; });
         // ready only when the healthy-state layers are decoded: until then the grey-box floor stays (a black map while 17 MB loaded was the bug); the other states load in the background
         var core = data.layers.filter(function (l) { return HEALTHY[l.module] === l.state; });
-        data.layers.forEach(function (l) { img(l.file); });
+        data.layers.forEach(function (l) { var im = img(l.file); if (l.above_player && !im.complete) im.addEventListener('load', function () { if (!ok) return; clearTimeout(rbT); rbT = setTimeout(function () { buildFeet(); buildBands(); }, 300); }); });   /* a front piece (posts + ropes, wall) that lands after the first build gets its depth bands as soon as it is decoded */
         return Promise.all(core.map(function (l) { return new Promise(function (r) { var im = img(l.file); if (im.complete && im.naturalWidth) r(); else { im.onload = r; im.onerror = r; } }); })).then(function () { buildWalk(); buildFeet(); buildBands(); ok = true; if (typeof loadOmniStrips === 'function') loadOmniStrips(); if (GFX_HD) setTimeout(loadHD, 2500); /* the quick 2x sharp art always comes first (4.4 MB); the 4x tiles refine it later */ if (GFX_ULTRA) setTimeout(loadUltra, 3000); });
       }).catch(function () { ok = false; });
   }
@@ -11420,7 +11420,7 @@ telemetryInit();
       }
       return { init, tick, drawNow, active: () => started, event: () => (ev ? ev.type : null), rain: () => rainOn, force: type => { if (type === 'rain') { force = 'rain'; } else { ev = null; startEvent(type); } }, clearForce: () => { force = null; } };
     })();
-    const BUILD_ID = '1126-1825';
+    const BUILD_ID = '1126-1827';
     if (/beta-b/.test(location.pathname)) { const bid = document.createElement('div'); bid.textContent = 'build ' + BUILD_ID; bid.style.cssText = 'position:fixed;right:6px;bottom:2px;font:10px monospace;color:#fff;opacity:.45;z-index:99999;pointer-events:none'; document.body.appendChild(bid); }   // which build is this? (Matin 2026-11-25: fixes were reported 'still wrong' and I could not tell if the new build was running)
     // --- ASSET CACHE (beta pages only): sw.js keeps the art / clips / sounds in the browser so every visit after the first downloads nothing. play.html and the stable index never register it. ---
     if ('serviceWorker' in navigator && /[?&]nosw=1/.test(location.search)) {   // safety switch: ?nosw=1 removes the cache worker and its files
