@@ -6262,6 +6262,7 @@ if (metaFx.regen > 0 && hero.hp > 0) hero.hp = Math.min(hero.maxHp, hero.hp + me
       let closest = null;
       let minD = maxDist;
       enemies.forEach(e => {
+        if (e.dying > 0) return;   /* a staggering, already-dead enemy is not a target (a shot at it would fly through) */
         const d = Math.hypot(e.x - x, e.y - y);
         if (d < minD) {
           minD = d;
@@ -6363,6 +6364,8 @@ if (metaFx.regen > 0 && hero.hp > 0) hero.hp = Math.min(hero.maxHp, hero.hp + me
 
         e.squashX += (1 - e.squashX) * dt * 14;
         e.squashY += (1 - e.squashY) * dt * 14;
+
+        if (e.dying > 0) { e.dying -= dt; e.vx = e.vy = 0; e.isMovingNow = false; e.hurtT = Math.max(e.hurtT, 0.1); if (e.dying <= 0) finishKill(e); continue; }   // late death: staggers in place, then the death clip
 
         if (e.isBoss && e.stunTimer > 0) {
           e.stunTimer -= dt;
@@ -6674,6 +6677,7 @@ if (metaFx.regen > 0 && hero.hp > 0) hero.hp = Math.min(hero.maxHp, hero.hp + me
 
     const DMG_TUNE = 0.85 * 0.95; // -5% player damage (+10% harder overall with the +5% damage taken)
     function damageEnemy(e, amount, hitDirX = 1, isCrit = false, quiet = false) { // quiet: a beam tick, no hit-stop / slow-mo / camera kick
+      if (e.dying > 0) return;
       if (e.isBoss && e.stunTimer > 0) {
         amount *= 2;
         isCrit = true;
@@ -6744,7 +6748,17 @@ if (metaFx.regen > 0 && hero.hp > 0) hero.hp = Math.min(hero.maxHp, hero.hp + me
       }
     }
 
+    // LATE DEATH (Matin 2026-11-26): about one normal enemy in five is hit, staggers for about a second and only THEN plays its death clip. While it staggers it is already dead: no attack, no target, no damage.
+    const LATE_DEATH_P = 0.2;
     function killEnemy(e) {
+      if (e.dying !== undefined) return;
+      const strip = SPRITES['enemy-omni-' + e.type + '_death'];
+      if (!e.isBoss && !e.isElite && !(e.slowTimer > 0) && OMNI_ENEMY[e.type + '_death'] && strip && strip.complete && strip.naturalWidth > 0 && Math.random() < LATE_DEATH_P) {
+        e.dying = 0.8 + Math.random() * 0.45; e.hp = 1; e.vx = e.vy = 0; e.hurtT = e.dying; e.flashTimer = 0.12; return;
+      }
+      finishKill(e);
+    }
+    function finishKill(e) {
       killCount++;
       if (hero.passives.siphon && killCount % SIPHON_KILLS === 0 && hero.hp > 0) { // Soul Siphon
         const heal = 3 * hero.passives.siphon;
@@ -6894,6 +6908,7 @@ if (metaFx.regen > 0 && hero.hp > 0) hero.hp = Math.min(hero.maxHp, hero.hp + me
         const near = getNearbyEnemies(p.x, p.y, (isB ? 130 : 35) * (p.size || 1));
         for (let j = 0; j < near.length; j++) {
           const e = near[j], hr = e.radius + 12 * (p.size || 1);
+          if (e.dying > 0) continue;
           // a bolt is drawn at the staff gem (high on screen) and flies over the ground, so it passes the enemy's BODY long before its feet: bolts hit the body (screen-up from the feet) as well as the feet (Matin 2026-11-25)
           if (segHit(p, dt, e.x, e.y, hr) || (isB && segHit(p, dt, bodyX(e), bodyY(e), hr))) {   // the whole path of this frame, not one point: a long frame (low fps) used to step the bolt past the enemy
             if (p.hitSet) {
@@ -11694,7 +11709,7 @@ telemetryInit();
       }
       return { init, tick, drawNow, active: () => started, event: () => (ev ? ev.type : null), rain: () => rainOn, force: type => { if (type === 'rain') { force = 'rain'; } else { ev = null; startEvent(type); } }, clearForce: () => { force = null; } };
     })();
-    const BUILD_ID = '1126-1613';
+    const BUILD_ID = '1126-1621';
     if (/beta-b/.test(location.pathname)) { const bid = document.createElement('div'); bid.textContent = 'build ' + BUILD_ID; bid.style.cssText = 'position:fixed;right:6px;bottom:2px;font:10px monospace;color:#fff;opacity:.45;z-index:99999;pointer-events:none'; document.body.appendChild(bid); }   // which build is this? (Matin 2026-11-25: fixes were reported 'still wrong' and I could not tell if the new build was running)
     // --- ASSET CACHE (beta pages only): sw.js keeps the art / clips / sounds in the browser so every visit after the first downloads nothing. play.html and the stable index never register it. ---
     if ('serviceWorker' in navigator && /[?&]nosw=1/.test(location.search)) {   // safety switch: ?nosw=1 removes the cache worker and its files
