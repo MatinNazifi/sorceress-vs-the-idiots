@@ -11117,16 +11117,17 @@ telemetryInit();
     (() => {
       const jmp = urlParams.get('jump'); if (!jmp || !window.__cast || !window.__event) return;
       //   &jump=phase2 : AFTER 10:00: gates opened, the lower realm dropped, the gates closed again, the hero stands on the crypt floor, game time 10:12 (normal speed: the crypt fight as it is played)
-      const spot = { crypt: [816, 1136], right: [2640, 1136], gate: [1536, 1330], bridge: [790, 2560], phase2: [1536, 880] }[jmp]; if (!spot) return;
+      //   &jump=vault  : same as phase2 but the clock stands at 12:50: the minute-13 cutscene (inner gate, she walks in, camera pull-back, boss area) starts in about 10 s
+      const spot = { crypt: [816, 1136], right: [2640, 1136], gate: [1536, 1330], bridge: [790, 2560], phase2: [1536, 880], vault: [1536, 1000] }[jmp]; if (!spot) return;
       const iv = setInterval(() => {
         if (jmp !== 'bridge' && !window.__artWalkStats) return; clearInterval(iv);
         setTimeout(() => {
           if (jmp === 'bridge') window.__setTime && window.__setTime(185);
-          else if (jmp === 'phase2') {   /* the clock goes to 9:20 FIRST so the five early collapses land while the crypt is still sealed (a collapse after the gates open drops any floor not joined to the hub), then gates, then the drop, then 10:12 */
+          else if (jmp === 'phase2' || jmp === 'vault') {   /* the clock goes to 9:20 FIRST so the five early collapses land while the crypt is still sealed (a collapse after the gates open drops any floor not joined to the hub), then gates, then the drop, then 10:12 */
             window.__setTime && window.__setTime(560);
-            setTimeout(() => { window.__event(5); setTimeout(() => { window.__event(6); window.__setTime && window.__setTime(612); }, 600); }, 2500);
+            setTimeout(() => { window.__event(5); setTimeout(() => { window.__event(6); window.__setTime && window.__setTime(jmp === 'vault' ? 770 : 612); }, 600); }, 2500);
           } else { window.__event(5); }
-          setTimeout(() => window.__cast.heroAt(spot[0], spot[1]), jmp === 'phase2' ? 4200 : 900);
+          setTimeout(() => window.__cast.heroAt(spot[0], spot[1]), jmp === 'phase2' || jmp === 'vault' ? 4200 : 900);
         }, 600);
       }, 300);
     })();
@@ -11600,7 +11601,7 @@ telemetryInit();
       }
       return { init, tick, drawNow, active: () => started, event: () => (ev ? ev.type : null), rain: () => rainOn, force: type => { if (type === 'rain') { force = 'rain'; } else { ev = null; startEvent(type); } }, clearForce: () => { force = null; } };
     })();
-    const BUILD_ID = '1127-1229';
+    const BUILD_ID = '1127-1231';
     if (/beta-b/.test(location.pathname)) { const bid = document.createElement('div'); bid.textContent = 'build ' + BUILD_ID; bid.style.cssText = 'position:fixed;right:6px;bottom:2px;font:10px monospace;color:#fff;opacity:.45;z-index:99999;pointer-events:none'; document.body.appendChild(bid); }   // which build is this? (Matin 2026-11-25: fixes were reported 'still wrong' and I could not tell if the new build was running)
     // --- ASSET CACHE (beta pages only): sw.js keeps the art / clips / sounds in the browser so every visit after the first downloads nothing. play.html and the stable index never register it. ---
     if ('serviceWorker' in navigator && /[?&]nosw=1/.test(location.search)) {   // safety switch: ?nosw=1 removes the cache worker and its files
