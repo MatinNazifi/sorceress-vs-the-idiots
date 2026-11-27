@@ -3835,6 +3835,8 @@ const ArenaFx6 = (function () {
   const WATER_W = 688;
   const WATER_H = 384;
   const WATER_STEP_MS = 66;
+  const WAVE_DX = 0.906, WAVE_DY = -0.423;   // painted ripple lines rise to the right at 25 deg (measured on the environment plate)
+  const RING_FLAT = 0.4;   // painted rings are ellipses about 0.4 as high as wide
   const WATER_A = 0.55;   // strength of the water shimmer (0.22 in the first build was barely visible)
   const RING_X = [110, 205, 315, 420, 515, 595, 250, 470];
   const RING_Y = [95, 240, 145, 285, 115, 235, 310, 195];
@@ -3885,14 +3887,15 @@ const ArenaFx6 = (function () {
     ];
     for (let i = 0; i < streaks.length; i++) {
       const s = streaks[i];
-      const dx = s[2];
-      const dy = s[2] * 0.55;
+      const dx = s[2] * WAVE_DX;
+      const dy = s[2] * WAVE_DY;
       g.lineWidth = s[3];
       for (let ox = -PAT_SIZE; ox <= PAT_SIZE; ox += PAT_SIZE) {
         for (let oy = -PAT_SIZE; oy <= PAT_SIZE; oy += PAT_SIZE) {
+          const x0 = s[0] + ox, y0 = s[1] + oy, len = Math.hypot(dx, dy), nx = -dy / len * len * 0.12, ny = dx / len * len * 0.12;   // gentle S-curve like the painted ripples (straight lines read as rain)
           g.beginPath();
-          g.moveTo(s[0] + ox, s[1] + oy);
-          g.lineTo(s[0] + ox + dx, s[1] + oy + dy);
+          g.moveTo(x0, y0);
+          g.bezierCurveTo(x0 + dx * 0.33 + nx, y0 + dy * 0.33 + ny, x0 + dx * 0.66 - nx, y0 + dy * 0.66 - ny, x0 + dx, y0 + dy);
           g.stroke();
         }
       }
@@ -3902,7 +3905,7 @@ const ArenaFx6 = (function () {
   function tilePass(scale, speed, alpha, t) {
     const size = PAT_SIZE * scale;
     let ox = (t * speed) % size;
-    let oy = (t * speed * 0.55) % size;
+    let oy = (t * speed * WAVE_DY / WAVE_DX) % size;
     if (ox > 0) ox -= size;
     if (oy > 0) oy -= size;
     wctx.globalAlpha = alpha;
@@ -3939,7 +3942,7 @@ const ArenaFx6 = (function () {
       if (a > 0.01) {
         wctx.globalAlpha = a;
         wctx.beginPath();
-        wctx.arc(RING_X[i], RING_Y[i], rad, 0, 6.28318);
+        wctx.ellipse(RING_X[i], RING_Y[i], rad, rad * RING_FLAT, 0, 0, 6.28318);   // flat like the painted rings (camera tilt)
         wctx.stroke();
       }
     }
@@ -12216,7 +12219,7 @@ telemetryInit();
       }
       return { init, tick, drawNow, active: () => started, event: () => (ev ? ev.type : null), rain: () => rainOn, force: type => { if (type === 'rain') { force = 'rain'; } else { ev = null; startEvent(type); } }, clearForce: () => { force = null; } };
     })();
-    const BUILD_ID = '1127-1248';
+    const BUILD_ID = '1127-1258';
     if (/beta-b/.test(location.pathname)) { const bid = document.createElement('div'); bid.textContent = 'build ' + BUILD_ID; bid.style.cssText = 'position:fixed;right:6px;bottom:2px;font:10px monospace;color:#fff;opacity:.45;z-index:99999;pointer-events:none'; document.body.appendChild(bid); }   // which build is this? (Matin 2026-11-25: fixes were reported 'still wrong' and I could not tell if the new build was running)
     // --- ASSET CACHE (beta pages only): sw.js keeps the art / clips / sounds in the browser so every visit after the first downloads nothing. play.html and the stable index never register it. ---
     if ('serviceWorker' in navigator && /[?&]nosw=1/.test(location.search)) {   // safety switch: ?nosw=1 removes the cache worker and its files
