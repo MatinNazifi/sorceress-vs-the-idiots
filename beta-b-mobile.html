@@ -3499,7 +3499,7 @@ window.ArenaArt6 = (function () {
       for (cx0 = 0; cx0 < W; cx0++) { ym = -1; for (cy0 = H - 1; cy0 >= 0; cy0--) if (wl[(cy0 * W + cx0) * 4 + 3] > 128) { ym = cy0; break; } if (ym >= 0) for (cy0 = Math.max(0, ym - 6); cy0 <= ym; cy0++) cs[cy0 * W + cx0] = 255; }
       walk.cs = cs;
     }
-    var cim = new Image(); cim.onload = function () { var cv = document.createElement('canvas'); cv.width = W; cv.height = H; var cx = cv.getContext('2d', { willReadFrequently: true }); cx.drawImage(cim, 0, 0, W, H); walk.cr = cx.getImageData(0, 0, W, H).data; }; cim.src = base + 'crypt_walk.png?v=13';   // the crypt's painted purple floor (art3d: crypt_walk.png), the collision of the crypt follows it
+    var cim = new Image(); cim.onload = function () { var cv = document.createElement('canvas'); cv.width = W; cv.height = H; var cx = cv.getContext('2d', { willReadFrequently: true }); cx.drawImage(cim, 0, 0, W, H); walk.cr = cx.getImageData(0, 0, W, H).data; }; cim.src = base + 'crypt_walk.png?v=14';   // the crypt's painted purple floor (art3d: crypt_walk.png), the collision of the crypt follows it
   }
   function cellState(wx, wy, yaw, tilt) {
     if (!walk) return 1;
@@ -3517,7 +3517,7 @@ window.ArenaArt6 = (function () {
     var hdBase = base.replace(/v6w\/$/, 'v6hd/'), q = data.layers.slice().sort(function (a, b) { return a.z - b.z; }), i = 0;
     (function next() {
       if (i >= q.length) { if (ok) buildCanvases(); return; } var l = q[i++], im = new Image();
-      im.onload = function () { imgs[l.file] = im; next(); }; im.onerror = next; im.src = hdBase + l.file + (l.file.indexOf('crypt_over') === 0 ? '?v=5' : '?v=4');
+      im.onload = function () { imgs[l.file] = im; next(); }; im.onerror = next; im.src = hdBase + l.file + (l.file.indexOf('crypt_over') === 0 ? '?v=6' : '?v=4');
     })();
   }
   function load(baseUrl) {
@@ -3532,7 +3532,7 @@ window.ArenaArt6 = (function () {
         return Promise.all(core.map(function (l) { return new Promise(function (r) { var im = img(l.file); if (im.complete && im.naturalWidth) r(); else { im.onload = r; im.onerror = r; } }); })).then(function () { buildWalk(); buildFeet(); buildBands(); ok = true; if (typeof loadOmniStrips === 'function') loadOmniStrips(); if (GFX_HD) setTimeout(loadHD, 2500); /* the quick 2x sharp art always comes first (4.4 MB); the 4x tiles refine it later */ if (GFX_ULTRA) setTimeout(loadUltra, 3000); });
       }).catch(function () { ok = false; });
   }
-  function img(file) { var im = imgs[file]; if (!im) { im = imgs[file] = new Image(); im.src = base + file + (file.indexOf('crypt_over') === 0 ? '?v=5' : '?v=4'); } return im; }
+  function img(file) { var im = imgs[file]; if (!im) { im = imgs[file] = new Image(); im.src = base + file + (file.indexOf('crypt_over') === 0 ? '?v=6' : '?v=4'); } return im; }
   // ULTRA TILES (4K): each layer is cut into 1024 px tiles at 4x (build_art6_ultra.py); only the tiles on screen are fetched/decoded (LRU, max TILE_CAP). While a tile is missing the 2x/standard image fills in.
   var ultra = null, tiles = {}, tileQ = [], tileBusy = 0, tileTick = 0, TILE_CAP = 190, PRE = 420, promoteQ = [], promoteTick = 0, frameId = 0, ultraOn = true, lastFt = 0, ftEma = 16, slowMs = 0;
   function loadUltra() {
@@ -3687,6 +3687,7 @@ window.ArenaArt6 = (function () {
   }
   function viewAxAy(v) { var cosY = Math.cos(v.yaw), sinY = Math.sin(v.yaw); return [cosY * v.cx - sinY * v.cy, v.tilt * (sinY * v.cx + cosY * v.cy)]; }
   var GATE_X = [];   /* gate arches left OUT of the over-hero wall copy (open layer px: [[55,229],[405,575],[749,925]]): empty = she goes behind the arches too, as walking over an arch looked like climbing the wall */
+  var USE_WALL_COPY = false;
   var LEDGE_X = 1004, LEDGE_M = 0.526, LEDGE_C = 133.5, LEDGE_T = 66;   /* front wall: its bottom edge is the line y = M x + C (layer px) up to the corner at x = 1004; the ledge strip is the lowest T px of it */
   var cwItem = { wall: true, band: 'cw', x: 0, y: 0, ry: 2e8 };   /* phase 2: the wall layer as ONE item drawn after everything */
   function sortBands(v) {
@@ -3707,7 +3708,7 @@ window.ArenaArt6 = (function () {
     var runs = bands[idx], a = viewAxAy(v), r, run, e, b, cy;
     if (idx === 'cw') {   /* phase 2: a COPY of the front + right wall drawn over the hero. While the gates are open the three gate arches are left out of the copy (she walks through them, so they stay in the normal layer under her) */
       var wl = byKey['crypt_wall_front|' + cur.crypt_wall_front];
-      if (wl) {
+      if (wl && USE_WALL_COPY) {   /* off since 2026-11-27: the over-hero wall = Matin's Photoshop Layer 19 only (crypt_over) */
         ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
         var kk = data.k, wX = v.W * 0.5 + v.z * (((wl.x / kk) - fit.tx) / fit.s - a[0]), wY = v.H * 0.5 + v.z * (((wl.y / kk) - fit.ty) / fit.s - a[1]), wsw = v.z * (wl.w / kk) / fit.s, wsh = v.z * (wl.h / kk) / fit.s, wsc = wsw / wl.w;
         /* the copy is the wall FACE only: the base ledge strip along the bottom of the front wall (Matin marked it: "not the lower part") stays in the normal layer, so what stands in the hub in front of the wall is not covered */
@@ -11884,7 +11885,7 @@ telemetryInit();
       }
       return { init, tick, drawNow, active: () => started, event: () => (ev ? ev.type : null), rain: () => rainOn, force: type => { if (type === 'rain') { force = 'rain'; } else { ev = null; startEvent(type); } }, clearForce: () => { force = null; } };
     })();
-    const BUILD_ID = '1126-2310';
+    const BUILD_ID = '1127-1205';
     if (/beta-b/.test(location.pathname)) { const bid = document.createElement('div'); bid.textContent = 'build ' + BUILD_ID; bid.style.cssText = 'position:fixed;right:6px;bottom:2px;font:10px monospace;color:#fff;opacity:.45;z-index:99999;pointer-events:none'; document.body.appendChild(bid); }   // which build is this? (Matin 2026-11-25: fixes were reported 'still wrong' and I could not tell if the new build was running)
     // --- ASSET CACHE (beta pages only): sw.js keeps the art / clips / sounds in the browser so every visit after the first downloads nothing. play.html and the stable index never register it. ---
     if ('serviceWorker' in navigator && /[?&]nosw=1/.test(location.search)) {   // safety switch: ?nosw=1 removes the cache worker and its files
