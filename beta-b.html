@@ -2145,7 +2145,7 @@ window.addEventListener('load', function () { setTimeout(function () { var s = d
     /* MINUTE-13 CUTSCENE (Matin 2026-11-27): everything stops (no enemies), the player cannot move, the inner gate opens, the hero WALKS IN BY HERSELF along the real floor,
        the camera pulls back to show the destroyed map, then the fade to the boss area. Phases: gate (the door opens, camera on it) -> walk -> pull (zoom out) -> fade. */
     let arenaCine = null;
-    const CINE_GATE = 4.0, CINE_PULL = 3.2, CINE_HOLD = 2.0;
+    const CINE_GATE = 4.0, CINE_PULL = 5.0, CINE_HOLD = 2.0;   // the door opens (4 s clip) while the camera zooms out over CINE_PULL s, then holds
     function arenaCinePath(tx, ty) {
       const s = cellAt(hero.x, hero.y), g = cellAt(tx, ty); if (!(grid[s] === 1 || grid[s] === 0) || grid[g] !== 1) return null;
       const prev = new Int32Array(GW * GH).fill(-1), q = [s]; prev[s] = s;
@@ -2162,7 +2162,8 @@ window.addEventListener('load', function () { setTimeout(function () { var s = d
       hero.isDashing = false; hero.vx = hero.vy = 0; hero.iFrames = Math.max(hero.iFrames, 60);
       const tx = (arenaVaultBox.x0 + arenaVaultBox.x1) / 2, ty = arenaVaultY - 2.6 * CS;   // just inside the inner gate
       let x0 = 1e9, x1 = -1, y0 = 1e9, y1 = -1; for (let i = 0; i < GW * GH; i++) if (zone[i] > 0 || grid[i] === 1) { const x = i % GW, y = (i / GW) | 0; if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
-      arenaCine = { t0: gameTime, path: arenaCinePath(tx, ty), pi: 0, phase: 'gate', tWalkEnd: 0, z0: 0, tx, ty, map: { x: (x0 + x1 + 1) / 2 * CS, y: (y0 + y1 + 1) / 2 * CS, r: Math.hypot((x1 - x0 + 1) * CS, (y1 - y0 + 1) * CS) / 2 } };
+      /* Matin 2026-11-27 (after seeing it): she does NOT walk in (she was visible inside the doorway); she stays where she stands while the door opens and the camera zooms out at the same time. The walk code stays (path) but is not used. */
+      arenaCine = { t0: gameTime, path: null, pi: 0, phase: 'pull', tWalkEnd: gameTime, z0: (typeof CAMERA !== 'undefined' && CAMERA.zoom) || 0.9, tx, ty, map: { x: (x0 + x1 + 1) / 2 * CS, y: (y0 + y1 + 1) / 2 * CS, r: Math.hypot((x1 - x0 + 1) * CS, (y1 - y0 + 1) * CS) / 2 } };
       arenaCutTitle = 'THE INNER GATE'; arenaCutLen = 60; arenaCutEnd = gameTime + 60;
     }
     function arenaCineTick() {
@@ -2189,7 +2190,8 @@ window.addEventListener('load', function () { setTimeout(function () { var s = d
       if (c.phase === 'pull' || c.phase === 'fade') {
         const k = Math.min(1, (gameTime - c.tWalkEnd) / CINE_PULL), e = k * k * (3 - 2 * k), T = World.tilt || 0.75;
         const zFit = 0.92 * Math.min(screenW, screenH / T) / (2 * c.map.r);   // the whole destroyed map in view
-        return { x: hero.x + (c.map.x - hero.x) * e, y: hero.y + (c.map.y - hero.y) * e, zoom: c.z0 + (zFit - c.z0) * e };
+        const dx = c.tx, dy = arenaVaultY;   // starts on the opening door, ends on the whole map
+        return { x: dx + (c.map.x - dx) * e, y: dy + (c.map.y - dy) * e, zoom: c.z0 + (zFit - c.z0) * e };
       }
       return null;
     }
@@ -3442,7 +3444,7 @@ window.ArenaArt6 = (function () {
   // BOSS DOOR OPENS (Omni clip, 40 frames over 4 s: padlock drops, chains fall, doors swing in, golden light); the last frame stays. Falls back to hiding the door if the strip is not loaded.
   var door = { img: null, meta: null, t0: 0 };
   function loadDoor() {
-    door.img = new Image(); door.img.src = 'sprites/boss-door-open.webp?v=1';
+    door.img = new Image(); door.img.src = 'sprites/boss-door-open.webp?v=2';
     fetch('sprites/boss-door-open.json?v=1').then(function (r) { return r.json(); }).then(function (m) { door.meta = m; }).catch(function () {});
   }
   function openBossDoor() {
@@ -11601,7 +11603,7 @@ telemetryInit();
       }
       return { init, tick, drawNow, active: () => started, event: () => (ev ? ev.type : null), rain: () => rainOn, force: type => { if (type === 'rain') { force = 'rain'; } else { ev = null; startEvent(type); } }, clearForce: () => { force = null; } };
     })();
-    const BUILD_ID = '1127-1231';
+    const BUILD_ID = '1127-1239';
     if (/beta-b/.test(location.pathname)) { const bid = document.createElement('div'); bid.textContent = 'build ' + BUILD_ID; bid.style.cssText = 'position:fixed;right:6px;bottom:2px;font:10px monospace;color:#fff;opacity:.45;z-index:99999;pointer-events:none'; document.body.appendChild(bid); }   // which build is this? (Matin 2026-11-25: fixes were reported 'still wrong' and I could not tell if the new build was running)
     // --- ASSET CACHE (beta pages only): sw.js keeps the art / clips / sounds in the browser so every visit after the first downloads nothing. play.html and the stable index never register it. ---
     if ('serviceWorker' in navigator && /[?&]nosw=1/.test(location.search)) {   // safety switch: ?nosw=1 removes the cache worker and its files
