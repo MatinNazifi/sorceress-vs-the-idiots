@@ -11791,7 +11791,7 @@ telemetryInit();
     // Sprites: sprites/fx/pt-*.png (anim_test/cut_particles.py). Glow sheets are drawn additively, leaves normally. No allocation per frame (typed pools). ?weather=<type> still shows the old Weather module. ---
     const Ambient = (function () {
       const FX = {}, N_EMB = 28, N_SPO = 34, N_RAIN = 70, N_SPL = 24, N_MIST = 8, N_LEAF = 30, N_CLOUD = 4, RAIN_FROM = 99999, RAIN_TO = 99999;   /* the Flow-sheet rain is OFF: the level uses the base Weather rain (Matin) */
-      const eX = new Float32Array(N_EMB), eY = new Float32Array(N_EMB), eH = new Float32Array(N_EMB), eV = new Float32Array(N_EMB), eA = new Float32Array(N_EMB), eL = new Float32Array(N_EMB), eS = new Float32Array(N_EMB), eC = new Int16Array(N_EMB);
+      const eW = new Float32Array(N_EMB), eZ = new Float32Array(N_EMB), eX = new Float32Array(N_EMB), eY = new Float32Array(N_EMB), eH = new Float32Array(N_EMB), eV = new Float32Array(N_EMB), eA = new Float32Array(N_EMB), eL = new Float32Array(N_EMB), eS = new Float32Array(N_EMB), eC = new Int16Array(N_EMB);
       const sX = new Float32Array(N_SPO), sY = new Float32Array(N_SPO), sVx = new Float32Array(N_SPO), sVy = new Float32Array(N_SPO), sA = new Float32Array(N_SPO), sL = new Float32Array(N_SPO), sS = new Float32Array(N_SPO), sC = new Int16Array(N_SPO);
       const rX = new Float32Array(N_RAIN), rY = new Float32Array(N_RAIN), rV = new Float32Array(N_RAIN), rC = new Int16Array(N_RAIN);
       const pX = new Float32Array(N_SPL), pY = new Float32Array(N_SPL), pA = new Float32Array(N_SPL), pC = new Int16Array(N_SPL);
@@ -11822,8 +11822,8 @@ telemetryInit();
       let _wt = 0.75; const overArt = (x, y) => ArenaArt6.ready() && ArenaArt6.cellState(x, y, World.yaw, World.tilt) !== 0;   // painted floor OR a pit (pits are not floor in the grid but are still part of the island)
       function spawnE(i, pits) { // very small embers rising over one of the pits
         if (!pits.length) { eX[i] = 1e9; eA[i] = 0; eL[i] = 0.5; return; }
-        const p = pits[i % pits.length], a = R(0, 6.28), r = Math.sqrt(Math.random()) * p.r;
-        eX[i] = p.x + Math.cos(a) * r; eY[i] = p.y + Math.sin(a) * r * 0.7; eH[i] = R(0, 8); eV[i] = R(14, 26); eA[i] = 0; eL[i] = R(2.2, 4); eS[i] = R(0, 6.28); eC[i] = pickCell(FX.embers);
+        const p = pits[i % pits.length], a = R(0, 6.28), r = Math.sqrt(Math.random()) * p.r * 0.7, pw = p.r * 1.67;   // spawn only over the lava pool
+        eX[i] = p.x + Math.cos(a) * r; eY[i] = p.y + Math.sin(a) * r * 0.7; eH[i] = R(0, 8); eV[i] = pw * R(0.23, 0.53); eW[i] = pw * R(-0.14, 0.14); eZ[i] = pw * R(0.010, 0.022); eA[i] = -R(0, 1.4); eL[i] = R(1.4, 3.0);   // rise 0.23-0.53 pool widths/s, sideways +-0.14, size 1.0-2.2 % of the pool, random wait before each new ember (Omni clip: 4 visible per pool, up to 11) eS[i] = R(0, 6.28); eC[i] = pickCell(FX.embers);
       }
       function spawnS(i, c, inside) { // spores float in the swamp right AROUND the playable floor, never over it
         for (let t = 0; t < 8; t++) { toWorld(c, R(-60, c.W + 60), R(-40, c.H + 60), P); if (!inside(P.x, P.y) && !overArt(P.x, P.y) && nearFloor(P.x, P.y, inside)) { sX[i] = P.x; sY[i] = P.y; sVx[i] = R(-6, 6); sVy[i] = R(-6, 6); sA[i] = 0; sL[i] = R(6, 11); sS[i] = R(0, 6.28); sC[i] = pickCell(FX.spores); return; } }
@@ -11841,7 +11841,7 @@ telemetryInit();
         if (!ready(FX.embers) || !ready(FX.spores)) return;
         const pits = ArenaArt6.ready() ? ArenaArt6.pitSpots() : [];
         if (!sized) { sized = true; for (let i = 0; i < N_EMB * q; i++) { spawnE(i, pits); eA[i] = R(0, eL[i]); } for (let i = 0; i < N_SPO * q; i++) { spawnS(i, c, inside); sA[i] = R(0, sL[i]); } }
-        for (let i = 0; i < N_EMB * q; i++) { eA[i] += dt; eH[i] += eV[i] * dt; if (eA[i] > eL[i]) spawnE(i, pits); }
+        for (let i = 0; i < N_EMB * q; i++) { eA[i] += dt; if (eA[i] > 0) { eH[i] += eV[i] * dt; eX[i] += eW[i] * dt; } if (eA[i] > eL[i]) spawnE(i, pits); }
         for (let i = 0; i < N_SPO * q; i++) { sA[i] += dt; sX[i] += sVx[i] * dt; sY[i] += sVy[i] * dt; if (sA[i] > sL[i]) spawnS(i, c, inside); }
         for (let i = 0; i < N_CLOUD; i++) { kX[i] += kV[i] * dt; if (kX[i] > W + 200) { kX[i] = -kS[i]; kY[i] = R(-100, H - 100); } }
         const rf = rainFade(); ri = 1;   // rain all level (Matin): the intensity rises and falls on two slow rhythms (a drizzle, then a downpour) so it flows
@@ -11885,8 +11885,8 @@ telemetryInit();
           ctx.globalAlpha = 0.9 * f * pulse; cellDraw(ctx, FX.spores, sC[i], c.W / 2 + (dx * c.cos - dy * c.sin) * c.zoom, c.H / 2 + (dx * c.sin + dy * c.cos) * c.zoom * c.tilt - (12 + 8 * Math.sin(sA[i] * 0.9 + sS[i])) * c.zoom, (16 + (sS[i] % 3) * 9) * c.zoom);
         }
         for (let i = 0; i < N_EMB * q; i++) { // embers: tiny, rising over the pits
-          if (eX[i] > 1e8) continue; const f = Math.sin(Math.PI * Math.min(1, eA[i] / eL[i])), dx = eX[i] - c.x, dy = eY[i] - c.y;
-          ctx.globalAlpha = 0.95 * f; cellDraw(ctx, FX.embers, eC[i], c.W / 2 + (dx * c.cos - dy * c.sin) * c.zoom, c.H / 2 + (dx * c.sin + dy * c.cos) * c.zoom * c.tilt - eH[i] * c.zoom, (2.6 + (eS[i] % 3) * 0.7) * c.zoom);   // tiny, like the little sparks (Matin)
+          if (eX[i] > 1e8 || eA[i] < 0) continue; const f = Math.sin(Math.PI * Math.min(1, eA[i] / eL[i])), dx = eX[i] - c.x, dy = eY[i] - c.y;
+          ctx.globalAlpha = 0.95 * f; cellDraw(ctx, FX.embers, eC[i], c.W / 2 + (dx * c.cos - dy * c.sin) * c.zoom, c.H / 2 + (dx * c.sin + dy * c.cos) * c.zoom * c.tilt - eH[i] * c.zoom, Math.max(1.6, eZ[i] * c.zoom * 2.0));   // size = measured share of the pool width (the sprite cell has soft edges, so x2 for the visible core)
         }
         if (rf > 0 && rainOn && ready(FX.rain)) {
           ctx.globalAlpha = 0.6 * rf * (0.45 + 0.55 * ri); const nR = Math.ceil(N_RAIN * q * ri); for (let i = 0; i < nR; i++) cellDraw(ctx, FX.rain, rC[i], rX[i], rY[i], 6 + (rC[i] % 4) * 2, 0);
@@ -11902,7 +11902,7 @@ telemetryInit();
       }
       return { init, tick, drawNow, active: () => started, event: () => (ev ? ev.type : null), rain: () => rainOn, force: type => { if (type === 'rain') { force = 'rain'; } else { ev = null; startEvent(type); } }, clearForce: () => { force = null; } };
     })();
-    const BUILD_ID = '1127-1341';
+    const BUILD_ID = '1127-1401';
     if (/beta-b/.test(location.pathname)) { const bid = document.createElement('div'); bid.textContent = 'build ' + BUILD_ID; bid.style.cssText = 'position:fixed;right:6px;bottom:2px;font:10px monospace;color:#fff;opacity:.45;z-index:99999;pointer-events:none'; document.body.appendChild(bid); }   // which build is this? (Matin 2026-11-25: fixes were reported 'still wrong' and I could not tell if the new build was running)
     // --- ASSET CACHE (beta pages only): sw.js keeps the art / clips / sounds in the browser so every visit after the first downloads nothing. play.html and the stable index never register it. ---
     if ('serviceWorker' in navigator && /[?&]nosw=1/.test(location.search)) {   // safety switch: ?nosw=1 removes the cache worker and its files
