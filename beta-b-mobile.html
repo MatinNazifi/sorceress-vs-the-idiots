@@ -3584,7 +3584,7 @@ window.ArenaArt6 = (function () {
   }
   function load(baseUrl) {
     base = baseUrl.endsWith('/') ? baseUrl : baseUrl + '/';
-    return Promise.all([fetch(base + 'art6.json?v=2').then(function (r) { return r.json(); }), fetch('sprites/arena/v5/art5.json').then(function (r) { return r.json(); })])
+    return Promise.all([fetch(base + 'art6.json?v=3').then(function (r) { return r.json(); }), fetch('sprites/arena/v5/art5.json').then(function (r) { return r.json(); })])
       .then(function (a) {
         loadDoor(); if (typeof ArenaFx6 !== 'undefined') ArenaFx6.init(base); data = a[0]; data.layers.sort(function (p, q) { return p.z - q.z; }); fit = a[1].fit; reset(); // back to front by z: the crypt front wall (z 15) sits BEHIND the platform
         data.layers.forEach(function (l) { byKey[l.module + '|' + l.state] = l; });
@@ -3750,12 +3750,13 @@ window.ArenaArt6 = (function () {
   function viewAxAy(v) { var cosY = Math.cos(v.yaw), sinY = Math.sin(v.yaw); return [cosY * v.cx - sinY * v.cy, v.tilt * (sinY * v.cx + cosY * v.cy)]; }
   var GATE_X = [];   /* gate arches left OUT of the over-hero wall copy (open layer px: [[55,229],[405,575],[749,925]]): empty = she goes behind the arches too, as walking over an arch looked like climbing the wall */
   var USE_WALL_COPY = false;
+  var GATE_OVER_PX = (/[?&]gateover=(\d+)/.exec(location.search) || [0, 96])[1] * 1;   /* px south of the gate line where the doorway arch layer starts (stage 1) = the 3 gate rows deep (3 x CS 32); ?gateover=N to tune, 0 = off */
   var LEDGE_X = 1004, LEDGE_M = 0.526, LEDGE_C = 133.5, LEDGE_T = 66;   /* front wall: its bottom edge is the line y = M x + C (layer px) up to the corner at x = 1004; the ledge strip is the lowest T px of it */
   var cwItem = { wall: true, band: 'cw', x: 0, y: 0, ry: 2e8 };   /* phase 2: the wall layer as ONE item drawn after everything */
   function sortBands(v) {
     var out = [], a = viewAxAy(v), i, r, runs, b;
     if (!ok) return out;
-    cryptInside = v.ty !== undefined && v.hy < v.ty && v.st >= 2;   /* the hero is north of the crypt gates = inside */
+    cryptInside = v.ty !== undefined && ((v.hy < v.ty && v.st >= 2) || (v.st === 1 && GATE_OVER_PX > 0 && v.hy < v.ty + GATE_OVER_PX));   /* Matin 2026-11-28 TEST: with the gates open (stage 1) the open Layer 19 (crypt_over) is also drawn over her while she is in the doorway, so she walks UNDER the arch */   /* the hero is north of the crypt gates = inside */
     if (cryptInside) out.push(cwItem);
     for (i = 0; i < bandKeys.length; i++) {
       runs = bands[bandKeys[i]];
@@ -3784,7 +3785,7 @@ window.ArenaArt6 = (function () {
         }
         ctx.clip(); drawLayer(ctx, v, wl, 1, a[0], a[1]); ctx.restore();
       }
-      var ol = byKey['crypt_over|' + cur.crypt_over]; if (ol) { ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high'; drawLayer(ctx, v, ol, 1, a[0], a[1]); }   /* the front + right wall FACES and their rim from the floor layer (the wall separation Matin drew): the hero inside the crypt walks behind them, wherever his area touches them */
+      var ol = v.st === 1 ? byKey['crypt_arch_over|open'] : byKey['crypt_over|' + cur.crypt_over]; if (ol) {   /* stage 1 (gates open, she is in the doorway): ONLY the arch stones (Layer 19 open with the opening cut out, Matin approved 2026-11-28) so she walks UNDER the arch; from stage 2 the full Layer 19 as before */ ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high'; drawLayer(ctx, v, ol, 1, a[0], a[1]); }   /* the front + right wall FACES and their rim from the floor layer (the wall separation Matin drew): the hero inside the crypt walks behind them, wherever his area touches them */
       return;
     }
     if (!runs) return;
@@ -3807,7 +3808,7 @@ window.ArenaArt6 = (function () {
       if (!front && l.module === 'boss_door' && l.state === 'locked' && cur.boss_door === 'open' && door.meta) { drawDoor(ctx, v, l, ax, ay); continue; }
       if (l.above_player) continue;   // the front posts and ropes are drawn as depth bands (sortBands / drawBand), sorted against the hero, enemies and vases
       if (front) continue;
-      if (l.module === 'crypt_over') continue;   /* the front/right wall copy made from the crypt floor layer: drawn ONLY over the hero (drawBand 'cw') */
+      if (l.module === 'crypt_over' || l.module === 'crypt_arch_over') continue;   /* the front/right wall copy made from the crypt floor layer: drawn ONLY over the hero (drawBand 'cw') */
       var m = l.module; if (cur[m] !== l.state) continue; // only the module's current art; the previous art is drawn under it while a fade runs
       var p = 1, pl = null;
       if (prev[m] !== undefined && prev[m] !== null) { var q = (t - t0[m]) / dur[m]; if (q < 1) { p = q < 0 ? 0 : q; pl = byKey[m + '|' + prev[m]]; } }
@@ -12257,7 +12258,7 @@ telemetryInit();
       }
       return { init, tick, drawNow, active: () => started, event: () => (ev ? ev.type : null), rain: () => rainOn, force: type => { if (type === 'rain') { force = 'rain'; } else { ev = null; startEvent(type); } }, clearForce: () => { force = null; } };
     })();
-    const BUILD_ID = '1128-0105';
+    const BUILD_ID = '1128-0148';
     if (/beta-b/.test(location.pathname)) { const bid = document.createElement('div'); bid.textContent = 'build ' + BUILD_ID; bid.style.cssText = 'position:fixed;right:6px;bottom:2px;font:10px monospace;color:#fff;opacity:.45;z-index:99999;pointer-events:none'; document.body.appendChild(bid); }   // which build is this? (Matin 2026-11-25: fixes were reported 'still wrong' and I could not tell if the new build was running)
     // --- ASSET CACHE (beta pages only): sw.js keeps the art / clips / sounds in the browser so every visit after the first downloads nothing. play.html and the stable index never register it. ---
     if ('serviceWorker' in navigator && /[?&]nosw=1/.test(location.search)) {   // safety switch: ?nosw=1 removes the cache worker and its files
