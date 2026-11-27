@@ -3502,7 +3502,7 @@ window.ArenaArt6 = (function () {
     base = baseUrl.endsWith('/') ? baseUrl : baseUrl + '/';
     return Promise.all([fetch(base + 'art6.json?v=2').then(function (r) { return r.json(); }), fetch('sprites/arena/v5/art5.json').then(function (r) { return r.json(); })])
       .then(function (a) {
-        loadDoor(); data = a[0]; data.layers.sort(function (p, q) { return p.z - q.z; }); fit = a[1].fit; reset(); // back to front by z: the crypt front wall (z 15) sits BEHIND the platform
+        loadDoor(); if (typeof ArenaFx6 !== 'undefined') ArenaFx6.init(base); data = a[0]; data.layers.sort(function (p, q) { return p.z - q.z; }); fit = a[1].fit; reset(); // back to front by z: the crypt front wall (z 15) sits BEHIND the platform
         data.layers.forEach(function (l) { byKey[l.module + '|' + l.state] = l; });
         // ready only when the healthy-state layers are decoded: until then the grey-box floor stays (a black map while 17 MB loaded was the bug); the other states load in the background
         var core = data.layers.filter(function (l) { return HEALTHY[l.module] === l.state; });
@@ -3716,6 +3716,8 @@ window.ArenaArt6 = (function () {
     frameId++; var fn = performance.now(); if (lastFt) { var fd = Math.min(fn - lastFt, 100); ftEma += (fd - ftEma) * 0.05; slowMs = (ultraOn && ultra && ftEma > 22 && nowS() - ultraT0 > 25) ? slowMs + fd : 0; if (slowMs > 2000) { ultraOn = false; tiles = {}; tileQ = []; } } lastFt = fn;   /* self-protection: 3 s below ~33 fps on the 4x art = fall back to the 2x art for the rest of the run */
     var cosY = Math.cos(v.yaw), sinY = Math.sin(v.yaw), ax = cosY * v.cx - sinY * v.cy, ay = v.tilt * (sinY * v.cx + cosY * v.cy), L = data.layers, t = nowS();
     ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
+    fxV = v; fxAx = ax; fxAy = ay; fxOn = !front && typeof ArenaFx6 !== 'undefined' && ArenaFx6.ready();
+    if (fxOn) { fxSlow = ftEma > 24 ? fxSlow + 1 : 0; if (fxSlow > 180) ArenaFx6.setTier(1); }   // frame time stays high for ~3 s: water off, lava stays
     for (var i = 0; i < L.length; i++) {
       var l = L[i];
       if (!front && l.module === 'boss_door' && l.state === 'locked' && cur.boss_door === 'open' && door.meta) { drawDoor(ctx, v, l, ax, ay); continue; }
@@ -3727,7 +3729,15 @@ window.ArenaArt6 = (function () {
       if (prev[m] !== undefined && prev[m] !== null) { var q = (t - t0[m]) / dur[m]; if (q < 1) { p = q < 0 ? 0 : q; pl = byKey[m + '|' + prev[m]]; } }
       if (pl) drawLayer(ctx, v, pl, 1, ax, ay);   // the old art stays fully opaque, the new art fades in on top: no see-through gap
       drawLayer(ctx, v, l, p, ax, ay, !!pl);
+      if (fxOn) ArenaFx6.afterLayer(ctx, v, l, p, fxPlace);   // moving water + pulsing lava (05e), drawn right on top of the layer it belongs to
     }
+  }
+  /* ArenaFx6 hook (2026-11-27): converts a level-canvas rectangle to screen px with the SAME formula as drawLayer; the frame's view is stored by drawPass */
+  var fxV = null, fxAx = 0, fxAy = 0, fxOn = false, fxR = { X: 0, Y: 0, sw: 0, sh: 0 }, fxSlow = 0;
+  function fxPlace(x, y, w, h) {
+    var k = data.k, X = fxV.W * 0.5 + fxV.z * (((x / k) - fit.tx) / fit.s - fxAx), Y = fxV.H * 0.5 + fxV.z * (((y / k) - fit.ty) / fit.s - fxAy), sw = fxV.z * (w / k) / fit.s, sh = fxV.z * (h / k) / fit.s;
+    if (X + sw < 0 || X > fxV.W || Y + sh < 0 || Y > fxV.H) return null;
+    fxR.X = X; fxR.Y = Y; fxR.sw = sw; fxR.sh = sh; return fxR;
   }
   // LOADING PROGRESS 0..1 for the start bar (Matin 2026-11-26): the 4x map tiles are what makes the first seconds dip, so the run waits until they are in
   function loading() {
@@ -3739,6 +3749,262 @@ window.ArenaArt6 = (function () {
   return { load: load, loading: loading, ready: function () { return ok; }, reset: reset, warn: warn, land: land, dropAll: dropAll, openCrypt: openCrypt, closeCrypt: closeCrypt, hideBossDoor: hideBossDoor, openBossDoor: openBossDoor, cellState: cellState, cryptFloorFromArt: function () { return CRYPT_FLOOR_FROM_ART; }, cryptReady: function () { return !!(walk && walk.cr); },
     draw: function (ctx, v) { drawPass(ctx, v, false); }, sortBands: sortBands, drawBand: drawBand, pitSpots: pitSpots, stats: function () { return { tiles: Object.keys(tiles).length, queue: tileQ.length, ultra: ultraOn }; }, debugPosts: debugPosts, selfcheck: function () { var bad = []; for (var k in feet) { var e = feet[k]; if (e.w !== e.l.w || e.h !== e.l.h) bad.push(k + ' ' + e.w + 'x' + e.h + ' != ' + e.l.w + 'x' + e.l.h); } return { pieces: Object.keys(feet).length, bad: bad }; }, state: function () { return Object.assign({}, want); } };
 })();
+const ArenaFx6 = (function () {
+  const PAT_SIZE = 256;
+  const WATER_W = 688;
+  const WATER_H = 384;
+  const WATER_STEP_MS = 66;
+  const WATER_A = 0.55;   // strength of the water shimmer (0.22 in the first build was barely visible)
+  const RING_X = [110, 205, 315, 420, 515, 595, 250, 470];
+  const RING_Y = [95, 240, 145, 285, 115, 235, 310, 195];
+  const RING_P = [0.0, 0.13, 0.27, 0.41, 0.56, 0.69, 0.82, 0.94];
+
+  let tier = resolveDefaultTier();
+  let inited = false;
+  let isReady = false;
+  let pending = 0;
+
+  let waterMask = null;
+  let lavaMasks = [];
+
+  let patCanvas = null;
+  let wc = null;
+  let wctx = null;
+  let lastWaterMs = -1000;
+
+  function resolveDefaultTier() {
+    if (typeof urlParams !== 'undefined' && urlParams && typeof urlParams.get === 'function') {
+      const ov = urlParams.get('fx');
+      if (ov === '0' || ov === '1' || ov === '2') return Number(ov);
+    }
+    return (typeof GFX_HD !== 'undefined' && GFX_HD) ? 2 : 1;
+  }
+
+  function makeCanvas(w, h) {
+    if (typeof document === 'undefined') return null;
+    const c = document.createElement('canvas');
+    c.width = w;
+    c.height = h;
+    return c;
+  }
+
+  function buildPattern() {
+    patCanvas = makeCanvas(PAT_SIZE, PAT_SIZE);
+    if (!patCanvas) return;
+    const g = patCanvas.getContext('2d');
+    if (!g) return;
+
+    // Wrapped diagonal streaks so the 256x256 tile repeats without seams
+    g.strokeStyle = 'rgba(210, 245, 255, 0.28)';
+    g.lineCap = 'round';
+    const streaks = [
+      [18, 22, 68, 4], [120, 14, 84, 5], [210, 60, 72, 3],
+      [40, 110, 92, 6], [155, 128, 76, 4], [8, 195, 88, 5],
+      [112, 210, 64, 3], [198, 185, 80, 4]
+    ];
+    for (let i = 0; i < streaks.length; i++) {
+      const s = streaks[i];
+      const dx = s[2];
+      const dy = s[2] * 0.55;
+      g.lineWidth = s[3];
+      for (let ox = -PAT_SIZE; ox <= PAT_SIZE; ox += PAT_SIZE) {
+        for (let oy = -PAT_SIZE; oy <= PAT_SIZE; oy += PAT_SIZE) {
+          g.beginPath();
+          g.moveTo(s[0] + ox, s[1] + oy);
+          g.lineTo(s[0] + ox + dx, s[1] + oy + dy);
+          g.stroke();
+        }
+      }
+    }
+  }
+
+  function tilePass(scale, speed, alpha, t) {
+    const size = PAT_SIZE * scale;
+    let ox = (t * speed) % size;
+    let oy = (t * speed * 0.55) % size;
+    if (ox > 0) ox -= size;
+    if (oy > 0) oy -= size;
+    wctx.globalAlpha = alpha;
+    for (let y = oy; y < wc.height; y += size) {
+      for (let x = ox; x < wc.width; x += size) {
+        wctx.drawImage(patCanvas, x, y, size, size);
+      }
+    }
+  }
+
+  function updateWater(nowMs) {
+    if (!wc || !wctx || !patCanvas || !waterMask || !waterMask.ok) return;
+    if (nowMs - lastWaterMs < WATER_STEP_MS) return;
+    lastWaterMs = nowMs;
+
+    const t = nowMs / 1000;
+    const ww = wc.width;
+    const wh = wc.height;
+
+    wctx.globalCompositeOperation = 'source-over';
+    wctx.globalAlpha = 1;
+    wctx.clearRect(0, 0, ww, wh);
+
+    tilePass(1.0, 8, 0.5, t);
+    tilePass(1.7, -5, 0.35, t);
+
+    // Expanding rings animated on the 15 fps tick to avoid per-frame cost
+    wctx.strokeStyle = 'rgb(220, 250, 255)';
+    wctx.lineWidth = 1.5;
+    for (let i = 0; i < RING_X.length; i++) {
+      const u = (t * 0.28 + RING_P[i]) % 1;
+      const rad = 4 + u * 26;
+      const a = Math.sin(u * 3.14159) * 0.35;
+      if (a > 0.01) {
+        wctx.globalAlpha = a;
+        wctx.beginPath();
+        wctx.arc(RING_X[i], RING_Y[i], rad, 0, 6.28318);
+        wctx.stroke();
+      }
+    }
+
+    // Clip animated shimmer to the water alpha mask
+    wctx.globalCompositeOperation = 'destination-in';
+    wctx.globalAlpha = 1;
+    wctx.drawImage(waterMask.img, 0, 0, ww, wh);
+  }
+
+  function onAssetSettled() {
+    pending -= 1;
+    if (pending <= 0) isReady = true;
+  }
+
+  function loadMask(base, m, lavaIdx) {
+    const entry = {
+      module: m.module,
+      state: m.state,
+      x: m.x,
+      y: m.y,
+      w: m.w,
+      h: m.h,
+      img: null,
+      ok: false,
+      phase: lavaIdx * 1.7
+    };
+    if (m.kind === 'water' && m.module === 'environment' && m.state === 'healthy') {
+      waterMask = entry;
+    } else if (m.kind === 'lava') {
+      lavaMasks.push(entry);
+    } else {
+      return;
+    }
+
+    pending += 1;
+    const img = new Image();
+    entry.img = img;
+    img.onload = function () {
+      entry.ok = true;
+      if (entry === waterMask && wc && img.naturalWidth > 0 && img.naturalHeight > 0) {
+        wc.width = img.naturalWidth;
+        wc.height = img.naturalHeight;
+      }
+      onAssetSettled();
+    };
+    img.onerror = function () {
+      entry.ok = false;
+      onAssetSettled();
+    };
+    img.src = base + m.file + '?v=1';
+  }
+
+  function init(base) {
+    if (inited || typeof fetch === 'undefined') return;
+    base = base || '';
+    inited = true;
+    buildPattern();
+    wc = makeCanvas(WATER_W, WATER_H);
+    wctx = wc ? wc.getContext('2d') : null;
+
+    fetch(base + 'fx6/fx_masks.json?v=1')
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (data) {
+        if (!data || !Array.isArray(data.masks)) {
+          isReady = true;
+          return;
+        }
+        let lavaIdx = 0;
+        for (let i = 0; i < data.masks.length; i++) {
+          const m = data.masks[i];
+          if (!m || !m.file) continue;
+          loadMask(base, m, m.kind === 'lava' ? lavaIdx++ : 0);
+        }
+        if (pending === 0) isReady = true;
+      })
+      .catch(function () {
+        isReady = true;
+      });
+  }
+
+  function ready() {
+    return isReady;
+  }
+
+  function setTier(n) {
+    if (n === 0 || n === 1 || n === 2) tier = n;
+  }
+
+  function afterLayer(ctx, v, l, alpha, place) {
+    if (!ctx || !v || !l || typeof place !== 'function' || tier === 0 || alpha <= 0) return;
+
+    const nowMs = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+    const prevComp = ctx.globalCompositeOperation;
+    const prevAlpha = ctx.globalAlpha;
+    const prevSmooth = ctx.imageSmoothingEnabled;
+
+    if (tier === 2 && l.module === 'environment' && l.state === 'healthy' && waterMask && waterMask.ok && wc) {
+      updateWater(nowMs);
+      const p = place(waterMask.x, waterMask.y, waterMask.w, waterMask.h);
+      if (p) {
+        const X = p.X;
+        const Y = p.Y;
+        const sw = p.sw;
+        const sh = p.sh;
+        ctx.globalCompositeOperation = 'screen';
+        ctx.globalAlpha = WATER_A * alpha;
+        ctx.imageSmoothingEnabled = true;
+        ctx.drawImage(wc, X, Y, sw, sh);
+        ctx.imageSmoothingEnabled = prevSmooth;
+      }
+    }
+
+    if (tier >= 1 && lavaMasks.length > 0) {
+      const t = nowMs / 1000;
+      let drewLava = false;
+      for (let i = 0; i < lavaMasks.length; i++) {
+        const m = lavaMasks[i];
+        if (!m.ok || m.module !== l.module || m.state !== l.state) continue;
+        if (!m.img || !m.img.complete || m.img.naturalWidth === 0) continue;
+        const p = place(m.x, m.y, m.w, m.h);
+        if (!p) continue;
+        const X = p.X;
+        const Y = p.Y;
+        const sw = p.sw;
+        const sh = p.sh;
+        let a = 0.30 + 0.28 * Math.sin(t * 3.14159 + m.phase) + 0.08 * Math.sin(t * 7.3 + m.phase * 2.1);
+        if (a < 0.05) a = 0.05;
+        else if (a > 0.7) a = 0.7;
+        a *= alpha;
+        if (!drewLava) {
+          ctx.globalCompositeOperation = 'lighter';
+          drewLava = true;
+        }
+        ctx.globalAlpha = a;
+        ctx.drawImage(m.img, X, Y, sw, sh);
+      }
+    }
+
+    ctx.globalCompositeOperation = prevComp;
+    ctx.globalAlpha = prevAlpha;
+  }
+
+  return { init: init, ready: ready, setTier: setTier, afterLayer: afterLayer };
+})();
+window.__fx6 = ArenaFx6;   // QA hook (like __view): ready(), setTier(n)
     // --- SPRITE ASSET MANAGER ---
     const SPRITES = {};
     const SPRITE_URLS = {
@@ -11603,7 +11869,7 @@ telemetryInit();
       }
       return { init, tick, drawNow, active: () => started, event: () => (ev ? ev.type : null), rain: () => rainOn, force: type => { if (type === 'rain') { force = 'rain'; } else { ev = null; startEvent(type); } }, clearForce: () => { force = null; } };
     })();
-    const BUILD_ID = '1127-1239';
+    const BUILD_ID = '1127-1248';
     if (/beta-b/.test(location.pathname)) { const bid = document.createElement('div'); bid.textContent = 'build ' + BUILD_ID; bid.style.cssText = 'position:fixed;right:6px;bottom:2px;font:10px monospace;color:#fff;opacity:.45;z-index:99999;pointer-events:none'; document.body.appendChild(bid); }   // which build is this? (Matin 2026-11-25: fixes were reported 'still wrong' and I could not tell if the new build was running)
     // --- ASSET CACHE (beta pages only): sw.js keeps the art / clips / sounds in the browser so every visit after the first downloads nothing. play.html and the stable index never register it. ---
     if ('serviceWorker' in navigator && /[?&]nosw=1/.test(location.search)) {   // safety switch: ?nosw=1 removes the cache worker and its files

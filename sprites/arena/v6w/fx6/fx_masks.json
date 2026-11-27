@@ -1,0 +1,135 @@
+{
+ "k": 1.376,
+ "masks": [
+  {
+   "kind": "water",
+   "module": "environment",
+   "state": "healthy",
+   "file": "fx6/water_mask.png",
+   "x": 0,
+   "y": 0,
+   "w": 2752,
+   "h": 1536
+  },
+  {
+   "kind": "lava",
+   "module": "left",
+   "state": "damaged",
+   "file": "fx6/lava_left__damaged.png",
+   "x": 851,
+   "y": 643,
+   "w": 119,
+   "h": 125
+  },
+  {
+   "kind": "lava",
+   "module": "left",
+   "state": "collapsed",
+   "file": "fx6/lava_left__collapsed.png",
+   "x": 735,
+   "y": 505,
+   "w": 331,
+   "h": 408
+  },
+  {
+   "kind": "lava",
+   "module": "main",
+   "state": "healthy",
+   "file": "fx6/lava_main__healthy.png",
+   "x": 1031,
+   "y": 750,
+   "w": 347,
+   "h": 286
+  },
+  {
+   "kind": "lava",
+   "module": "main",
+   "state": "damaged",
+   "file": "fx6/lava_main__damaged.png",
+   "x": 849,
+   "y": 638,
+   "w": 684,
+   "h": 509
+  },
+  {
+   "kind": "lava",
+   "module": "main",
+   "state": "collapsed",
+   "file": "fx6/lava_main__collapsed.png",
+   "x": 873,
+   "y": 638,
+   "w": 702,
+   "h": 598
+  },
+  {
+   "kind": "lava",
+   "module": "right",
+   "state": "healthy",
+   "file": "fx6/lava_right__healthy.png",
+   "x": 1450,
+   "y": 962,
+   "w": 200,
+   "h": 261
+  },
+  {
+   "kind": "lava",
+   "module": "right",
+   "state": "damaged",
+   "file": "fx6/lava_right__damaged.png",
+   "x": 1564,
+   "y": 978,
+   "w": 44,
+   "h": 30
+  },
+  {
+   "kind": "lava",
+   "module": "front",
+   "state": "damaged",
+   "file": "fx6/lava_front__damaged.png",
+   "x": 822,
+   "y": 1108,
+   "w": 257,
+   "h": 176
+  },
+  {
+   "kind": "lava",
+   "module": "front",
+   "state": "collapsed",
+   "file": "fx6/lava_front__collapsed.png",
+   "x": 816,
+   "y": 1100,
+   "w": 225,
+   "h": 225
+  },
+  {
+   "kind": "lava",
+   "module": "front",
+   "state": "collapsed_all",
+   "file": "fx6/lava_front__collapsed_all.png",
+   "x": 827,
+   "y": 1061,
+   "w": 244,
+   "h": 253
+  },
+  {
+   "kind": "lava",
+   "module": "pit_1",
+   "state": "healthy",
+   "file": "fx6/lava_pit_1__healthy.png",
+   "x": 1206,
+   "y": 1031,
+   "w": 60,
+   "h": 45
+  },
+  {
+   "kind": "lava",
+   "module": "pit_3",
+   "state": "healthy",
+   "file": "fx6/lava_pit_3__healthy.png",
+   "x": 1141,
+   "y": 737,
+   "w": 56,
+   "h": 41
+  }
+ ]
+}
