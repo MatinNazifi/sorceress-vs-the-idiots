@@ -1348,6 +1348,9 @@ window.addEventListener('load', function () { setTimeout(function () { var s = d
     eliteChest(e) { return this._def && this._def.eliteChest ? this._def.eliteChest(e) : true; },
     warnClip() { return this._def && this._def.warnClip ? this._def.warnClip() : null; },   // the area of the active collapse warnings as a clip path (ambient particles stay out of it)
       arenaInfo() { return this._def && this._def.arenaInfo ? this._def.arenaInfo() : null; },
+    cineActive() { return !!(this._def && this._def.cineActive && this._def.cineActive()); },   // minute-13 cutscene (Matin 2026-11-27): input is ignored while it plays
+    cineMove() { return this._def && this._def.cineMove ? this._def.cineMove() : null; },
+    cineCam(cam) { return this._def && this._def.cineCam ? this._def.cineCam(cam) : null; },
     hud(c, w, h) { if (this._def && this._def.hud) this._def.hud(c, w, h); },
     pressure() { return this._def && this._def.pressure ? this._def.pressure() : 1; }, // enemy spawn multiplier (arena: grows as the map shrinks)
     miniBossSpawn() { return this._def && this._def.miniBossSpawn ? this._def.miniBossSpawn() : this.bossSpawn(); },
@@ -2218,6 +2221,58 @@ window.addEventListener('load', function () { setTimeout(function () { var s = d
       arenaRebuild(arenaVaultCells); if (art5Ready()) { ArenaArt5.setHidden('gatehouse', true); if (ART_6) ArenaArt6.openBossDoor(); }
       for (let k = 0; k < 4; k++) { const i = arenaVaultCells[Math.floor(arenaVaultCells.length * (k + 0.5) / 4)]; playVFX('explosion', (i % GW) * CS + CS / 2, ((i / GW) | 0) * CS + CS / 2, { scale: 2.8, fps: 16 }); }
       addShake(28); screenFlash = 0.3; hero.iFrames = Math.max(hero.iFrames, 3.5);
+      arenaCineStart();
+    }
+    /* MINUTE-13 CUTSCENE (Matin 2026-11-27): everything stops (no enemies), the player cannot move, the inner gate opens, the hero WALKS IN BY HERSELF along the real floor,
+       the camera pulls back to show the destroyed map, then the fade to the boss area. Phases: gate (the door opens, camera on it) -> walk -> pull (zoom out) -> fade. */
+    let arenaCine = null;
+    const CINE_GATE = 4.0, CINE_PULL = 3.2, CINE_HOLD = 2.0;
+    function arenaCinePath(tx, ty) {
+      const s = cellAt(hero.x, hero.y), g = cellAt(tx, ty); if (!(grid[s] === 1 || grid[s] === 0) || grid[g] !== 1) return null;
+      const prev = new Int32Array(GW * GH).fill(-1), q = [s]; prev[s] = s;
+      for (let h = 0; h < q.length && prev[g] < 0; h++) {
+        const c = q[h], cx = c % GW, cy = (c / GW) | 0;
+        for (let d = 0; d < 4; d++) { const nx = cx + (d === 0) - (d === 1), ny = cy + (d === 2) - (d === 3); if (nx < 0 || ny < 0 || nx >= GW || ny >= GH) continue; const n = ny * GW + nx; if (prev[n] >= 0 || grid[n] !== 1) continue; prev[n] = c; q.push(n); }
+      }
+      if (prev[g] < 0) return null;
+      const cells = []; for (let c = g; c !== s; c = prev[c]) cells.push(c); cells.reverse();
+      return cells.map(c => ({ x: (c % GW + 0.5) * CS, y: (((c / GW) | 0) + 0.5) * CS }));   // cell centres: she walks the middle of the floor, never along a wall
+    }
+    function arenaCineStart() {
+      enemies.length = 0; arenaTraps = []; arenaBlasts = [];   // nothing is left on the scene but her
+      hero.isDashing = false; hero.vx = hero.vy = 0; hero.iFrames = Math.max(hero.iFrames, 60);
+      const tx = (arenaVaultBox.x0 + arenaVaultBox.x1) / 2, ty = arenaVaultY - 2.6 * CS;   // just inside the inner gate
+      let x0 = 1e9, x1 = -1, y0 = 1e9, y1 = -1; for (let i = 0; i < GW * GH; i++) if (zone[i] > 0 || grid[i] === 1) { const x = i % GW, y = (i / GW) | 0; if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+      arenaCine = { t0: gameTime, path: arenaCinePath(tx, ty), pi: 0, phase: 'gate', tWalkEnd: 0, z0: 0, tx, ty, map: { x: (x0 + x1 + 1) / 2 * CS, y: (y0 + y1 + 1) / 2 * CS, r: Math.hypot((x1 - x0 + 1) * CS, (y1 - y0 + 1) * CS) / 2 } };
+      arenaCutTitle = 'THE INNER GATE'; arenaCutLen = 60; arenaCutEnd = gameTime + 60;
+    }
+    function arenaCineTick() {
+      const c = arenaCine; if (!c) return; hero.iFrames = Math.max(hero.iFrames, 5); hero.isDashing = false;
+      const t = gameTime - c.t0;
+      if (c.phase === 'gate' && t >= CINE_GATE) c.phase = 'walk';
+      if (c.phase === 'walk') {
+        const p = c.path;
+        if (!p || c.pi >= p.length) { c.phase = 'pull'; c.tWalkEnd = gameTime; c.z0 = (typeof CAMERA !== 'undefined' && CAMERA.zoom) || 0.9; }
+        else if (Math.hypot(p[c.pi].x - hero.x, p[c.pi].y - hero.y) < 9) c.pi++;
+      }
+      if (c.phase === 'pull' && gameTime - c.tWalkEnd >= CINE_PULL + CINE_HOLD) { c.phase = 'fade'; arenaCutEnd = gameTime; arenaEnterFinal(); }
+    }
+    const cineActive = () => !!arenaCine;
+    function cineMove() {
+      const c = arenaCine; if (!c) return null;
+      if (c.phase !== 'walk' || !c.path || c.pi >= c.path.length) return 'hold';
+      const p = c.path[c.pi], dx = p.x - hero.x, dy = p.y - hero.y, d = Math.hypot(dx, dy) || 1;
+      return { x: dx / d * 0.62, y: dy / d * 0.62 };   // a calm walk (62 % of her speed), in WORLD axes
+    }
+    function cineCam(cam) {
+      const c = arenaCine; if (!c) return null;
+      if (c.phase === 'gate') return { x: c.tx, y: arenaVaultY, zoom: 0 };   // the camera looks at the door while it opens
+      if (c.phase === 'pull' || c.phase === 'fade') {
+        const k = Math.min(1, (gameTime - c.tWalkEnd) / CINE_PULL), e = k * k * (3 - 2 * k), T = World.tilt || 0.75;
+        const zFit = 0.92 * Math.min(screenW, screenH / T) / (2 * c.map.r);   // the whole destroyed map in view
+        return { x: hero.x + (c.map.x - hero.x) * e, y: hero.y + (c.map.y - hero.y) * e, zoom: c.z0 + (zFit - c.z0) * e };
+      }
+      return null;
     }
     function arenaEnterFinal() { // the hero crossed the inner gate: fade to black, then the Collector's hall (swapToBoss)
       arenaStage = 4; hero.iFrames = Math.max(hero.iFrames, 3);
@@ -2372,7 +2427,8 @@ window.addEventListener('load', function () { setTimeout(function () { var s = d
         }
       }
       if (arenaStage === 2) arenaCrypt();
-      if (arenaStage === 3 && hero.x > arenaVaultBox.x0 && hero.x < arenaVaultBox.x1 && hero.y < arenaVaultY - 2 * CS) arenaEnterFinal();
+      arenaCineTick();
+      if (arenaStage === 3 && !arenaCine && hero.x > arenaVaultBox.x0 && hero.x < arenaVaultBox.x1 && hero.y < arenaVaultY - 2 * CS) arenaEnterFinal();   // (without the cutscene, e.g. no path: the old rule)
       for (let i = arenaTraps.length - 1; i >= 0; i--) { // red traps: warning ring, then a blast
         const tr = arenaTraps[i];
         if (gameTime < tr.t) continue;
@@ -2589,7 +2645,7 @@ window.addEventListener('load', function () { setTimeout(function () { var s = d
         title += '  ' + secs + ' s';
       } else if (arenaStage === 1) { title = 'GET INSIDE  ' + Math.max(0, Math.ceil(DROP_AT - gameTime)) + ' s'; sub = 'The lower realm falls when the timer ends'; col = '#ff9a3c';
       } else if (arenaStage === 2) { const s = Math.max(0, Math.ceil(VAULT_AT - gameTime)); title = 'SURVIVE THE CRYPT  ' + Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); sub = 'The inner gate is sealed'; col = '#ff9a3c'; }
-      else if (arenaStage === 3) { title = 'ENTER THE FINAL ROOM'; sub = 'Go north'; col = '#d8b4fe'; }
+      else if (arenaStage === 3 && !arenaCine) { title = 'ENTER THE FINAL ROOM'; sub = 'Go north'; col = '#d8b4fe'; }   // (not during the cutscene: she walks in by herself)
       c.save(); c.textAlign = 'center'; c.lineJoin = 'round'; c.lineWidth = 6; c.strokeStyle = '#1a1a1a';
       if (title) {
         c.font = '900 24px Trebuchet MS'; c.fillStyle = col;
@@ -2800,7 +2856,8 @@ window.addEventListener('load', function () { setTimeout(function () { var s = d
         return OUT;
       },
 
-      noSpawn(x, y) { return arena === true && ((arenaStage < 2 && topPx > 0 && y < topPx) || (arenaStage < 3 && inVault(x, y))); },   // + never on the sealed door platform / final room (the snap fallback of the spawn ring put ~100 enemies on it when the hero stood on a blocked cell)   // the crypt takes no spawns until the crypt fight (Matin 2026-11-26): the spawn director checks this for EVERY spawn path
+      cineActive, cineMove, cineCam,
+      noSpawn(x, y) { return arena === true && ((arenaStage < 2 && topPx > 0 && y < topPx) || (arenaStage < 3 && inVault(x, y)) || arenaStage >= 3); },   // from the inner gate on (minute 13) nothing spawns at all   // + never on the sealed door platform / final room (the snap fallback of the spawn ring put ~100 enemies on it when the hero stood on a blocked cell)   // the crypt takes no spawns until the crypt fight (Matin 2026-11-26): the spawn director checks this for EVERY spawn path
 
       steer(ex, ey, hx, hy) {
         const hcx = (hx / CS) | 0, hcy = (hy / CS) | 0, hc = hcy * GW + hcx;
@@ -4637,6 +4694,7 @@ window.ArenaArt6 = (function () {
     dashBtn.addEventListener('touchstart', onDashTap, { passive: false });
 
     function triggerDash(fx, fy) {
+      if (World.cineActive && World.cineActive()) return;   // no dash during the minute-13 cutscene
       if (hero.dashCharges > 0 && !hero.isDashing) {
         hero.dashCharges--;
         hero.isDashing = true; playClipSfx('hero_dash', 0.8, 0.25);
@@ -5724,6 +5782,8 @@ if (metaFx.regen > 0 && hero.hp > 0) hero.hp = Math.min(hero.maxHp, hero.hp + me
         }
         if (World.yaw) { const c = World.cosY, s = World.sinY, mx = moveX; moveX = mx * c + moveY * s; moveY = -mx * s + moveY * c; } // screen direction -> world (turned camera)
 
+        const cm = World.cineMove ? World.cineMove() : null;   // minute-13 cutscene: the player's input is ignored, she walks by herself
+        if (cm === 'hold') { moveX = 0; moveY = 0; } else if (cm) { moveX = cm.x; moveY = cm.y; }
         const len = Math.hypot(moveX, moveY);
         if (len > 0.05) {
           hero.vx = (moveX / (len > 1 ? len : 1)) * hero.speed;
@@ -8458,12 +8518,14 @@ if (metaFx.regen > 0 && hero.hp > 0) hero.hp = Math.min(hero.maxHp, hero.hp + me
       if (Math.abs(CAMERA.kickX) < 0.1) CAMERA.kickX = 0;
       if (Math.abs(CAMERA.kickY) < 0.1) CAMERA.kickY = 0;
 
-      CAMERA.x += (hero.x - CAMERA.x) * 0.1;
-      CAMERA.y += (hero.y - CAMERA.y) * 0.1;
+      const cine = World.cineCam ? World.cineCam() : null;   // minute-13 cutscene: the camera looks at the door, then pulls back over the destroyed map
+      CAMERA.x += ((cine ? cine.x : hero.x) - CAMERA.x) * (cine ? 0.06 : 0.1);
+      CAMERA.y += ((cine ? cine.y : hero.y) - CAMERA.y) * (cine ? 0.06 : 0.1);
 
       // zoom in just enough that the view always fits inside the map (no bars on any aspect), then clamp
       const T = World.tilt; // ground squash; characters are counter-scaled upright below
       CAMERA.zoom = Math.max(World.zoomL ? (screenW > screenH ? World.zoomL : World.zoomP) : CAM_ZOOM, World.yaw ? 0 : screenW / (World.w - 2 * CAM_EDGE), World.yaw ? 0 : screenH / ((World.h - 2 * CAM_EDGE) * T)); // a turned view may show dark void past the map edge, so no fit rule
+      if (cine && cine.zoom) CAMERA.zoom = cine.zoom;
       const Y = World.yaw, vA = (screenW / 2) / CAMERA.zoom, vB = (screenH / 2) / (CAMERA.zoom * T);
       const halfViewW = Y ? Math.abs(World.cosY) * vA + Math.abs(World.sinY) * vB : vA; // turned camera: bounding box of the rotated view
       const halfViewH = Y ? Math.abs(World.sinY) * vA + Math.abs(World.cosY) * vB : vB;
@@ -11885,7 +11947,7 @@ telemetryInit();
       }
       return { init, tick, drawNow, active: () => started, event: () => (ev ? ev.type : null), rain: () => rainOn, force: type => { if (type === 'rain') { force = 'rain'; } else { ev = null; startEvent(type); } }, clearForce: () => { force = null; } };
     })();
-    const BUILD_ID = '1127-1205';
+    const BUILD_ID = '1127-1229';
     if (/beta-b/.test(location.pathname)) { const bid = document.createElement('div'); bid.textContent = 'build ' + BUILD_ID; bid.style.cssText = 'position:fixed;right:6px;bottom:2px;font:10px monospace;color:#fff;opacity:.45;z-index:99999;pointer-events:none'; document.body.appendChild(bid); }   // which build is this? (Matin 2026-11-25: fixes were reported 'still wrong' and I could not tell if the new build was running)
     // --- ASSET CACHE (beta pages only): sw.js keeps the art / clips / sounds in the browser so every visit after the first downloads nothing. play.html and the stable index never register it. ---
     if ('serviceWorker' in navigator && /[?&]nosw=1/.test(location.search)) {   // safety switch: ?nosw=1 removes the cache worker and its files
