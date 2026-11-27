@@ -1603,6 +1603,8 @@ window.addEventListener('load', function () { setTimeout(function () { var s = d
     let arenaStage = 0; // 0 lower map, 1 gates open (run north), 2 crypt fight, 3 inner gate open, 4 final room sealed with the boss
     let arenaVaultCells = [], arenaVaultY = 0, arenaVaultBox = { x0: 0, x1: 0 }, arenaVaultC = { x: 0, y: 0 }, arenaEntry = { x: 0, y: 0 };
     let arenaBlasts = [], arenaTraps = [], arenaNextTrap = 0, arenaNextElite = 0, arenaWave = 0, arenaCutEnd = 0, arenaCutLen = 3.5, arenaCutTitle = 'THE FINAL ROOM';
+    /* Matin 2026-11-28: the great drop falls ~1.5 s after she steps through the crypt door (10:00 at the latest), so nothing can chase her over the wall; then 4 s of peace before anything spawns in the crypt */
+    const ARENA_DROP_DELAY = 1.5, ARENA_PEACE = 4; let arenaPeaceUntil = 0;
     let bossSpawned = false, bossIntroAt = 0, bossPhase = 0, bossRef = null, bossNextSlam = 0, bossNextAdds = 0, bossLastBlast = -9; // the Collector (arena === 'boss')
     const inVault = (x, y) => x > arenaVaultBox.x0 && x < arenaVaultBox.x1 && y < arenaVaultY; // inside the final room (above its gate)
     function layoutArena() {
@@ -1634,7 +1636,7 @@ window.addEventListener('load', function () { setTimeout(function () { var s = d
       fill(grid, VG[0], VG[1], VG[0] + VG[2], VG[1] + VG[3], 0); fill(deco, VG[0], VG[1], VG[0] + VG[2], VG[1] + VG[3], 8);
       arenaVaultCells = []; for (let y = sc(VG[1]); y < sc(VG[1] + VG[3]); y++) for (let x = sc(VG[0]); x < sc(VG[0] + VG[2]); x++) arenaVaultCells.push(y * GW + x);
       arenaVaultY = sc(VG[1]) * CS; arenaVaultBox = { x0: sc(25) * CS, x1: sc(39) * CS }; arenaVaultC = cc(vault); arenaEntry = cc(route);
-      arenaStage = 0; arenaTraps = []; arenaBlasts = []; arenaWave = 0; arenaNextTrap = arenaNextElite = arenaCutEnd = 0;
+      arenaStage = 0; arenaTraps = []; arenaBlasts = []; arenaWave = 0; arenaNextTrap = arenaNextElite = arenaCutEnd = 0; arenaPeaceUntil = 0;
       if (typeof ArenaArt5 !== 'undefined' && ArenaArt5.ready()) { ArenaArt5.reset(); ['gate_1', 'gate_2', 'gate_3', 'gatehouse'].forEach(n => ArenaArt5.setHidden(n, ART_6)); if (ART_6) { ArenaArt6.reset(); ['block_h1', 'block_h2', 'block_h3', 'block_h4', 'block_h5', 'block_c1', 'block_c2', 'block_c3', 'block_c4', 'lamp_post_s'].forEach(n => ArenaArt5.setHidden(n, true)); } } // a new run: every painted cell stands again
       arenaGateSprs = GATES.concat([VG]).map((g, i) => ({ x: ((sc(g[0]) + sc(g[0] + g[2])) / 2) * CS, y: sc(g[1] + g[3]) * CS, vault: i === GATES.length })); // sprite foot = south edge of the gate
       arenaGateHide = new Uint8Array(GW * GH); // gate cube cells under a sprite are not drawn
@@ -2161,7 +2163,7 @@ window.addEventListener('load', function () { setTimeout(function () { var s = d
     function arenaRebuild(cells) { walls.length = 0; cliffs.length = 0; buildArena3D(); buildArenaSprs(); buildSilhouette(); arenaInvalidate(cells); fHeroCell = -1; arenaRefreshSpawns(); }
     function arenaFall(cells, booms) { // everything standing on floor that just dropped
       const set = new Set(cells);
-      for (let i = enemies.length - 1; i >= 0; i--) if (set.has(cellAt(enemies[i].x, enemies[i].y))) { if (enemies[i].isFinalBoss) { enemies[i].x = arenaVaultC.x; enemies[i].y = arenaVaultC.y; } else killEnemy(enemies[i]); } // they fall (the final boss is pulled back to the middle)
+      for (let i = enemies.length - 1; i >= 0; i--) if (set.has(cellAt(enemies[i].x, enemies[i].y))) { if (enemies[i].isFinalBoss) { enemies[i].x = arenaVaultC.x; enemies[i].y = arenaVaultC.y; } else { enemies[i].collapsePoof = true; killEnemy(enemies[i]); } } // they fall (the final boss is pulled back to the middle); collapsePoof = they vanish in a poof, no ground to fall on (Matin 2026-11-28)
       for (let i = vases.length - 1; i >= 0; i--) if (set.has(cellAt(vases[i].x, vases[i].y))) vases.splice(i, 1);
       for (let i = chests.length - 1; i >= 0; i--) if (set.has(cellAt(chests[i].x, chests[i].y))) chests.splice(i, 1);
       for (let i = soulGems.length - 1; i >= 0; i--) if (set.has(cellAt(soulGems[i].x, soulGems[i].y))) soulGems.splice(i, 1); // gems and pickups over the drop fall with it
@@ -2212,7 +2214,7 @@ window.addEventListener('load', function () { setTimeout(function () { var s = d
         if (ART_6 && art5Ready()) ArenaArt6.closeCrypt();
         cryptTighten();
       }
-      addShake(34); arenaNextElite = gameTime; arenaNextTrap = gameTime + 2.5;
+      addShake(34); arenaNextElite = gameTime + ARENA_PEACE; arenaPeaceUntil = gameTime + ARENA_PEACE; arenaNextTrap = gameTime + 2.5;   // 4 s of calm before the crypt fight starts (Matin 2026-11-28)
     }
     function arenaOpenVault(e) { // inner gate bursts open: short cutscene, the hero walks in
       e.state = 'done'; arenaStage = 3; arenaCutEnd = gameTime + 3.5;
@@ -2398,7 +2400,7 @@ window.addEventListener('load', function () { setTimeout(function () { var s = d
           for (let i = enemies.length - 1; i >= 0; i--) {
             const e = enemies[i]; if (e.isFinalBoss || e.dying !== undefined) continue;
             if (grid[cellAt(e.x, e.y)] === 1) { e._off = 0; continue; }
-            e._off = (e._off || 0) + 0.4; if (e._off >= 0.8) killEnemy(e);
+            e._off = (e._off || 0) + 0.4; if (e._off >= 0.8) { e.collapsePoof = true; killEnemy(e); }
           }
           /* gems / pickups / vases / chests left over the void vanish with the floor (a gem that is flying to the hero is kept) */
           for (let i = soulGems.length - 1; i >= 0; i--) { const g = soulGems[i]; if (!g.magnetized && grid[cellAt(g.x, g.y)] !== 1) soulGems.splice(i, 1); }
@@ -2428,6 +2430,7 @@ window.addEventListener('load', function () { setTimeout(function () { var s = d
           if (gameTime >= e.t) arenaLand(e);
         }
       }
+      if (arenaStage === 1 && hero.y < topPx - CS * 0.6) { const de = arenaEvents.find(x => x.kind === 'drop'); if (de && (de.state === 'wait' || de.state === 'warn') && de.t > gameTime + ARENA_DROP_DELAY) de.t = gameTime + ARENA_DROP_DELAY; }   /* she is through the door: the great drop comes now, not at 10:00 (the horde outside falls with the lower map) */
       if (arenaStage === 2) arenaCrypt();
       arenaCineTick();
       if (arenaStage === 3 && !arenaCine && hero.x > arenaVaultBox.x0 && hero.x < arenaVaultBox.x1 && hero.y < arenaVaultY - 2 * CS) arenaEnterFinal();   // (without the cutscene, e.g. no path: the old rule)
@@ -2859,7 +2862,7 @@ window.addEventListener('load', function () { setTimeout(function () { var s = d
       },
 
       cineActive, cineMove, cineCam,
-      noSpawn(x, y) { return arena === true && ((arenaStage < 2 && topPx > 0 && y < topPx) || (arenaStage < 3 && inVault(x, y)) || arenaStage >= 3); },   // from the inner gate on (minute 13) nothing spawns at all   // + never on the sealed door platform / final room (the snap fallback of the spawn ring put ~100 enemies on it when the hero stood on a blocked cell)   // the crypt takes no spawns until the crypt fight (Matin 2026-11-26): the spawn director checks this for EVERY spawn path
+      noSpawn(x, y) { return arena === true && ((arenaStage < 2 && topPx > 0 && y < topPx) || (arenaStage < 3 && inVault(x, y)) || arenaStage >= 3 || (arenaStage === 2 && gameTime < arenaPeaceUntil)); },   // from the inner gate on (minute 13) nothing spawns at all   // + never on the sealed door platform / final room (the snap fallback of the spawn ring put ~100 enemies on it when the hero stood on a blocked cell)   // the crypt takes no spawns until the crypt fight (Matin 2026-11-26): the spawn director checks this for EVERY spawn path
 
       steer(ex, ey, hx, hy) {
         const hcx = (hx / CS) | 0, hcy = (hy / CS) | 0, hc = hcy * GW + hcx;
@@ -3827,7 +3830,9 @@ window.ArenaArt6 = (function () {
     if (tileQ.length || tileBusy || promoteQ.length) return 0.2 + 0.78 * ready / Math.max(1, n);
     return n >= 20 ? 1 : 0.2;
   }
-  return { load: load, loading: loading, ready: function () { return ok; }, reset: reset, warn: warn, land: land, dropAll: dropAll, openCrypt: openCrypt, closeCrypt: closeCrypt, hideBossDoor: hideBossDoor, openBossDoor: openBossDoor, cellState: cellState, cryptFloorFromArt: function () { return CRYPT_FLOOR_FROM_ART; }, cryptReady: function () { return !!(walk && walk.cr); },
+  /* QA: world position of the centre of a level layer (same formula as pitSpots) */
+  function layerCenter(mod, st) { var l = byKey[mod + '|' + st]; if (!l) return null; var k = data.k, tilt = World.tilt, cosY = World.cosY, sinY = World.sinY, fx = (l.x + l.w / 2) / k, fy = (l.y + l.h / 2) / k, u = (fx - fit.tx) / fit.s, ry = (fy - fit.ty) / fit.s / tilt; return { x: cosY * u + sinY * ry, y: -sinY * u + cosY * ry }; }
+  return { layerCenter: layerCenter, load: load, loading: loading, ready: function () { return ok; }, reset: reset, warn: warn, land: land, dropAll: dropAll, openCrypt: openCrypt, closeCrypt: closeCrypt, hideBossDoor: hideBossDoor, openBossDoor: openBossDoor, cellState: cellState, cryptFloorFromArt: function () { return CRYPT_FLOOR_FROM_ART; }, cryptReady: function () { return !!(walk && walk.cr); },
     draw: function (ctx, v) { drawPass(ctx, v, false); }, sortBands: sortBands, drawBand: drawBand, pitSpots: pitSpots, stats: function () { return { tiles: Object.keys(tiles).length, queue: tileQ.length, ultra: ultraOn }; }, debugPosts: debugPosts, selfcheck: function () { var bad = []; for (var k in feet) { var e = feet[k]; if (e.w !== e.l.w || e.h !== e.l.h) bad.push(k + ' ' + e.w + 'x' + e.h + ' != ' + e.l.w + 'x' + e.l.h); } return { pieces: Object.keys(feet).length, bad: bad }; }, state: function () { return Object.assign({}, want); } };
 })();
 const ArenaFx6 = (function () {
@@ -7260,8 +7265,9 @@ if (metaFx.regen > 0 && hero.hp > 0) hero.hp = Math.min(hero.maxHp, hero.hp + me
       // 3. Funny Omni death clip (goblin pops his pot and flips, fish flops, frog inflates and pops, minotaur topples dizzy): played where she died, instead of the poof, once its strip has loaded
       const V2 = OMNI_ENEMY[e.type + '_death2'] && SPRITES['enemy-omni-' + e.type + '_death2'] && SPRITES['enemy-omni-' + e.type + '_death2'].complete && Math.random() < 0.5;   // second funny death = the short slapstick set (pot over the body, plank, belly rock, faint)   // second funny death when this enemy has one (50 / 50)
       const DN = e.type + (V2 ? '_death2' : '_death'), DD = OMNI_ENEMY[DN], DK = 'enemy-omni-' + DN, DI = SPRITES[DK];
-      const deathClip = !e.isBoss && !(e.slowTimer > 0) && DD && DI && DI.complete && DI.naturalWidth > 0;
-      if (e.slowTimer > 0) {
+      const poofOnly = !!e.collapsePoof;   /* killed by a collapse (Matin 2026-11-28): no ground to fall on, so a poof in the air: no death clip, no frost shatter, no gems, no chunks */
+      const deathClip = !poofOnly && !e.isBoss && !(e.slowTimer > 0) && DD && DI && DI.complete && DI.naturalWidth > 0;
+      if (e.slowTimer > 0 && !poofOnly) {
         playVFX('frost', e.x, e.y - (e.radius * 0.4), { scale: 0.7, fps: 20 });
         Sound.shatter();
       } else if (deathClip) {
@@ -7278,7 +7284,9 @@ if (metaFx.regen > 0 && hero.hp > 0) hero.hp = Math.min(hero.maxHp, hero.hp + me
         });
       }
 
-      if (e.type === 'potbelly') {
+      if (poofOnly) {
+        /* nothing drops: the floor is gone */
+      } else if (e.type === 'potbelly') {
         spawnEnemyChunks(e.x, e.y, ['#0d9488', '#14b8a6', '#f59e0b'], 2);
         spawnSoulGem(e.x, e.y, 'small');
       } else if (e.type === 'fishguy') {
@@ -7292,7 +7300,7 @@ if (metaFx.regen > 0 && hero.hp > 0) hero.hp = Math.min(hero.maxHp, hero.hp + me
       }
 
       // Elite death: explosion VFX at 0.9 and a chest with bounce
-      if (e.isElite && !e.isBoss) {
+      if (e.isElite && !e.isBoss && !poofOnly) {
         playVFX('explosion', e.x, e.y - 20, { scale: 0.9, fps: 24 });
         addShake(8);
         spawnSoulGem(e.x, e.y, 'large');
@@ -12249,7 +12257,7 @@ telemetryInit();
       }
       return { init, tick, drawNow, active: () => started, event: () => (ev ? ev.type : null), rain: () => rainOn, force: type => { if (type === 'rain') { force = 'rain'; } else { ev = null; startEvent(type); } }, clearForce: () => { force = null; } };
     })();
-    const BUILD_ID = '1127-1401';
+    const BUILD_ID = '1128-0105';
     if (/beta-b/.test(location.pathname)) { const bid = document.createElement('div'); bid.textContent = 'build ' + BUILD_ID; bid.style.cssText = 'position:fixed;right:6px;bottom:2px;font:10px monospace;color:#fff;opacity:.45;z-index:99999;pointer-events:none'; document.body.appendChild(bid); }   // which build is this? (Matin 2026-11-25: fixes were reported 'still wrong' and I could not tell if the new build was running)
     // --- ASSET CACHE (beta pages only): sw.js keeps the art / clips / sounds in the browser so every visit after the first downloads nothing. play.html and the stable index never register it. ---
     if ('serviceWorker' in navigator && /[?&]nosw=1/.test(location.search)) {   // safety switch: ?nosw=1 removes the cache worker and its files
