@@ -1105,7 +1105,7 @@ window.addEventListener('load', function () { setTimeout(function () { var s = d
     try { const saved = localStorage.getItem(CTL_HAND_KEY); if (saved === 'left' || saved === 'right') handPref = saved; } catch (_) {}
     // Quality tier (Matin 2026-11-24): GFX_HD = sharp art for big desktop screens (4K), light art for phones and small screens (fps). ?q=hd / ?q=std forces it.
     // Only non-touch devices whose screen is >= 2200 device pixels on the long side count as HD (3840 x 2160 at dpr 1 or 1.5, 2560 at dpr 1 = std).
-    const GFX_HD = (() => { const q = urlParams.get('q'); if (q === 'hd' || q === 'std' || q === 'ultra') return q !== 'std'; if (('ontouchstart' in window) || navigator.maxTouchPoints > 0) return false; return Math.max(screen.width, screen.height) * (window.devicePixelRatio || 1) >= 2200; })();
+    const GFX_HD = (() => { const q = urlParams.get('q'); if (q === 'hd' || q === 'std' || q === 'ultra') return q !== 'std'; const phoneOrTablet = /Android|iPhone|iPad|iPod|Mobi/i.test(navigator.userAgent) || ((('ontouchstart' in window) || navigator.maxTouchPoints > 0) && Math.min(screen.width, screen.height) < 900); if (phoneOrTablet) return false; /* 2026-11-28: a big desktop monitor that reports a touch screen (many Windows 4K monitors) is NOT a phone: it used to fall back to the light art = blurry map (Matin) */ return Math.max(screen.width, screen.height) * (window.devicePixelRatio || 1) >= 2200; })();
     // ULTRA (Matin 2026-11-25, 4K close-up was blurry): on top of HD, the level layers come as 4x tiles (only the ones on screen load). Real 4K screens (>= 3200 device px) or ?q=ultra; ?q=hd keeps the 2x layers.
     const GFX_ULTRA = GFX_HD && (urlParams.get('q') === 'ultra' || (urlParams.get('q') !== 'hd' && Math.max(screen.width, screen.height) * (window.devicePixelRatio || 1) >= 3200));
     const GFX_HD_STRIPS = GFX_HD && urlParams.get('hdstrips') === '1';   /* the 2x animation strips (hero + enemies, ~600 MB decoded) are OFF by default: with them the GPU image cache thrashed from game minute ~2 and frames took 100-300 ms at 4K (tools/game-perf.js, 2026-11-26); ?hdstrips=1 turns them back on */
@@ -3813,7 +3813,7 @@ window.ArenaArt6 = (function () {
       var p = 1, pl = null;
       if (prev[m] !== undefined && prev[m] !== null) { var q = (t - t0[m]) / dur[m]; if (q < 1) { p = q < 0 ? 0 : q; pl = byKey[m + '|' + prev[m]]; } }
       if (pl) drawLayer(ctx, v, pl, 1, ax, ay);   // the old art stays fully opaque, the new art fades in on top: no see-through gap
-      drawLayer(ctx, v, l, p, ax, ay, !!pl);
+      if (!(typeof ArenaClips !== 'undefined' && ArenaClips.replaces(l))) drawLayer(ctx, v, l, p, ax, ay, !!pl);   /* a moving bridge video (05f) draws the bridge itself: no static copy under it */
       if (fxOn && !(typeof ArenaClips !== 'undefined' && ArenaClips.covers(l))) ArenaFx6.afterLayer(ctx, v, l, p, fxPlace);   /* where a real Flow video already moves this layer (05f) the procedural lava / water effect is skipped */   // moving water + pulsing lava (05e), drawn right on top of the layer it belongs to
       if (!front && typeof ArenaClips !== 'undefined') ArenaClips.draw(ctx, l, p, fxPlace, t, prev[m], t0[m]);   // Omni world clips (05f): the animated island / bridge / pit art on top of the same layer
     }
@@ -4152,15 +4152,15 @@ window.ArenaClips = (function () {
     var q = /[?&]q=(ultra|hd|std)/.exec(qs); if (q) return q[1] === 'ultra' ? 't4' : q[1] === 'hd' ? 't2' : 't1';
     var big = Math.max(screen.width, screen.height) * (window.devicePixelRatio || 1); return big >= 3200 ? 't4' : big >= 2200 ? 't2' : 't1';
   }
-  var tier = pickTier(), meta = null, trm = null, root = '', host = null, vids = {}, p1 = [], pre = [], off = false, t0 = 0, frame = 0, nextPre = 0, lastChange = 0, hitches = [], lastT = 0;
+  var tier = pickTier(), meta = null, wm = null, trm = null, root = '', host = null, vids = {}, p1 = [], pre = [], off = false, t0 = 0, frame = 0, nextPre = 0, lastChange = 0, hitches = [], lastT = 0;
   var perf = { ms: 0, max: 0, n: 0, loads: 0, evict: 0 };
   function nowS() { return performance.now() / 1000; }
   function now30() { return nowS() - t0 > 30; }
-  function vidFor(k, tr) {
-    var id = (tr ? 'tr:' : '') + k, e = vids[id], m = tr ? trm && trm[k] : meta && meta[k]; if (e) return e; if (!m) return null;
+  function vidFor(k, tr, warp) {
+    var id = (tr ? 'tr:' : warp ? 'w:' : '') + k, e = vids[id], m = tr ? trm && trm[k] : warp ? wm && wm[k] : meta && meta[k]; if (e) return e; if (!m) return null;
     var v = document.createElement('video'); v.muted = true; v.loop = !!m.loop && !tr; v.preload = 'auto'; v.setAttribute('playsinline', ''); v.setAttribute('muted', ''); v.style.cssText = 'width:64px;height:64px';
-    v.src = root + (tr ? 'video/' + m.tiers[tier] + '?v=2' : 'motion/' + m.tiers[tier] + '?v=1'); host.appendChild(v); perf.loads++;
-    e = vids[id] = { v: v, k: k, id: id, seen: nowS(), playing: false, tr: !!tr }; return e;
+    v.src = root + (tr ? 'video/' + m.tiers[tier] + '?v=2' : warp ? 'warp/' + m.tiers[tier] + '?v=2' : 'motion/' + m.tiers[tier] + '?v=4'); host.appendChild(v); perf.loads++;
+    e = vids[id] = { v: v, k: k, id: id, seen: nowS(), playing: false, tr: !!tr, warp: !!warp, drewAt: 0 }; return e;
   }
   function ready(e) { return e && e.v.readyState >= 2 && e.v.videoWidth > 0; }
   function startLoop(e, m) { var v = e.v; if (e.playing) return; e.playing = true; try { if (m.loop && m.dur) v.currentTime = nowS() % m.dur; } catch (err) { /* not seekable yet */ } var p = v.play(); if (p && p.catch) p.catch(function () { e.playing = false; }); }
@@ -4175,19 +4175,24 @@ window.ArenaClips = (function () {
     var n = 0, i; for (i = 0; i < p1.length; i++) { var e = vids[p1[i]]; if (e && e.v.readyState >= 3) n++; } return p1.length ? n / p1.length : 1;
   }
   function prefetch() {   // quiet time: every other state of every piece (and its fall clip) starts buffering paused, one per 1.5 s
-    var n = nowS(); if (n < nextPre || !pre.length || progress() < 1) return; nextPre = n + 1.5; var it = pre.shift(), e = vidFor(it.k, it.tr); if (e) { e.pre = true; e.v.pause(); }
+    var n = nowS(); if (n < nextPre || !pre.length || progress() < 1) return; nextPre = n + 1.5; var it = pre.shift(), e = vidFor(it.k, it.tr, it.warp); if (e) { e.pre = true; e.v.pause(); }
   }
   function motion(ctx, e, r, a) {   // [add | darken] packed side by side: 'lighter' then 'multiply' over the fixed art
-    var v = e.v, hw = v.videoWidth / 2, vh = v.videoHeight; ctx.globalAlpha = a;
+    var v = e.v, hw = (v.videoWidth - 8) / 2, vh = v.videoHeight; ctx.globalAlpha = a;   // [positive | 4 px black | 4 px white | negative]
     ctx.globalCompositeOperation = 'lighter'; ctx.drawImage(v, 0, 0, hw, vh, r.X, r.Y, r.sw, r.sh);
-    ctx.globalCompositeOperation = 'multiply'; ctx.drawImage(v, hw, 0, hw, vh, r.X, r.Y, r.sw, r.sh);
+    ctx.globalCompositeOperation = 'multiply'; ctx.drawImage(v, hw + 8, 0, hw, vh, r.X, r.Y, r.sw, r.sh);
     ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 1;
   }
   // true where a real video is already drawing this layer: the procedural lava / water effects (05e) are skipped there
   function covers(l) {
     if (!ON || off || !meta) return false;
     if (l.module === 'environment') { for (var id in vids) if (!vids[id].tr && meta[vids[id].k] && meta[vids[id].k].env && ready(vids[id])) return true; return false; }
-    var e = vids[l.module + '|' + (l.state === 'collapsed_all' ? 'collapsed' : l.state)]; return ready(e) && e.playing;
+    var key = l.module + '|' + (l.state === 'collapsed_all' ? 'collapsed' : l.state), e = vids[wm && wm[key] ? 'w:' + key : key]; return ready(e) && e.playing;
+  }
+  // true while the moving BRIDGE video is drawing this layer (it was drawn in the last 0.25 s): ArenaArt6 then hides the static copy, so only the animation shows (no image overlay)
+  function replaces(l) {
+    if (!ON || off || !wm) return false; var key = l.module + '|' + (l.state === 'collapsed_all' ? 'collapsed' : l.state); if (!wm[key]) return false;
+    var e = vids['w:' + key]; return !!e && ready(e) && nowS() - e.drewAt < 0.25;
   }
   function draw(ctx, l, p, place, t, prevState, tState) {
     if (!ON || off || !meta) return;
@@ -4200,7 +4205,7 @@ window.ArenaClips = (function () {
       for (var ek in meta) { mm = meta[ek]; if (!mm.env) continue; r = place(mm.rx, mm.ry, mm.rw, mm.rh); if (!r) continue; e = vidFor(ek); e.seen = now; e.pre = false; if (ready(e)) { startLoop(e, mm); motion(ctx, e, r, 1); } }
       return;
     }
-    var st = l.state === 'collapsed_all' ? 'collapsed' : l.state, k = m + '|' + st; mm = meta[k]; if (!mm) return;
+    var st = l.state === 'collapsed_all' ? 'collapsed' : l.state, k = m + '|' + st, wmm = wm && wm[k]; mm = wmm || meta[k]; if (!mm) return;
     if (tState !== undefined && t - tState < 15) lastChange = now;
     var tm = trm && trm[m + '|tr'], since = tState !== undefined ? t - tState : 99;
     if (st === 'collapsed' && prevState && prevState !== 'collapsed' && tm && CAN_ALPHA && since < TR_DUR + 0.3) {   // the fall: the transition video plays once (soft fades in / out), then the collapsed loop takes over
@@ -4213,8 +4218,12 @@ window.ArenaClips = (function () {
     }
     if (st !== 'collapsed' || !prevState) { var tk = vids['tr:' + m + '|tr']; if (tk) tk.fired = false; }
     var fade = (st === 'collapsed' && tm && CAN_ALPHA && since >= TR_DUR && since < TR_DUR + 0.8) ? (since - TR_DUR) / 0.8 : 1;
-    r = place(l.x + mm.rx, l.y + mm.ry, mm.rw, mm.rh); e = vidFor(k); e.seen = now; e.pre = false; if (!r) return;
-    if (ready(e)) { startLoop(e, mm); motion(ctx, e, r, Math.min(1, p) * Math.min(1, fade)); }
+    r = place(l.x + mm.rx, l.y + mm.ry, mm.rw, mm.rh); e = vidFor(k, false, !!wmm); e.seen = now; e.pre = false; if (!r) return;
+    if (ready(e)) {
+      startLoop(e, mm);
+      if (wmm) { e.drewAt = now; ctx.globalAlpha = Math.min(1, p) * Math.min(1, fade); ctx.drawImage(e.v, r.X, r.Y, r.sw, r.sh); ctx.globalAlpha = 1; }   // the bridge itself, moving (alpha video)
+      else motion(ctx, e, r, Math.min(1, p) * Math.min(1, fade));
+    }
   }
   function stepDown() {   // frames keep spiking: one quality tier lower, then off (the fixed art stays)
     var i = TIERS.indexOf(tier); for (var id in vids) dispose(id);
@@ -4229,12 +4238,14 @@ window.ArenaClips = (function () {
   function init(baseUrl) {
     root = baseUrl.endsWith('/') ? baseUrl : baseUrl + '/'; t0 = nowS(); if (!ON) return;
     host = document.createElement('div'); host.style.cssText = 'position:fixed;left:0;top:0;width:2px;height:2px;overflow:hidden;opacity:0.01;pointer-events:none;z-index:-1'; document.body.appendChild(host);
-    fetch(root + 'motion/clips3.json?v=1').then(function (r) { return r.json(); }).then(function (m) {
-      meta = m; for (var q in m) { if (m[q].env) continue; if (/\|healthy$/.test(q)) { p1.push(q); vidFor(q); } else pre.push({ k: q, tr: false }); }
+    fetch(root + 'motion/clips3.json?v=4').then(function (r) { return r.json(); }).then(function (m) {
+      meta = m;
+      var after = function () { for (var q in meta) { if (meta[q].env) continue; var w = wm && wm[q]; if (/\|healthy$/.test(q)) { p1.push(w ? 'w:' + q : q); vidFor(q, false, !!w); } else pre.push({ k: q, tr: false, warp: !!w }); } };
+      if (CAN_ALPHA) fetch(root + 'warp/clips4.json?v=2').then(function (r) { return r.json(); }).then(function (v) { wm = v; }).catch(function () { wm = null; }).then(after); else after();
       if (CAN_ALPHA) fetch(root + 'video/clips2.json?v=2').then(function (r) { return r.json(); }).then(function (v) { trm = {}; for (var q in v) if (/\|tr$/.test(q)) { trm[q] = v[q]; pre.push({ k: q, tr: true }); } }).catch(function () { trm = null; });
     }).catch(function () { meta = null; ON = false; });
   }
-  return { init: init, draw: draw, covers: covers, progress: progress, isOff: function () { return off || !ON; }, tier: function () { return tier; },
+  return { init: init, draw: draw, covers: covers, replaces: replaces, progress: progress, isOff: function () { return off || !ON; }, tier: function () { return tier; },
     off: function () { if (!GUARD) return; stepDown(); },
     perf: function (reset) { var r = { ms: perf.ms, max: perf.max, n: perf.n, loads: perf.loads, evict: perf.evict, mb: 0, tier: tier }; if (reset) { perf.ms = 0; perf.max = 0; perf.n = 0; } return r; },
     stats: function () { var res = []; for (var id in vids) if (vids[id].playing) res.push(id); return { on: ON && !off, tier: tier, clips: meta ? Object.keys(meta).length : 0, mb: 0, resident: res, mobile: MOBILE }; } };
@@ -12372,7 +12383,7 @@ telemetryInit();
       }
       return { init, tick, drawNow, active: () => started, event: () => (ev ? ev.type : null), rain: () => rainOn, force: type => { if (type === 'rain') { force = 'rain'; } else { ev = null; startEvent(type); } }, clearForce: () => { force = null; } };
     })();
-    const BUILD_ID = '1128-1321';
+    const BUILD_ID = '1128-1505';
     // --- SOAK TEST (?soak=1&god=1, Matin 2026-11-28: "fps is the one important thing, develop a tool before I test") ---
     // One link = a 125 s autopilot: walks and dashes, dismisses level-up cards, jumps the clock for a horde, teleports to every island / bridge / pit / swamp region (so every world clip loads and draws),
     // collapses each piece (damaged -> fall = the transition clips) and records EVERY display frame. At the end an on-screen verdict (PASS / WARN / FAIL) and a downloaded soak-*.json.
