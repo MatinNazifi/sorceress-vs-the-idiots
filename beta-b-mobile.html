@@ -4137,7 +4137,7 @@ window.__fx6 = ArenaFx6;   // QA hook (like __view): ready(), setTier(n)
    A damaged piece that falls (state -> collapsed) plays its TRANSITION clip once (TR_DUR s), then the collapsed loop fades in. */
 window.ArenaClips = (function () {
   'use strict';
-  var ON = /[?&]clips=1/.test(location.search) || (!/[?&]clips=0/.test(location.search) && typeof GFX_HD !== 'undefined' && GFX_HD);
+  var ON = /[?&]clips=1/.test(location.search);   /* 2026-11-28 HOTFIX: OFF by default (the replace-the-art clips blurred the map); ?clips=1 turns them on while they are rebuilt as motion-only overlays */
   var TR_DUR = 3, START_DELAY = 1;
   var nextLoad = 0, lastChange = 0, p1 = [], readyAt = 0, recentWorst = 0, hitches = [], meta = null, base = '', sheets = {}, want = {}, t0 = 0, busy = 0, frame = 0, off = false;
   function nowS() { return performance.now() / 1000; }
@@ -12365,7 +12365,7 @@ telemetryInit();
       }
       return { init, tick, drawNow, active: () => started, event: () => (ev ? ev.type : null), rain: () => rainOn, force: type => { if (type === 'rain') { force = 'rain'; } else { ev = null; startEvent(type); } }, clearForce: () => { force = null; } };
     })();
-    const BUILD_ID = '1128-1144';
+    const BUILD_ID = '1128-1200';
     // --- SOAK TEST (?soak=1&god=1, Matin 2026-11-28: "fps is the one important thing, develop a tool before I test") ---
     // One link = a 125 s autopilot: walks and dashes, dismisses level-up cards, jumps the clock for a horde, teleports to every island / bridge / pit / swamp region (so every world clip loads and draws),
     // collapses each piece (damaged -> fall = the transition clips) and records EVERY display frame. At the end an on-screen verdict (PASS / WARN / FAIL) and a downloaded soak-*.json.
