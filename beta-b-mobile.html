@@ -12386,7 +12386,7 @@ telemetryInit();
       }
       return { init, tick, drawNow, active: () => started, event: () => (ev ? ev.type : null), rain: () => rainOn, force: type => { if (type === 'rain') { force = 'rain'; } else { ev = null; startEvent(type); } }, clearForce: () => { force = null; } };
     })();
-    const BUILD_ID = '1128-1607';
+    const BUILD_ID = '1128-1702';
     // --- SOAK TEST (?soak=1&god=1, Matin 2026-11-28: "fps is the one important thing, develop a tool before I test") ---
     // One link = a 125 s autopilot: walks and dashes, dismisses level-up cards, jumps the clock for a horde, teleports to every island / bridge / pit / swamp region (so every world clip loads and draws),
     // collapses each piece (damaged -> fall = the transition clips) and records EVERY display frame. At the end an on-screen verdict (PASS / WARN / FAIL) and a downloaded soak-*.json.
