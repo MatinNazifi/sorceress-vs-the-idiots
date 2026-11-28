@@ -3582,7 +3582,9 @@ window.ArenaArt6 = (function () {
       im.onload = function () { imgs[l.file] = im; next(); }; im.onerror = next; im.src = hdBase + l.file + (l.file.indexOf('crypt_over') === 0 ? '?v=6' : '?v=4');
     })();
   }
+  var loadT0 = 0;   // 2026-11-28: the start bar never waits more than 25 s in total (Matin: stuck on loading at ~96%: videos and 4x tiles shared one connection)
   function load(baseUrl) {
+    loadT0 = performance.now();
     base = baseUrl.endsWith('/') ? baseUrl : baseUrl + '/';
     return Promise.all([fetch(base + 'art6.json?v=4').then(function (r) { return r.json(); }), fetch('sprites/arena/v5/art5.json').then(function (r) { return r.json(); })])
       .then(function (a) {
@@ -3827,6 +3829,7 @@ window.ArenaArt6 = (function () {
   }
   // LOADING PROGRESS 0..1 for the start bar (Matin 2026-11-26): the 4x map tiles are what makes the first seconds dip, so the run waits until they are in
   function loading() {
+    if (loadT0 && performance.now() - loadT0 > 25000) return 1;
     var cp = typeof ArenaClips !== 'undefined' ? ArenaClips.progress() : 1; if (cp < 1) return Math.min(0.9 + 0.09 * cp, loadingTiles());   /* the world clips load behind the bar (05f) */
     return loadingTiles();
   }
@@ -4155,7 +4158,7 @@ window.ArenaClips = (function () {
   var tier = pickTier(), meta = null, wm = null, trm = null, root = '', host = null, vids = {}, p1 = [], pre = [], off = false, t0 = 0, frame = 0, nextPre = 0, lastChange = 0, hitches = [], lastT = 0;
   var perf = { ms: 0, max: 0, n: 0, loads: 0, evict: 0 };
   function nowS() { return performance.now() / 1000; }
-  function now30() { return nowS() - t0 > 30; }
+  function now30() { return nowS() - t0 > 15; }
   function vidFor(k, tr, warp) {
     var id = (tr ? 'tr:' : warp ? 'w:' : '') + k, e = vids[id], m = tr ? trm && trm[k] : warp ? wm && wm[k] : meta && meta[k]; if (e) return e; if (!m) return null;
     var v = document.createElement('video'); v.muted = true; v.loop = !!m.loop && !tr; v.preload = 'auto'; v.setAttribute('playsinline', ''); v.setAttribute('muted', ''); v.style.cssText = 'width:64px;height:64px';
@@ -12383,7 +12386,7 @@ telemetryInit();
       }
       return { init, tick, drawNow, active: () => started, event: () => (ev ? ev.type : null), rain: () => rainOn, force: type => { if (type === 'rain') { force = 'rain'; } else { ev = null; startEvent(type); } }, clearForce: () => { force = null; } };
     })();
-    const BUILD_ID = '1128-1505';
+    const BUILD_ID = '1128-1514';
     // --- SOAK TEST (?soak=1&god=1, Matin 2026-11-28: "fps is the one important thing, develop a tool before I test") ---
     // One link = a 125 s autopilot: walks and dashes, dismisses level-up cards, jumps the clock for a horde, teleports to every island / bridge / pit / swamp region (so every world clip loads and draws),
     // collapses each piece (damaged -> fall = the transition clips) and records EVERY display frame. At the end an on-screen verdict (PASS / WARN / FAIL) and a downloaded soak-*.json.
