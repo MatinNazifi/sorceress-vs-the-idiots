@@ -3630,7 +3630,7 @@ window.ArenaArt6 = (function () {
       var r = im.naturalWidth / pc.w, cw = im.naturalWidth, ch = im.naturalHeight, cv = document.createElement('canvas'); cv.width = cw; cv.height = ch;
       var cx = cv.getContext('2d', { willReadFrequently: true }); cx.drawImage(im, 0, 0); var id = cx.getImageData(0, 0, cw, ch), dd = id.data, x, y;
       for (y = 0; y < ch; y++) for (x = 0; x < cw; x++) if (pc.lab[((y / r) | 0) * pc.w + ((x / r) | 0)] !== e.k) dd[(y * cw + x) * 4 + 3] = 0;
-      cx.putImageData(id, 0, 0); var gv = document.createElement('canvas'); gv.width = cw; gv.height = ch; gv.getContext('2d').drawImage(cv, 0, 0); e.cv = gv; e.r = r;   /* draw from a normal (GPU) canvas: the willReadFrequently copy lives in CPU memory and was re-uploaded to the GPU on every draw of a post band */
+      cx.putImageData(id, 0, 0); var gv = document.createElement('canvas'); gv.width = cw; gv.height = ch; gv.getContext('2d').drawImage(cv, 0, 0); e.cv = gv; e.r = r; e.mk = null;   /* draw from a normal (GPU) canvas: the willReadFrequently copy lives in CPU memory and was re-uploaded to the GPU on every draw of a post band */
     }
   }
   function buildBands() {
@@ -3688,6 +3688,17 @@ window.ArenaArt6 = (function () {
     }
     return out;
   }
+  /* Matin 2026-11-28: the bridge's posts and ropes come from the bridge VIDEO too (they are inside its alpha), not from the still image drawn over the moving bridge.
+     Once per frame the piece's masked canvas is refilled from the video frame, cut with the piece's own mask (the still only supplies the outline / sorting). */
+  function refreshFront(e) {
+    if (!e.cv || e.fid === frameId || typeof ArenaClips === 'undefined' || !ArenaClips.bridgeFrame) return;
+    var bm = e.l.module.replace(/_front$/, ''); if (bm === e.l.module) return;
+    var s = ArenaClips.bridgeFrame(bm, cur[bm]), bl = byKey[bm + '|' + cur[bm]]; if (!s || !bl) return; e.fid = frameId;
+    if (!e.mk) { e.mk = document.createElement('canvas'); e.mk.width = e.cv.width; e.mk.height = e.cv.height; e.mk.getContext('2d').drawImage(e.cv, 0, 0); }
+    var c = e.cv.getContext('2d'); c.clearRect(0, 0, e.cv.width, e.cv.height); c.globalCompositeOperation = 'source-over';
+    c.drawImage(s.v, (bl.x + s.rx - e.l.x) * e.r, (bl.y + s.ry - e.l.y) * e.r, s.rw * e.r, s.rh * e.r);
+    c.globalCompositeOperation = 'destination-in'; c.drawImage(e.mk, 0, 0); c.globalCompositeOperation = 'source-over';
+  }
   function drawBand(ctx, v, idx) {
     var runs = bands[idx], a = viewAxAy(v), r, run, e, b, cy;
     if (idx === 'cw') {   /* phase 2: a COPY of the front + right wall drawn over the hero. While the gates are open the three gate arches are left out of the copy (she walks through them, so they stay in the normal layer under her) */
@@ -3711,7 +3722,7 @@ window.ArenaArt6 = (function () {
     }
     if (!runs) return;
     for (r = 0; r < runs.length; r++) {
-      run = runs[r]; e = run.e; if (cur[e.l.module] !== e.l.state || !e.cv) continue;
+      run = runs[r]; e = run.e; if (cur[e.l.module] !== e.l.state || !e.cv) continue; refreshFront(e);
       b = runBox(v, run, a[0], a[1]); if (b.x + b.w < 0 || b.x > v.W || b.y + b.h < 0 || b.y > v.H) continue;
       if (DBGPOSTS) { ctx.save(); ctx.strokeStyle = 'rgba(255,40,40,0.95)'; ctx.lineWidth = 3; cy = b.y + e.ct[run.a] * b.sc; ctx.beginPath(); ctx.moveTo(b.x, cy); ctx.lineTo(b.x + b.w, cy); ctx.stroke(); ctx.restore(); }   // ?posts=1: where the game puts this part's contact depth
       ctx.drawImage(e.cv, run.a * SW * e.r, 0, Math.min((run.b - run.a) * SW, e.w - run.a * SW) * e.r, e.h * e.r, b.x, b.y, b.w, b.h);
@@ -4114,7 +4125,12 @@ window.ArenaClips = (function () {
   // true while the moving BRIDGE video is drawing this layer (it was drawn in the last 0.25 s): ArenaArt6 then hides the static copy, so only the animation shows (no image overlay)
   function replaces(l) {
     if (!ON || off || !wm) return false; var key = l.module + '|' + (l.state === 'collapsed_all' ? 'collapsed' : l.state); if (!wm[key]) return false;
-    var e = vids['w:' + key]; return !!e && ready(e) && nowS() - e.drewAt < 0.25;
+    var e = vids['w:' + key]; return !!e && ready(e) && nowS() - e.drewAt < 2.5;   /* a decode stall holds the last video frame: the still image never shows through */
+  }
+  // the bridge video's current frame + its rectangle (level px, relative to the bridge layer): ArenaArt6 refills the bridge's front posts / ropes from it
+  function bridgeFrame(m, st) {
+    if (!ON || off || !wm) return null; var key = m + '|' + (st === 'collapsed_all' ? 'collapsed' : st), mm = wm[key], e = mm && vids['w:' + key];
+    return e && ready(e) && nowS() - e.drewAt < 2.5 ? { v: e.v, rx: mm.rx, ry: mm.ry, rw: mm.rw, rh: mm.rh } : null;
   }
   function draw(ctx, l, p, place, t, prevState, tState) {
     if (!ON || off || !meta) return;
@@ -4125,6 +4141,11 @@ window.ArenaClips = (function () {
     if (frame % 90 === 0) { sweep(); prefetch(); }
     if (m === 'environment') {   // the swamp plate: every region plays only while its rectangle is on screen
       for (var ek in meta) { mm = meta[ek]; if (!mm.env) continue; r = place(mm.rx, mm.ry, mm.rw, mm.rh); if (!r) continue; e = vidFor(ek); e.seen = now; e.pre = false; if (ready(e)) { startLoop(e, mm); motion(ctx, e, r, 1); } }
+      return;
+    }
+    if (m === 'crypt_wall_front') {   // the blue torches of the crypt gates (one clip, drawn at the 3 doors) on top of the gate wall
+      mm = meta['torch|loop']; if (!mm || !mm.pos) return; e = null;
+      for (var pi = 0; pi < mm.pos.length; pi++) { r = place(mm.pos[pi][0], mm.pos[pi][1], mm.rw, mm.rh); if (!r) continue; if (!e) { e = vidFor('torch|loop'); e.seen = now; e.pre = false; if (!ready(e)) return; startLoop(e, mm); } motion(ctx, e, r, 1); }
       return;
     }
     var st = l.state === 'collapsed_all' ? 'collapsed' : l.state, k = m + '|' + st, wmm = wm && wm[k]; mm = wmm || meta[k]; if (!mm) return;
@@ -4160,14 +4181,14 @@ window.ArenaClips = (function () {
   function init(baseUrl) {
     root = baseUrl.endsWith('/') ? baseUrl : baseUrl + '/'; t0 = nowS(); if (!ON) return;
     host = document.createElement('div'); host.style.cssText = 'position:fixed;left:0;top:0;width:2px;height:2px;overflow:hidden;opacity:0.01;pointer-events:none;z-index:-1'; document.body.appendChild(host);
-    fetch(root + 'motion/clips3.json?v=4').then(function (r) { return r.json(); }).then(function (m) {
+    fetch(root + 'motion/clips3.json?v=5').then(function (r) { return r.json(); }).then(function (m) {
       meta = m;
-      var after = function () { for (var q in meta) { if (meta[q].env) continue; var w = wm && wm[q]; if (/\|healthy$/.test(q)) { p1.push(w ? 'w:' + q : q); vidFor(q, false, !!w); } else pre.push({ k: q, tr: false, warp: !!w }); } };
+      var after = function () { for (var q in meta) { if (meta[q].env || meta[q].torch) continue; var w = wm && wm[q]; if (/\|healthy$/.test(q)) { p1.push(w ? 'w:' + q : q); vidFor(q, false, !!w); } else pre.push({ k: q, tr: false, warp: !!w }); } };
       if (CAN_ALPHA) fetch(root + 'warp/clips4.json?v=2').then(function (r) { return r.json(); }).then(function (v) { wm = v; }).catch(function () { wm = null; }).then(after); else after();
       if (CAN_ALPHA) fetch(root + 'video/clips2.json?v=2').then(function (r) { return r.json(); }).then(function (v) { trm = {}; for (var q in v) if (/\|tr$/.test(q)) { trm[q] = v[q]; pre.push({ k: q, tr: true }); } }).catch(function () { trm = null; });
     }).catch(function () { meta = null; ON = false; });
   }
-  return { init: init, draw: draw, covers: covers, replaces: replaces, progress: progress, isOff: function () { return off || !ON; }, tier: function () { return tier; },
+  return { init: init, draw: draw, covers: covers, replaces: replaces, bridgeFrame: bridgeFrame, progress: progress, isOff: function () { return off || !ON; }, tier: function () { return tier; },
     off: function () { if (!GUARD) return; stepDown(); },
     perf: function (reset) { var r = { ms: perf.ms, max: perf.max, n: perf.n, loads: perf.loads, evict: perf.evict, mb: 0, tier: tier }; if (reset) { perf.ms = 0; perf.max = 0; perf.n = 0; } return r; },
     stats: function () { var res = []; for (var id in vids) if (vids[id].playing) res.push(id); return { on: ON && !off, tier: tier, clips: meta ? Object.keys(meta).length : 0, mb: 0, resident: res, mobile: MOBILE }; } };
@@ -12039,7 +12060,7 @@ telemetryInit();
       }
       return { init, tick, drawNow, active: () => started, event: () => (ev ? ev.type : null), rain: () => rainOn, force: type => { if (type === 'rain') { force = 'rain'; } else { ev = null; startEvent(type); } }, clearForce: () => { force = null; } };
     })();
-    const BUILD_ID = '1128-1708';
+    const BUILD_ID = '1128-1719';
     // --- SOAK TEST (?soak=1&god=1, Matin 2026-11-28: "fps is the one important thing, develop a tool before I test") ---
     // One link = a 125 s autopilot: walks and dashes, dismisses level-up cards, jumps the clock for a horde, teleports to every island / bridge / pit / swamp region (so every world clip loads and draws),
     // collapses each piece (damaged -> fall = the transition clips) and records EVERY display frame. At the end an on-screen verdict (PASS / WARN / FAIL) and a downloaded soak-*.json.
