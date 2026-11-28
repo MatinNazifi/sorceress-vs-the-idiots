@@ -3586,7 +3586,7 @@ window.ArenaArt6 = (function () {
     base = baseUrl.endsWith('/') ? baseUrl : baseUrl + '/';
     return Promise.all([fetch(base + 'art6.json?v=4').then(function (r) { return r.json(); }), fetch('sprites/arena/v5/art5.json').then(function (r) { return r.json(); })])
       .then(function (a) {
-        loadDoor(); if (typeof ArenaFx6 !== 'undefined') ArenaFx6.init(base); data = a[0]; data.layers.sort(function (p, q) { return p.z - q.z; }); fit = a[1].fit; reset(); // back to front by z: the crypt front wall (z 15) sits BEHIND the platform
+        loadDoor(); if (typeof ArenaFx6 !== 'undefined') ArenaFx6.init(base); if (typeof ArenaClips !== 'undefined') ArenaClips.init(base); data = a[0]; data.layers.sort(function (p, q) { return p.z - q.z; }); fit = a[1].fit; reset(); // back to front by z: the crypt front wall (z 15) sits BEHIND the platform
         data.layers.forEach(function (l) { byKey[l.module + '|' + l.state] = l; });
         // ready only when the healthy-state layers are decoded: until then the grey-box floor stays (a black map while 17 MB loaded was the bug); the other states load in the background
         var core = data.layers.filter(function (l) { return HEALTHY[l.module] === l.state; });
@@ -3802,7 +3802,7 @@ window.ArenaArt6 = (function () {
     var cosY = Math.cos(v.yaw), sinY = Math.sin(v.yaw), ax = cosY * v.cx - sinY * v.cy, ay = v.tilt * (sinY * v.cx + cosY * v.cy), L = data.layers, t = nowS();
     ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
     fxV = v; fxAx = ax; fxAy = ay; fxOn = !front && typeof ArenaFx6 !== 'undefined' && ArenaFx6.ready();
-    if (fxOn) { fxSlow = ftEma > 24 ? fxSlow + 1 : 0; if (fxSlow > 180) ArenaFx6.setTier(1); }   // frame time stays high for ~3 s: water off, lava stays
+    if (fxOn) { fxSlow = ftEma > 24 ? fxSlow + 1 : 0; if (fxSlow > 180) { ArenaFx6.setTier(1); if (typeof ArenaClips !== 'undefined') ArenaClips.off(); } }   // frame time stays high for ~3 s: water off, lava stays, world clips off (the still art stays)
     for (var i = 0; i < L.length; i++) {
       var l = L[i];
       if (!front && l.module === 'boss_door' && l.state === 'locked' && cur.boss_door === 'open' && door.meta) { drawDoor(ctx, v, l, ax, ay); continue; }
@@ -3815,6 +3815,7 @@ window.ArenaArt6 = (function () {
       if (pl) drawLayer(ctx, v, pl, 1, ax, ay);   // the old art stays fully opaque, the new art fades in on top: no see-through gap
       drawLayer(ctx, v, l, p, ax, ay, !!pl);
       if (fxOn) ArenaFx6.afterLayer(ctx, v, l, p, fxPlace);   // moving water + pulsing lava (05e), drawn right on top of the layer it belongs to
+      if (!front && typeof ArenaClips !== 'undefined') ArenaClips.draw(ctx, l, p, fxPlace, t, prev[m], t0[m]);   // Omni world clips (05f): the animated island / bridge / pit art on top of the same layer
     }
   }
   /* ArenaFx6 hook (2026-11-27): converts a level-canvas rectangle to screen px with the SAME formula as drawLayer; the frame's view is stored by drawPass */
@@ -4125,6 +4126,67 @@ const ArenaFx6 = (function () {
   return { init: init, ready: ready, setTier: setTier, afterLayer: afterLayer };
 })();
 window.__fx6 = ArenaFx6;   // QA hook (like __view): ready(), setTier(n)
+/* game/src/05f-arena-clips.js - Omni WORLD CLIPS (2026-11-28): the animated islands / bridges / pits, drawn right on top of the art6 layer they belong to.
+   Sheets are built by anim_test/omni_world/build_world_clips.py (v6w/clips/<module>__<state>.webp + clips.json): 16 frames of the 7 s loop, keyed, registered onto the layer's own sprite and clipped to its silhouette.
+   Hook: ArenaArt6.drawPass calls ArenaClips.draw(...) for every ground layer (same place as the water / lava effects), so depth order, collision and the layer rules are NOT touched.
+   Memory: only the CURRENT state of each module (+ its collapsed art and transition while it is damaged) stays decoded; the rest is released. Desktop HD only (GFX_HD); ?clips=0 off, ?clips=1 force on.
+   A damaged piece that falls (state -> collapsed) plays its TRANSITION clip once (TR_DUR s), then the collapsed loop fades in. */
+window.ArenaClips = (function () {
+  'use strict';
+  var ON = /[?&]clips=1/.test(location.search) || (!/[?&]clips=0/.test(location.search) && typeof GFX_HD !== 'undefined' && GFX_HD);
+  var TR_DUR = 3, START_DELAY = 10;
+  var meta = null, base = '', sheets = {}, want = {}, t0 = 0, busy = 0, frame = 0, off = false;
+  function nowS() { return performance.now() / 1000; }
+  function keyOf(l) { return l.module + '|' + (l.state === 'collapsed_all' ? 'collapsed' : l.state); }
+  function need(k) { if (meta && meta[k]) want[k] = frame; }
+  function pump() {   // one sheet decodes at a time, so loading never competes with the fight
+    if (busy || !meta || off) return;
+    if (nowS() - t0 < START_DELAY || (typeof omniAllLoaded === 'function' && !omniAllLoaded() && nowS() - t0 < 40)) return;
+    for (var k in want) {
+      if (sheets[k]) continue; busy = 1;
+      var im = new Image(), e = sheets[k] = { im: im, ok: false };
+      im.onload = function () { e.ok = true; busy = 0; }; im.onerror = function () { e.bad = true; busy = 0; };
+      im.src = base + meta[k].file + '?v=1'; return;
+    }
+  }
+  function sweep() {   // release what no module needs any more
+    for (var k in sheets) if (want[k] === undefined || frame - want[k] > 600) { delete sheets[k]; delete want[k]; }
+  }
+  function blit(ctx, k, i, a, r) {
+    var e = sheets[k], m = meta[k]; if (!e || !e.ok || a <= 0) return false;
+    ctx.globalAlpha = a; ctx.drawImage(e.im, (i % m.cols) * m.w, Math.floor(i / m.cols) * m.h, m.w, m.h, r.X, r.Y, r.sw, r.sh); return true;
+  }
+  function loop(ctx, k, a, r, t) {   // two neighbouring frames cross-faded = a smooth 7 s loop from 16 samples
+    var m = meta[k], e = sheets[k]; if (!e || !e.ok) return;
+    var p = (t % m.dur) / m.dur * m.frames, i0 = Math.floor(p) % m.frames, f = p - Math.floor(p), i1 = (i0 + 1) % m.frames;
+    blit(ctx, k, i0, a, r); if (f > 0.02) blit(ctx, k, i1, a * f, r); ctx.globalAlpha = 1;
+  }
+  // called by ArenaArt6.drawPass after a ground layer is drawn: l = the layer, p = its fade-in (0..1), place = level-canvas rect -> screen rect, prevState / tState = the module's previous art and when it changed
+  function draw(ctx, l, p, place, t, prevState, tState) {
+    if (!ON || off || !meta) return;
+    var k = keyOf(l), m = l.module, st = l.state === 'collapsed_all' ? 'collapsed' : l.state; frame++;
+    need(k);
+    if (st !== 'healthy' && st !== 'collapsed') { need(m + '|collapsed'); need(m + '|tr'); }   // a damaged piece: its fall is already on the way
+    if (frame % 90 === 0) { pump(); sweep(); } else if (!busy && frame % 20 === 0) pump();
+    var r = place(l.x, l.y, l.w, l.h); if (!r) return;
+    var trK = m + '|tr', since = tState !== undefined ? t - tState : 99;
+    if (st === 'collapsed' && prevState && prevState !== 'collapsed' && meta[trK]) {
+      need(trK);
+      if (since < TR_DUR) {   // the fall: the transition plays once
+        var tm = meta[trK], e = sheets[trK];
+        if (e && e.ok) { blit(ctx, trK, Math.min(tm.frames - 1, Math.floor(since / TR_DUR * tm.frames)), 1, r); ctx.globalAlpha = 1; return; }
+        return;
+      }
+      loop(ctx, k, Math.min(1, (since - TR_DUR) / 0.5) * p, r, t); return;   // the collapsed loop fades in behind the finished fall
+    }
+    loop(ctx, k, p, r, t);
+  }
+  function init(baseUrl) {
+    base = (baseUrl.endsWith('/') ? baseUrl : baseUrl + '/') + 'clips/'; t0 = nowS(); if (!ON) return;
+    fetch(base + 'clips.json?v=1').then(function (r) { return r.json(); }).then(function (m) { meta = m; }).catch(function () { meta = null; });
+  }
+  return { init: init, draw: draw, off: function () { off = true; sheets = {}; want = {}; }, on: function () { off = false; }, stats: function () { return { on: ON && !off, clips: meta ? Object.keys(meta).length : 0, resident: Object.keys(sheets).filter(function (k) { return sheets[k].ok; }) }; } };
+})();
     // --- SPRITE ASSET MANAGER ---
     const SPRITES = {};
     const SPRITE_URLS = {
@@ -12258,7 +12320,7 @@ telemetryInit();
       }
       return { init, tick, drawNow, active: () => started, event: () => (ev ? ev.type : null), rain: () => rainOn, force: type => { if (type === 'rain') { force = 'rain'; } else { ev = null; startEvent(type); } }, clearForce: () => { force = null; } };
     })();
-    const BUILD_ID = '1128-0154';
+    const BUILD_ID = '1128-1105';
     if (/beta-b/.test(location.pathname)) { const bid = document.createElement('div'); bid.textContent = 'build ' + BUILD_ID; bid.style.cssText = 'position:fixed;right:6px;bottom:2px;font:10px monospace;color:#fff;opacity:.45;z-index:99999;pointer-events:none'; document.body.appendChild(bid); }   // which build is this? (Matin 2026-11-25: fixes were reported 'still wrong' and I could not tell if the new build was running)
     // --- ASSET CACHE (beta pages only): sw.js keeps the art / clips / sounds in the browser so every visit after the first downloads nothing. play.html and the stable index never register it. ---
     if ('serviceWorker' in navigator && /[?&]nosw=1/.test(location.search)) {   // safety switch: ?nosw=1 removes the cache worker and its files
