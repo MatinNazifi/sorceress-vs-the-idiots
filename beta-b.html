@@ -4056,14 +4056,14 @@ window.__fx6 = ArenaFx6;   // QA hook (like __view): ready(), setTier(n)
    A damaged piece that falls (state -> collapsed) plays its TRANSITION clip once (TR_DUR s), then the collapsed loop fades in. */
 window.ArenaClips = (function () {
   'use strict';
-  var ON = /[?&]clips=1/.test(location.search);   /* 2026-11-28 HOTFIX: OFF by default (the replace-the-art clips blurred the map); ?clips=1 turns them on while they are rebuilt as motion-only overlays */
-  var TR_DUR = 3, START_DELAY = 1;
+  var ON = /[?&]clips=1/.test(location.search) || (!/[?&]clips=0/.test(location.search) && typeof GFX_HD !== 'undefined' && GFX_HD);   /* default: big desktop screens (GFX_HD); ?clips=0 off, ?clips=1 force. Motion-only overlays since 2026-11-28 (the first replace-the-art version blurred the map) */
+  var TR_DUR = 3, START_DELAY = 1, GUARD = !/[?&]clipguard=0/.test(location.search);   // ?clipguard=0 = QA only: the hitch guard and the slow-frame shut-off are disabled
   var nextLoad = 0, lastChange = 0, p1 = [], readyAt = 0, recentWorst = 0, hitches = [], meta = null, base = '', sheets = {}, want = {}, t0 = 0, busy = 0, frame = 0, off = false;
   function nowS() { return performance.now() / 1000; }
   function keyOf(l) { return l.module + '|' + (l.state === 'collapsed_all' ? 'collapsed' : l.state); }
   function need(k) { if (meta && meta[k]) want[k] = nowS(); }   // want[k] = seconds when the sheet was last needed (a prefetched one is stamped 90 s ahead)
-  var MAX_MB = +((/[?&]clipmb=(\d+)/.exec(location.search) || [0, 150])[1]), WARM_ON = !/[?&]clipwarm=0/.test(location.search), warmCv = null, perf = { ms: 0, max: 0, n: 0, loads: 0, evict: 0 };   // MAX_MB = decoded sheets kept at once (RGBA bytes); perf = time spent in draw(), read by the soak test
-  function mb(k) { var m = meta[k], rows = Math.ceil(m.frames / m.cols); return m.w * m.cols * m.h * rows * 4 / 1048576; }
+  var MAX_MB = +((/[?&]clipmb=(\d+)/.exec(location.search) || [0, 230])[1]), WARM_ON = !/[?&]clipwarm=0/.test(location.search), warmCv = null, perf = { ms: 0, max: 0, n: 0, loads: 0, evict: 0 };   // MAX_MB = decoded sheets kept at once (RGBA bytes); perf = time spent in draw(), read by the soak test
+  function mb(k) { var m = meta[k], rows = Math.ceil(m.frames / m.cols); return m.w * m.cols * m.h * rows * 4 / 1048576 * (m.delta ? 2 : 1); }
   function residentMB() { var s = 0; for (var k in sheets) if (sheets[k].ok) s += mb(k); return s; }
   function warm(im) {
     if (!WARM_ON) return;   // the GPU upload of a big image happens on its FIRST draw: do it now, quietly, one sheet at a time, not in the middle of a fight
@@ -4073,16 +4073,21 @@ window.ArenaClips = (function () {
     if (busy || !meta || off || nowS() < nextLoad) return;
     if (nowS() - t0 < START_DELAY || (typeof omniAllLoaded === 'function' && !omniAllLoaded() && nowS() - t0 < 40)) return;
     if (!readyAt && p1.length && p1.every(function (q) { return sheets[q] && sheets[q].ok; })) readyAt = nowS();
-    if (readyAt && nowS() - readyAt > 6) {   // quiet time: the damaged / warning / cracking AND collapsed art of every piece is fetched BEFORE it is needed, one at a time, only with memory to spare (the 3 s transitions load at the warning)
-      for (var q in meta) if (!meta[q].env && /\|(damaged|warning|cracking|collapsed)$/.test(q) && !sheets[q] && residentMB() + mb(q) <= MAX_MB - 20) { want[q] = nowS() + 90; break; }
+    if (readyAt && nowS() - readyAt > 6) {   // quiet time: the damaged / warning / cracking and collapsed art AND the 3 s fall clip of every piece is fetched BEFORE it is needed, one at a time, only with memory to spare (the 3 s transitions load at the warning)
+      for (var q in meta) if (!meta[q].env && /\|(damaged|warning|cracking|collapsed|tr)$/.test(q) && !sheets[q] && residentMB() + mb(q) <= MAX_MB - 20) { want[q] = nowS() + 90; break; }
     }
     for (var k in want) {
       if (sheets[k]) continue;
       if (residentMB() + mb(k) > MAX_MB) { evictFor(k); if (residentMB() + mb(k) > MAX_MB) continue; }   // over budget: the sheet waits (the still art shows) until another is released
       busy = 1; perf.loads++;
-      var im = new Image(), e = sheets[k] = { im: im, ok: false };
-      im.onload = function () { (im.decode ? im.decode() : Promise.resolve()).catch(function () {}).then(function () { warm(im); e.ok = true; busy = 0; nextLoad = nowS() + 0.8; }); }; im.onerror = function () { e.bad = true; busy = 0; };
-      im.src = base + meta[k].file + '?v=3'; return;
+      var m = meta[k], im = new Image(), e = sheets[k] = { im: im, im2: null, ok: false }, need2 = m.delta ? 2 : 1, got = 0;
+      var hook = function (img) {
+        img.onload = function () { (img.decode ? img.decode() : Promise.resolve()).catch(function () {}).then(function () { warm(img); if (++got >= need2) { e.ok = true; busy = 0; nextLoad = nowS() + 0.8; } }); };
+        img.onerror = function () { e.bad = true; busy = 0; };
+      };
+      hook(im); im.src = base + m.file + '?v=6';
+      if (m.delta) { e.im2 = new Image(); hook(e.im2); e.im2.src = base + m.file2 + '?v=6'; }
+      return;
     }
   }
   function evictFor(k) {   // release the sheet that was needed longest ago (never one needed in the last 2 s)
@@ -4092,13 +4097,18 @@ window.ArenaClips = (function () {
   function sweep() {   // release what no module needs any more
     for (var k in sheets) if (want[k] === undefined || nowS() - want[k] > 20) { delete sheets[k]; delete want[k]; }
   }
-  function blit(ctx, k, i, a, r) {
+  function blit(ctx, k, i, a, r, second) {
     var e = sheets[k], m = meta[k]; if (!e || !e.ok || a <= 0) return false;
-    ctx.globalAlpha = a; ctx.drawImage(e.im, (i % m.cols) * m.w, Math.floor(i / m.cols) * m.h, m.w, m.h, r.X, r.Y, r.sw, r.sh); return true;
+    ctx.globalAlpha = a; ctx.drawImage(second ? e.im2 : e.im, (i % m.cols) * m.w, Math.floor(i / m.cols) * m.h, m.w, m.h, r.X, r.Y, r.sw, r.sh); return true;
   }
   function loop(ctx, k, a, r, t) {   // two neighbouring frames cross-faded = a smooth 7 s loop from 16 samples
     var m = meta[k], e = sheets[k]; if (!e || !e.ok) return;
     var p = (t % m.dur) / m.dur * m.frames, i0 = Math.floor(p) % m.frames, f = p - Math.floor(p), i1 = (i0 + 1) % m.frames;
+    if (m.delta) {   // MOTION ONLY: the sharp static art stays; the loop's change from its average frame is added (positive part, 'lighter') and darkened (negative part, 'multiply')
+      ctx.globalCompositeOperation = 'lighter'; blit(ctx, k, i0, a, r); if (f > 0.02) blit(ctx, k, i1, a * f, r);
+      ctx.globalCompositeOperation = 'multiply'; blit(ctx, k, i0, a, r, 1); if (f > 0.02) blit(ctx, k, i1, a * f, r, 1);
+      ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 1; return;
+    }
     blit(ctx, k, i0, a, r); if (f > 0.02) blit(ctx, k, i1, a * f, r); ctx.globalAlpha = 1;
   }
   // called by ArenaArt6.drawPass after a ground layer is drawn: l = the layer, p = its fade-in (0..1), place = level-canvas rect -> screen rect, prevState / tState = the module's previous art and when it changed
@@ -4141,13 +4151,13 @@ window.ArenaClips = (function () {
     requestAnimationFrame(guard); var d = lastT ? t - lastT : 0; lastT = t; recentWorst = recentWorst * 0.97 + (d > recentWorst ? (d - recentWorst) : 0);
     if (!ON || off || !meta || document.hidden || progress() < 1 || d < 150 || d > 1500 || nowS() - lastChange < 15) return;   // >1.5 s = the tab was hidden / the window was dragged, not a hitch
     hitches.push(t); while (hitches.length && t - hitches[0] > 20000) hitches.shift();
-    if (hitches.length >= 8) { off = true; sheets = {}; want = {}; if (window.console) console.warn('ArenaClips: 8 hitches in 20 s, world clips switched off'); }
+    if (GUARD && hitches.length >= 8) { off = true; sheets = {}; want = {}; if (window.console) console.warn('ArenaClips: 8 hitches in 20 s, world clips switched off'); }
   })(0);
   function init(baseUrl) {
     base = (baseUrl.endsWith('/') ? baseUrl : baseUrl + '/') + 'clips/'; t0 = nowS(); if (!ON) return;
-    fetch(base + 'clips.json?v=3').then(function (r) { return r.json(); }).then(function (m) { meta = m; for (var q in m) if (!m[q].env && /\|healthy$/.test(q)) { p1.push(q); want[q] = nowS() + 30; } }).catch(function () { meta = null; });
+    fetch(base + 'clips.json?v=6').then(function (r) { return r.json(); }).then(function (m) { meta = m; for (var q in m) if (!m[q].env && /\|healthy$/.test(q)) { p1.push(q); want[q] = nowS() + 30; } }).catch(function () { meta = null; });
   }
-  return { init: init, draw: draw, progress: progress, isOff: function () { return off; }, off: function () { off = true; sheets = {}; want = {}; }, on: function () { off = false; },
+  return { init: init, draw: draw, progress: progress, isOff: function () { return off; }, off: function () { if (!GUARD) return; off = true; sheets = {}; want = {}; }, on: function () { off = false; },
     perf: function (reset) { var r = { ms: perf.ms, max: perf.max, n: perf.n, loads: perf.loads, evict: perf.evict, mb: Math.round(residentMB()) }; if (reset) { perf.ms = 0; perf.max = 0; perf.n = 0; } return r; },
     stats: function () { return { on: ON && !off, clips: meta ? Object.keys(meta).length : 0, mb: meta ? Math.round(residentMB()) : 0, resident: Object.keys(sheets).filter(function (k) { return sheets[k].ok; }) }; } };
 })();
@@ -12018,7 +12028,7 @@ telemetryInit();
       }
       return { init, tick, drawNow, active: () => started, event: () => (ev ? ev.type : null), rain: () => rainOn, force: type => { if (type === 'rain') { force = 'rain'; } else { ev = null; startEvent(type); } }, clearForce: () => { force = null; } };
     })();
-    const BUILD_ID = '1128-1200';
+    const BUILD_ID = '1128-1214';
     // --- SOAK TEST (?soak=1&god=1, Matin 2026-11-28: "fps is the one important thing, develop a tool before I test") ---
     // One link = a 125 s autopilot: walks and dashes, dismisses level-up cards, jumps the clock for a horde, teleports to every island / bridge / pit / swamp region (so every world clip loads and draws),
     // collapses each piece (damaged -> fall = the transition clips) and records EVERY display frame. At the end an on-screen verdict (PASS / WARN / FAIL) and a downloaded soak-*.json.
