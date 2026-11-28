@@ -4165,6 +4165,11 @@ window.ArenaClips = (function () {
   function draw(ctx, l, p, place, t, prevState, tState) {
     if (!ON || off || !meta) return;
     var k = keyOf(l), m = l.module, st = l.state === 'collapsed_all' ? 'collapsed' : l.state; frame++;
+    if (m === 'environment') {   // the swamp plate: each region clip (trees, cauldrons, huts...) is loaded only while its rectangle is on screen
+      if (frame % 90 === 0) { pump(); sweep(); }
+      for (var ek in meta) { var em = meta[ek]; if (!em.env) continue; var er = place(em.x, em.y, em.w, em.h); if (er) { need(ek); loop(ctx, ek, 1, er, t); } }
+      return;
+    }
     need(k);
     if (st !== 'healthy' && st !== 'collapsed') { need(m + '|collapsed'); need(m + '|tr'); }   // a damaged piece: its fall is already on the way
     if (frame % 90 === 0) { pump(); sweep(); } else if (!busy && frame % 20 === 0) pump();
@@ -4183,7 +4188,7 @@ window.ArenaClips = (function () {
   }
   function init(baseUrl) {
     base = (baseUrl.endsWith('/') ? baseUrl : baseUrl + '/') + 'clips/'; t0 = nowS(); if (!ON) return;
-    fetch(base + 'clips.json?v=1').then(function (r) { return r.json(); }).then(function (m) { meta = m; }).catch(function () { meta = null; });
+    fetch(base + 'clips.json?v=2').then(function (r) { return r.json(); }).then(function (m) { meta = m; }).catch(function () { meta = null; });
   }
   return { init: init, draw: draw, off: function () { off = true; sheets = {}; want = {}; }, on: function () { off = false; }, stats: function () { return { on: ON && !off, clips: meta ? Object.keys(meta).length : 0, resident: Object.keys(sheets).filter(function (k) { return sheets[k].ok; }) }; } };
 })();
@@ -12320,7 +12325,7 @@ telemetryInit();
       }
       return { init, tick, drawNow, active: () => started, event: () => (ev ? ev.type : null), rain: () => rainOn, force: type => { if (type === 'rain') { force = 'rain'; } else { ev = null; startEvent(type); } }, clearForce: () => { force = null; } };
     })();
-    const BUILD_ID = '1128-1105';
+    const BUILD_ID = '1128-1109';
     if (/beta-b/.test(location.pathname)) { const bid = document.createElement('div'); bid.textContent = 'build ' + BUILD_ID; bid.style.cssText = 'position:fixed;right:6px;bottom:2px;font:10px monospace;color:#fff;opacity:.45;z-index:99999;pointer-events:none'; document.body.appendChild(bid); }   // which build is this? (Matin 2026-11-25: fixes were reported 'still wrong' and I could not tell if the new build was running)
     // --- ASSET CACHE (beta pages only): sw.js keeps the art / clips / sounds in the browser so every visit after the first downloads nothing. play.html and the stable index never register it. ---
     if ('serviceWorker' in navigator && /[?&]nosw=1/.test(location.search)) {   // safety switch: ?nosw=1 removes the cache worker and its files
