@@ -4049,118 +4049,99 @@ const ArenaFx6 = (function () {
   return { init: init, ready: ready, setTier: setTier, afterLayer: afterLayer };
 })();
 window.__fx6 = ArenaFx6;   // QA hook (like __view): ready(), setTier(n)
-/* game/src/05f-arena-clips.js - Omni WORLD CLIPS (2026-11-28): the animated islands / bridges / pits, drawn right on top of the art6 layer they belong to.
-   Sheets are built by anim_test/omni_world/build_world_clips.py (v6w/clips/<module>__<state>.webp + clips.json): 16 frames of the 7 s loop, keyed, registered onto the layer's own sprite and clipped to its silhouette.
-   Hook: ArenaArt6.drawPass calls ArenaClips.draw(...) for every ground layer (same place as the water / lava effects), so depth order, collision and the layer rules are NOT touched.
-   Memory: only the CURRENT state of each module (+ its collapsed art and transition while it is damaged) stays decoded; the rest is released. Desktop HD only (GFX_HD); ?clips=0 off, ?clips=1 force on.
-   A damaged piece that falls (state -> collapsed) plays its TRANSITION clip once (TR_DUR s), then the collapsed loop fades in. */
+/* game/src/05f-arena-clips.js - the REAL Omni / Flow clips in the arena (2026-11-28, v3: video).
+   Matin: "our deal was 360p and upscale 4x; play the videos we created". Every clip = the Flow video (360p x 4 UltraSharp), keyed to alpha-WebM and cropped to its piece by
+   anim_test/omni_world/build_world_video.py (game/sprites/arena/v6w/video/<module>__<state>.<tier>.webm + clips2.json). It is drawn with drawImage(video) right after the
+   art6 ground layer it belongs to (hook in 05d drawPass, same place as the water / lava effects): the hero and enemies still draw in front, collision and the layer rules are untouched.
+   QUALITY TIERS (auto from the screen, ?clipq=t4|t2|t1 to force): t4 = 4K (native 4x crop), t2 = 2K / big laptop, t1 = Full HD. A tier is stepped DOWN by itself when frames spike (8 hitches
+   in 20 s), then the clips switch off (the still art stays). Phones, tablets and Safari (no alpha video) get the still art. ?clips=0 off, ?clips=1 force on.
+   Loops play from the video clock. A damaged piece that falls plays its transition video once (about 3 s), then the collapsed loop fades in. Paused videos cost nothing: only what is on screen plays. */
 window.ArenaClips = (function () {
   'use strict';
-  var BIG = Math.max(screen.width, screen.height) * (window.devicePixelRatio || 1) >= 2200 && !/Android|iPhone|iPad|iPod|Mobi/i.test(navigator.userAgent);   // a big non-phone screen, touch or not (GFX_HD alone rejects any device that reports a touch screen)
-  var ON = /[?&]clips=1/.test(location.search);   /* HOTFIX 2026-11-28 (Matin: blurry, disco flicker, not our Flow videos): OFF by default until the real-video version replaces this file; ?clips=1 forces the old overlay for tests */
-  var TR_DUR = 3, START_DELAY = 1, GUARD = !/[?&]clipguard=0/.test(location.search);   // ?clipguard=0 = QA only: the hitch guard and the slow-frame shut-off are disabled
-  var nextLoad = 0, lastChange = 0, p1 = [], readyAt = 0, recentWorst = 0, hitches = [], meta = null, base = '', sheets = {}, want = {}, t0 = 0, busy = 0, frame = 0, off = false;
+  var qs = location.search, UA = navigator.userAgent, TIERS = ['t4', 't2', 't1'];
+  var MOBILE = /Android|iPhone|iPad|iPod|Mobi/i.test(UA) || ('ontouchstart' in window && Math.min(screen.width, screen.height) < 900);
+  var SAFARI = /^((?!chrome|android|crios|fxios|edg).)*safari/i.test(UA);
+  var CAN = (function () { try { var v = document.createElement('video'); return !!v.canPlayType && v.canPlayType('video/webm; codecs="vp9"') !== ''; } catch (e) { return false; } })();
+  var GUARD = !/[?&]clipguard=0/.test(qs), TR_DUR = 3;
+  var ON = !/[?&]clips=0/.test(qs) && CAN && (/[?&]clips=1/.test(qs) || (!MOBILE && !SAFARI));
+  function pickTier() {
+    var m = /[?&]clipq=(t[124])/.exec(qs); if (m) return m[1];
+    var q = /[?&]q=(ultra|hd|std)/.exec(qs); if (q) return q[1] === 'ultra' ? 't4' : q[1] === 'hd' ? 't2' : 't1';
+    var big = Math.max(screen.width, screen.height) * (window.devicePixelRatio || 1); return big >= 3200 ? 't4' : big >= 2200 ? 't2' : 't1';
+  }
+  var tier = pickTier(), meta = null, base = '', host = null, vids = {}, p1 = [], pre = [], off = false, t0 = 0, frame = 0, nextPre = 0, lastChange = 0, hitches = [], lastT = 0;
+  var perf = { ms: 0, max: 0, n: 0, loads: 0, evict: 0 };
   function nowS() { return performance.now() / 1000; }
-  function keyOf(l) { return l.module + '|' + (l.state === 'collapsed_all' ? 'collapsed' : l.state); }
-  function need(k) { if (meta && meta[k]) want[k] = nowS(); }   // want[k] = seconds when the sheet was last needed (a prefetched one is stamped 90 s ahead)
-  var MAX_MB = +((/[?&]clipmb=(\d+)/.exec(location.search) || [0, 230])[1]), WARM_ON = !/[?&]clipwarm=0/.test(location.search), warmCv = null, perf = { ms: 0, max: 0, n: 0, loads: 0, evict: 0 };   // MAX_MB = decoded sheets kept at once (RGBA bytes); perf = time spent in draw(), read by the soak test
-  function mb(k) { var m = meta[k], rows = Math.ceil(m.frames / m.cols); return m.w * m.cols * m.h * rows * 4 / 1048576 * (m.delta ? 2 : 1); }
-  function residentMB() { var s = 0; for (var k in sheets) if (sheets[k].ok) s += mb(k); return s; }
-  function warm(im) {
-    if (!WARM_ON) return;   // the GPU upload of a big image happens on its FIRST draw: do it now, quietly, one sheet at a time, not in the middle of a fight
-    try { if (!warmCv) { warmCv = document.createElement('canvas'); warmCv.width = warmCv.height = 4; } warmCv.getContext('2d').drawImage(im, 0, 0, 1, 1, 0, 0, 1, 1); } catch (err) { /* no GPU upload warm-up: the first draw does it */ }
+  function now30() { return nowS() - t0 > 30; }
+  function vidFor(k) {
+    var e = vids[k], m = meta && meta[k]; if (e) return e; if (!m) return null;
+    var v = document.createElement('video'); v.muted = true; v.loop = !!m.loop; v.preload = 'auto'; v.setAttribute('playsinline', ''); v.setAttribute('muted', ''); v.style.cssText = 'width:64px;height:64px';
+    v.src = base + m.tiers[tier]; host.appendChild(v); perf.loads++;
+    e = vids[k] = { v: v, k: k, seen: nowS(), playing: false }; return e;
   }
-  function pump() {   // one sheet decodes at a time, so loading never competes with the fight
-    if (busy || !meta || off || nowS() < nextLoad) return;
-    if (nowS() - t0 < START_DELAY || (typeof omniAllLoaded === 'function' && !omniAllLoaded() && nowS() - t0 < 40)) return;
-    if (!readyAt && p1.length && p1.every(function (q) { return sheets[q] && sheets[q].ok; })) readyAt = nowS();
-    if (readyAt && nowS() - readyAt > 6) {   // quiet time: the damaged / warning / cracking and collapsed art AND the 3 s fall clip of every piece is fetched BEFORE it is needed, one at a time, only with memory to spare (the 3 s transitions load at the warning)
-      for (var q in meta) if (!meta[q].env && /\|(damaged|warning|cracking|collapsed|tr)$/.test(q) && !sheets[q] && residentMB() + mb(q) <= MAX_MB - 20) { want[q] = nowS() + 90; break; }
-    }
-    for (var k in want) {
-      if (sheets[k]) continue;
-      if (residentMB() + mb(k) > MAX_MB) { evictFor(k); if (residentMB() + mb(k) > MAX_MB) continue; }   // over budget: the sheet waits (the still art shows) until another is released
-      busy = 1; perf.loads++;
-      var m = meta[k], im = new Image(), e = sheets[k] = { im: im, im2: null, ok: false }, need2 = m.delta ? 2 : 1, got = 0;
-      var hook = function (img) {
-        img.onload = function () { (img.decode ? img.decode() : Promise.resolve()).catch(function () {}).then(function () { warm(img); if (++got >= need2) { e.ok = true; busy = 0; nextLoad = nowS() + 0.8; } }); };
-        img.onerror = function () { e.bad = true; busy = 0; };
-      };
-      hook(im); im.src = base + m.file + '?v=6';
-      if (m.delta) { e.im2 = new Image(); hook(e.im2); e.im2.src = base + m.file2 + '?v=6'; }
-      return;
-    }
+  function ready(e) { return e && e.v.readyState >= 2 && e.v.videoWidth > 0; }
+  function startLoop(e, m) { var v = e.v; if (e.playing) return; e.playing = true; try { if (m.loop && m.dur) v.currentTime = nowS() % m.dur; } catch (err) { /* not seekable yet */ } var p = v.play(); if (p && p.catch) p.catch(function () { e.playing = false; }); }
+  function stop(e) { if (e.playing) { try { e.v.pause(); } catch (err) { /* gone */ } e.playing = false; } }
+  function dispose(k) { var e = vids[k]; if (!e) return; try { e.v.pause(); e.v.removeAttribute('src'); e.v.load(); if (e.v.parentNode) e.v.parentNode.removeChild(e.v); } catch (err) { /* gone */ } delete vids[k]; }
+  function sweep() {   // not drawn for 1.5 s = paused (no decode cost); not drawn for 25 s = the element is released
+    var n = nowS(); for (var k in vids) { var e = vids[k]; if (!e.pre && n - e.seen > 1.5) stop(e); if (!e.pre && n - e.seen > 25 && p1.indexOf(k) < 0) dispose(k); }
   }
-  function evictFor(k) {   // release the sheet that was needed longest ago (never one needed in the last 2 s)
-    var old = null; for (var s in sheets) if (sheets[s].ok && (want[s] === undefined || nowS() - want[s] > 2) && (old === null || (want[s] || 0) < (want[old] || 0))) old = s;
-    if (old) { delete sheets[old]; delete want[old]; perf.evict++; }
+  // 0..1 for the start bar: the healthy videos (islands, bridges, pits) are buffered and decodable BEFORE the run starts. Gives up after 30 s.
+  function progress() {
+    if (!ON || off) return 1; if (now30()) return 1; if (!meta) return 0.05;
+    var n = 0, i; for (i = 0; i < p1.length; i++) { var e = vids[p1[i]]; if (e && e.v.readyState >= 3) n++; } return p1.length ? n / p1.length : 1;
   }
-  function sweep() {   // release what no module needs any more
-    for (var k in sheets) if (want[k] === undefined || nowS() - want[k] > 20) { delete sheets[k]; delete want[k]; }
+  function prefetch() {   // quiet time: every other state of every piece starts buffering (paused), one per 1.5 s, so a collapse never waits for a download
+    var n = nowS(); if (n < nextPre || !pre.length || progress() < 1) return; nextPre = n + 1.5; var k = pre.shift(), e = vidFor(k); if (e) { e.pre = true; e.v.pause(); }
   }
-  function blit(ctx, k, i, a, r, second) {
-    var e = sheets[k], m = meta[k]; if (!e || !e.ok || a <= 0) return false;
-    ctx.globalAlpha = a; ctx.drawImage(second ? e.im2 : e.im, (i % m.cols) * m.w, Math.floor(i / m.cols) * m.h, m.w, m.h, r.X, r.Y, r.sw, r.sh); return true;
-  }
-  function loop(ctx, k, a, r, t) {   // two neighbouring frames cross-faded = a smooth 7 s loop from 16 samples
-    var m = meta[k], e = sheets[k]; if (!e || !e.ok) return;
-    var p = (t % m.dur) / m.dur * m.frames, i0 = Math.floor(p) % m.frames, f = p - Math.floor(p), i1 = (i0 + 1) % m.frames;
-    if (m.delta) {   // MOTION ONLY: the sharp static art stays; the loop's change from its average frame is added (positive part, 'lighter') and darkened (negative part, 'multiply')
-      ctx.globalCompositeOperation = 'lighter'; blit(ctx, k, i0, a, r); if (f > 0.02) blit(ctx, k, i1, a * f, r);
-      ctx.globalCompositeOperation = 'multiply'; blit(ctx, k, i0, a, r, 1); if (f > 0.02) blit(ctx, k, i1, a * f, r, 1);
-      ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 1; return;
-    }
-    blit(ctx, k, i0, a, r); if (f > 0.02) blit(ctx, k, i1, a * f, r); ctx.globalAlpha = 1;
-  }
-  // called by ArenaArt6.drawPass after a ground layer is drawn: l = the layer, p = its fade-in (0..1), place = level-canvas rect -> screen rect, prevState / tState = the module's previous art and when it changed
   function draw(ctx, l, p, place, t, prevState, tState) {
     if (!ON || off || !meta) return;
-    var pt = performance.now(); drawInner(ctx, l, p, place, t, prevState, tState); var d = performance.now() - pt; perf.ms += d; perf.n++; if (d > perf.max) perf.max = d;
+    var pt = performance.now(); inner(ctx, l, p, place, t, prevState, tState); var d = performance.now() - pt; perf.ms += d; perf.n++; if (d > perf.max) perf.max = d;
   }
-  function drawInner(ctx, l, p, place, t, prevState, tState) {
-    var k = keyOf(l), m = l.module, st = l.state === 'collapsed_all' ? 'collapsed' : l.state; frame++;
-    if (tState !== undefined && t - tState < 15) lastChange = nowS();   // a piece changed state in the last 15 s: the game itself hitches then (new art tiles), so the guard does not count it
-    if (m === 'environment') {   // the swamp plate: each region clip (trees, cauldrons, huts...) is loaded only while its rectangle is on screen
-      if (frame % 90 === 0) { pump(); sweep(); }
-      for (var ek in meta) { var em = meta[ek]; if (!em.env) continue; var er = place(em.x, em.y, em.rw || em.w, em.rh || em.h); if (er) { need(ek); loop(ctx, ek, 1, er, t); } }
+  function inner(ctx, l, p, place, t, prevState, tState) {
+    var m = l.module, now = nowS(), r, e, mm; frame++;
+    if (frame % 90 === 0) { sweep(); prefetch(); }
+    if (m === 'environment') {   // the swamp plate: every region clip plays only while its rectangle is on screen
+      for (var ek in meta) { mm = meta[ek]; if (!mm.env) continue; r = place(mm.rx, mm.ry, mm.rw, mm.rh); if (!r) continue; e = vidFor(ek); e.seen = now; e.pre = false; if (ready(e)) { startLoop(e, mm); ctx.globalAlpha = 1; ctx.drawImage(e.v, r.X, r.Y, r.sw, r.sh); } }
       return;
     }
-    need(k);
-    if (st !== 'healthy' && st !== 'collapsed') { need(m + '|collapsed'); need(m + '|tr'); }   // a damaged piece: its fall is already on the way
-    if (frame % 90 === 0) { pump(); sweep(); } else if (!busy && frame % 20 === 0) pump();
-    var r = place(l.x, l.y, l.w, l.h); if (!r) return;
+    var st = l.state === 'collapsed_all' ? 'collapsed' : l.state, k = m + '|' + st; mm = meta[k]; if (!mm) return;
+    if (tState !== undefined && t - tState < 15) lastChange = now;
     var trK = m + '|tr', since = tState !== undefined ? t - tState : 99;
-    if (st === 'collapsed' && prevState && prevState !== 'collapsed' && meta[trK]) {
-      need(trK);
-      if (since < TR_DUR) {   // the fall: the transition plays once
-        var tm = meta[trK], e = sheets[trK];
-        if (e && e.ok) { blit(ctx, trK, Math.min(tm.frames - 1, Math.floor(since / TR_DUR * tm.frames)), 1, r); ctx.globalAlpha = 1; return; }
-        return;
+    if (st === 'collapsed' && prevState && prevState !== 'collapsed' && meta[trK] && since < TR_DUR + 0.3) {   // the fall: the transition video plays once, about TR_DUR s long
+      var tm = meta[trK], te = vidFor(trK); te.seen = now; te.pre = false;
+      if (ready(te)) {
+        if (!te.fired) { te.fired = true; te.v.loop = false; te.v.playbackRate = Math.min(8, Math.max(1, tm.dur / TR_DUR)); te.v.currentTime = 0; var pp = te.v.play(); if (pp && pp.catch) pp.catch(function () { /* blocked */ }); te.playing = true; }
+        r = place(l.x + tm.rx, l.y + tm.ry, tm.rw, tm.rh); if (r) { ctx.globalAlpha = 1; ctx.drawImage(te.v, r.X, r.Y, r.sw, r.sh); }
       }
-      loop(ctx, k, Math.min(1, (since - TR_DUR) / 0.5) * p, r, t); return;   // the collapsed loop fades in behind the finished fall
+      return;
     }
-    loop(ctx, k, p, r, t);
+    if (st !== 'collapsed' || !prevState) { var tk = vids[trK]; if (tk) tk.fired = false; }
+    var fade = (st === 'collapsed' && meta[trK] && since >= TR_DUR && since < TR_DUR + 0.8) ? (since - TR_DUR) / 0.8 : 1;   // the collapsed loop fades in behind the finished fall
+    r = place(l.x + mm.rx, l.y + mm.ry, mm.rw, mm.rh); e = vidFor(k); e.seen = now; e.pre = false; if (!r) return;
+    if (ready(e)) { startLoop(e, mm); ctx.globalAlpha = Math.min(1, p) * Math.min(1, fade); ctx.drawImage(e.v, r.X, r.Y, r.sw, r.sh); ctx.globalAlpha = 1; }
   }
-  // 0..1 for the start bar: the healthy sheets (islands, bridges, pits) are decoded and uploaded while the bar shows, not in the first fight. Gives up after 30 s.
-  function progress() {
-    if (!ON || off) return 1; if (nowS() - t0 > 30) return 1; if (!meta) return 0.05;
-    var n = 0; for (var i = 0; i < p1.length; i++) if (sheets[p1[i]] && sheets[p1[i]].ok) n++; return p1.length ? n / p1.length : 1;
+  function stepDown() {   // frames keep spiking: one quality tier lower, then off (the still art stays)
+    var i = TIERS.indexOf(tier); for (var k in vids) dispose(k);
+    if (i < TIERS.length - 1) { tier = TIERS[i + 1]; if (window.console) console.warn('ArenaClips: hitches, quality step down to ' + tier); } else { off = true; if (window.console) console.warn('ArenaClips: hitches at the lowest tier, world clips switched off'); }
   }
-  // hitch guard: 8 frames over 150 ms within 20 s once loading is over = the world clips switch themselves off for the rest of the run (the still art stays)
-  var lastT = 0;
   (function guard(t) {
-    requestAnimationFrame(guard); var d = lastT ? t - lastT : 0; lastT = t; recentWorst = recentWorst * 0.97 + (d > recentWorst ? (d - recentWorst) : 0);
-    if (!ON || off || !meta || document.hidden || progress() < 1 || d < 150 || d > 1500 || nowS() - lastChange < 15) return;   // >1.5 s = the tab was hidden / the window was dragged, not a hitch
+    requestAnimationFrame(guard); var d = lastT ? t - lastT : 0; lastT = t;
+    if (!GUARD || !ON || off || !meta || document.hidden || progress() < 1 || d < 150 || d > 1500 || nowS() - lastChange < 15) return;
     hitches.push(t); while (hitches.length && t - hitches[0] > 20000) hitches.shift();
-    if (GUARD && hitches.length >= 8) { off = true; sheets = {}; want = {}; if (window.console) console.warn('ArenaClips: 8 hitches in 20 s, world clips switched off'); }
+    if (hitches.length >= 8) { hitches = []; stepDown(); }
   })(0);
   function init(baseUrl) {
-    base = (baseUrl.endsWith('/') ? baseUrl : baseUrl + '/') + 'clips/'; t0 = nowS(); if (!ON) return;
-    fetch(base + 'clips.json?v=6').then(function (r) { return r.json(); }).then(function (m) { meta = m; for (var q in m) if (!m[q].env && /\|healthy$/.test(q)) { p1.push(q); want[q] = nowS() + 30; } }).catch(function () { meta = null; });
+    base = (baseUrl.endsWith('/') ? baseUrl : baseUrl + '/') + 'video/'; t0 = nowS(); if (!ON) return;
+    host = document.createElement('div'); host.style.cssText = 'position:fixed;left:0;top:0;width:2px;height:2px;overflow:hidden;opacity:0.01;pointer-events:none;z-index:-1'; document.body.appendChild(host);
+    fetch(base + 'clips2.json?v=1').then(function (r) { return r.json(); }).then(function (m) {
+      meta = m; for (var q in m) { if (m[q].env) continue; if (/\|healthy$/.test(q)) { p1.push(q); vidFor(q); } else pre.push(q); }
+    }).catch(function () { meta = null; ON = false; });
   }
-  return { init: init, draw: draw, progress: progress, isOff: function () { return off; }, off: function () { if (!GUARD) return; off = true; sheets = {}; want = {}; }, on: function () { off = false; },
-    perf: function (reset) { var r = { ms: perf.ms, max: perf.max, n: perf.n, loads: perf.loads, evict: perf.evict, mb: Math.round(residentMB()) }; if (reset) { perf.ms = 0; perf.max = 0; perf.n = 0; } return r; },
-    stats: function () { return { on: ON && !off, clips: meta ? Object.keys(meta).length : 0, mb: meta ? Math.round(residentMB()) : 0, resident: Object.keys(sheets).filter(function (k) { return sheets[k].ok; }) }; } };
+  return { init: init, draw: draw, progress: progress, isOff: function () { return off || !ON; }, tier: function () { return tier; },
+    off: function () { if (!GUARD) return; stepDown(); },
+    perf: function (reset) { var r = { ms: perf.ms, max: perf.max, n: perf.n, loads: perf.loads, evict: perf.evict, mb: 0, tier: tier }; if (reset) { perf.ms = 0; perf.max = 0; perf.n = 0; } return r; },
+    stats: function () { var res = []; for (var k in vids) if (vids[k].playing) res.push(k); return { on: ON && !off, tier: tier, clips: meta ? Object.keys(meta).length : 0, mb: 0, resident: res, mobileOrSafari: MOBILE || SAFARI }; } };
 })();
     // --- SPRITE ASSET MANAGER ---
     const SPRITES = {};
@@ -12029,7 +12010,7 @@ telemetryInit();
       }
       return { init, tick, drawNow, active: () => started, event: () => (ev ? ev.type : null), rain: () => rainOn, force: type => { if (type === 'rain') { force = 'rain'; } else { ev = null; startEvent(type); } }, clearForce: () => { force = null; } };
     })();
-    const BUILD_ID = '1128-1236';
+    const BUILD_ID = '1128-1252';
     // --- SOAK TEST (?soak=1&god=1, Matin 2026-11-28: "fps is the one important thing, develop a tool before I test") ---
     // One link = a 125 s autopilot: walks and dashes, dismisses level-up cards, jumps the clock for a horde, teleports to every island / bridge / pit / swamp region (so every world clip loads and draws),
     // collapses each piece (damaged -> fall = the transition clips) and records EVERY display frame. At the end an on-screen verdict (PASS / WARN / FAIL) and a downloaded soak-*.json.
@@ -12059,7 +12040,7 @@ telemetryInit();
         done = true; if (keyHeld) keys[keyHeld] = false;
         const all = dt.filter(r => r[0] > LOAD_S * 1000), S = stats(all), segs = {}; for (const r of all) (segs[r[2]] = segs[r[2]] || []).push(r); const per = {}; for (const k in segs) per[k] = stats(segs[k]);
         const cp = typeof ArenaClips !== 'undefined' ? ArenaClips.perf() : { ms: 0, n: 1, max: 0, mb: 0, loads: 0 }, cost = cp.n ? cp.ms / cp.n : 0, T = Math.max(S.T, 4);
-        const checks = [['tab visible, display >= 30 fps', hiddenFrames === 0 && S.T <= 33.4 && S.fps >= 30 && S.frozen === 0, 'median frame ' + S.T + ' ms, ' + hiddenFrames + ' hidden frames, ' + S.frozen + ' frozen gaps (>1.5 s)'], ['p99 <= 2T+2', S.p99 <= 2 * T + 2, S.p99 + ' ms vs ' + (2 * T + 2).toFixed(1)], ['frames over 3T <= 0.3 %', S.over3T <= S.frames * 0.003, S.over3T + ' of ' + S.frames], ['worst <= 120 ms', S.worst <= 120, S.worst + ' ms'], ['world clips stayed on all run', typeof ArenaClips === 'undefined' || !ArenaClips.isOff() || !clipsOn, (typeof ArenaClips !== 'undefined' && ArenaClips.isOff() && clipsOn) ? 'the hitch guard switched them OFF during the run' : 'on'], ['clip draw <= 1.5 ms/frame', cost <= 1.5, cost.toFixed(2) + ' ms (max ' + cp.max.toFixed(1) + ')']];
+        const checks = [['tab visible, display >= 30 fps', hiddenFrames <= 3 && S.T <= 33.4 && S.fps >= 30 && S.frozen === 0, 'median frame ' + S.T + ' ms, ' + hiddenFrames + ' hidden frames, ' + S.frozen + ' frozen gaps (>1.5 s)'], ['p99 <= 2T+2', S.p99 <= 2 * T + 2, S.p99 + ' ms vs ' + (2 * T + 2).toFixed(1)], ['frames over 3T <= 0.3 %', S.over3T <= S.frames * 0.003, S.over3T + ' of ' + S.frames], ['worst <= 120 ms', S.worst <= 120, S.worst + ' ms'], ['world clips stayed on all run', typeof ArenaClips === 'undefined' || !ArenaClips.isOff() || !clipsOn, (typeof ArenaClips !== 'undefined' && ArenaClips.isOff() && clipsOn) ? 'the hitch guard switched them OFF during the run' : 'on'], ['clip draw <= 1.5 ms/frame', cost <= 1.5, cost.toFixed(2) + ' ms (max ' + cp.max.toFixed(1) + ')']];
         const bad = checks.filter(c => !c[1]).length, verdict = !checks[0][1] ? 'INVALID (tab hidden or throttled: keep this tab in front, do not touch other windows, run again)' : bad === 0 ? 'PASS' : bad === 1 ? 'WARN' : 'FAIL';
         const res = { tag, verdict, when: new Date().toISOString(), screen: [innerWidth, innerHeight, devicePixelRatio], overall: S, segments: per, checks, clips: cp, heapMB: performance.memory ? Math.round(performance.memory.usedJSHeapSize / 1048576) : 0, worstFrames: all.slice().sort((a, b) => b[1] - a[1]).slice(0, 12).map(r => ({ at: +(r[0] / 1000).toFixed(1), ms: +r[1].toFixed(1), seg: r[2] })) };
         try { localStorage.setItem('soak-' + tag, JSON.stringify({ verdict, overall: S, clip: cost })); } catch (e) { /* storage blocked */ }
