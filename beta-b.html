@@ -4057,7 +4057,7 @@ window.__fx6 = ArenaFx6;   // QA hook (like __view): ready(), setTier(n)
 window.ArenaClips = (function () {
   'use strict';
   var BIG = Math.max(screen.width, screen.height) * (window.devicePixelRatio || 1) >= 2200 && !/Android|iPhone|iPad|iPod|Mobi/i.test(navigator.userAgent);   // a big non-phone screen, touch or not (GFX_HD alone rejects any device that reports a touch screen)
-  var ON = /[?&]clips=1/.test(location.search) || (!/[?&]clips=0/.test(location.search) && ((typeof GFX_HD !== 'undefined' && GFX_HD) || BIG));   /* default: big desktop screens; ?clips=0 off, ?clips=1 force. Motion-only overlays since 2026-11-28 (the first replace-the-art version blurred the map) */
+  var ON = /[?&]clips=1/.test(location.search);   /* HOTFIX 2026-11-28 (Matin: blurry, disco flicker, not our Flow videos): OFF by default until the real-video version replaces this file; ?clips=1 forces the old overlay for tests */
   var TR_DUR = 3, START_DELAY = 1, GUARD = !/[?&]clipguard=0/.test(location.search);   // ?clipguard=0 = QA only: the hitch guard and the slow-frame shut-off are disabled
   var nextLoad = 0, lastChange = 0, p1 = [], readyAt = 0, recentWorst = 0, hitches = [], meta = null, base = '', sheets = {}, want = {}, t0 = 0, busy = 0, frame = 0, off = false;
   function nowS() { return performance.now() / 1000; }
@@ -12029,7 +12029,7 @@ telemetryInit();
       }
       return { init, tick, drawNow, active: () => started, event: () => (ev ? ev.type : null), rain: () => rainOn, force: type => { if (type === 'rain') { force = 'rain'; } else { ev = null; startEvent(type); } }, clearForce: () => { force = null; } };
     })();
-    const BUILD_ID = '1128-1231';
+    const BUILD_ID = '1128-1236';
     // --- SOAK TEST (?soak=1&god=1, Matin 2026-11-28: "fps is the one important thing, develop a tool before I test") ---
     // One link = a 125 s autopilot: walks and dashes, dismisses level-up cards, jumps the clock for a horde, teleports to every island / bridge / pit / swamp region (so every world clip loads and draws),
     // collapses each piece (damaged -> fall = the transition clips) and records EVERY display frame. At the end an on-screen verdict (PASS / WARN / FAIL) and a downloaded soak-*.json.
