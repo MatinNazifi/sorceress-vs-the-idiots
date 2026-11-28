@@ -4162,7 +4162,7 @@ window.ArenaClips = (function () {
   function vidFor(k, tr, warp) {
     var id = (tr ? 'tr:' : warp ? 'w:' : '') + k, e = vids[id], m = tr ? trm && trm[k] : warp ? wm && wm[k] : meta && meta[k]; if (e) return e; if (!m) return null;
     var v = document.createElement('video'); v.muted = true; v.loop = !!m.loop && !tr; v.preload = 'auto'; v.setAttribute('playsinline', ''); v.setAttribute('muted', ''); v.style.cssText = 'width:64px;height:64px';
-    v.src = root + (tr ? 'video/' + m.tiers[tier] + '?v=2' : warp ? 'warp/' + m.tiers[tier] + '?v=2' : 'motion/' + m.tiers[tier] + '?v=4'); host.appendChild(v); perf.loads++;
+    v.src = root + (tr ? 'video/' + m.tiers[tier] + '?v=2' : warp ? 'warp/' + m.tiers[tier] + '?v=3' : 'motion/' + m.tiers[tier] + '?v=4'); host.appendChild(v); perf.loads++;
     e = vids[id] = { v: v, k: k, id: id, seen: nowS(), playing: false, tr: !!tr, warp: !!warp, drewAt: 0 }; return e;
   }
   function ready(e) { return e && e.v.readyState >= 2 && e.v.videoWidth > 0; }
@@ -12386,7 +12386,7 @@ telemetryInit();
       }
       return { init, tick, drawNow, active: () => started, event: () => (ev ? ev.type : null), rain: () => rainOn, force: type => { if (type === 'rain') { force = 'rain'; } else { ev = null; startEvent(type); } }, clearForce: () => { force = null; } };
     })();
-    const BUILD_ID = '1128-1514';
+    const BUILD_ID = '1128-1544';
     // --- SOAK TEST (?soak=1&god=1, Matin 2026-11-28: "fps is the one important thing, develop a tool before I test") ---
     // One link = a 125 s autopilot: walks and dashes, dismisses level-up cards, jumps the clock for a horde, teleports to every island / bridge / pit / swamp region (so every world clip loads and draws),
     // collapses each piece (damaged -> fall = the transition clips) and records EVERY display frame. At the end an on-screen verdict (PASS / WARN / FAIL) and a downloaded soak-*.json.
